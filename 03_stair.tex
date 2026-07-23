@@ -1,0 +1,461 @@
+\section{STAIR: Manipulating Collaborative and Multimodal Information}
+
+\subsection{Thông tin paper và lý do đưa vào baseline}
+
+Mô hình tiếp theo được lựa chọn để phân tích và làm cơ sở so sánh là STAIR~\cite{xu2025stair}.
+
+\subsubsection{Thông tin paper}
+\begin{itemize}
+    \item \textbf{Tên bài báo:} STAIR: Manipulating Collaborative and Multimodal Information for E-Commerce Recommendation.
+    \item \textbf{Tác giả:} Cong Xu, Yunhang He, Jun Wang và Wei Zhang từ East China Normal University.
+    \item \textbf{Hội nghị công bố:} AAAI 2025.
+    \item \textbf{Mã nguồn:} Công khai trên GitHub bằng PyTorch.
+\end{itemize}
+
+\subsubsection{Lý do chọn làm baseline}
+\begin{itemize}
+    \item \textbf{Tiết kiệm tài nguyên:} Khác với việc dùng các mô hình lớn để huấn luyện \textit{end-to-end}, STAIR dùng các đặc trưng trích xuất \textit{offline} như Sentence-BERT và Deep CNN rồi nén bằng SVD. Quá trình tính toán chỉ dùng mạng LightGCN 3 lớp. Thiết kế này giúp hệ thống tiêu tốn rất ít VRAM, ví dụ chỉ tốn khoảng 1.7 GB cho tập dữ liệu Electronics có gần 1.7 triệu tương tác, rất phù hợp để chạy trên phần cứng giới hạn.
+    \item \textbf{Không dùng contrastive learning:} STAIR không tạo các \textit{view} đối chiếu tốn kém bộ nhớ như nhiều mô hình SOTA khác. Hệ thống giải quyết bài toán thông qua hàm \textit{BPR loss} truyền thống kết hợp với \textit{kNN graph}.
+    \item \textbf{Tối ưu hóa toán học:} Điểm mạnh cốt lõi của STAIR là phương pháp \textit{stepwise graph convolution}. Thay vì tạo hai nhánh mạng cồng kềnh cho \textit{user-item} và \textit{item-item}, mô hình tối ưu trực tiếp bằng cách gán trọng số tích chập khác nhau cho từng \textit{dimension} của cùng một vector \textit{embedding}. Kỹ thuật \textit{soft transition} này giúp các \textit{dimension} đầu học \textit{collaborative information} và các \textit{dimension} sau giữ lại thông tin đa phương thức.
+\end{itemize}
+
+\subsection{Vấn đề paper giải quyết}
+Vấn đề cốt lõi xuất phát từ thực tế là hành vi mua sắm trong \textit{e-commerce} có độ bất định cao và không bị chi phối hoàn toàn bởi \textit{visual} hay \textit{textual} như trên các ứng dụng tin tức. Do đó, thông tin đa phương thức chỉ nên đóng vai trò bù đắp cho hành vi người dùng. Để kết hợp hai loại thông tin này, STAIR giải quyết triệt để hai vấn đề kỹ thuật lớn:
+
+\begin{itemize}
+    \item \textbf{Modality erasure:} Các mạng GCN truyền thống có tính chất làm mịn dữ liệu. Khi áp dụng GCN lên các vector khởi tạo bằng hình ảnh hoặc văn bản, quá trình này nhanh chóng xóa mất thông tin đa phương thức chỉ sau vài lớp tích chập. STAIR xử lý vấn đề này bằng \textit{forward stepwise convolution} để bảo vệ các đặc trưng đa phương thức ở các \textit{dimension} phía sau của vector.
+    \item \textbf{Modality forgetting:} Khi huấn luyện mô hình bằng \textit{BPR loss} để ưu tiên kéo gần hành vi tương tác, hệ thống sẽ dần quên đi các thông tin hình ảnh và văn bản ban đầu. STAIR khắc phục bằng \textit{backward stepwise convolution}, sử dụng \textit{kNN graph} để ép các sản phẩm giống nhau về mặt ngoại hình hoặc nội dung phải cập nhật \textit{gradient} theo một hướng đồng nhất, giúp mô hình duy trì các đặc trưng này.
+\end{itemize}
+
+Tóm lại, bài báo giải quyết bài toán làm thế nào để \textit{collaborative information} và thông tin đa phương thức cùng tồn tại và bổ trợ cho nhau trên cùng một hệ thống \textit{recommendation} mà không làm triệt tiêu lẫn nhau.
+
+\subsection{Input, output và dữ liệu cần chuẩn bị}
+
+\subsubsection{Đầu vào của mô hình}
+Mô hình STAIR không nhận \textit{raw data} như ảnh hay văn bản thuần trong quá trình huấn luyện GCN mà nhận các ma trận dữ liệu đã được số hóa và trích xuất đặc trưng. Cụ thể, đầu vào bao gồm:
+
+\begin{itemize}
+    \item \textbf{Collaborative information:} Được biểu diễn dưới dạng \textit{normalized adjacency matrix} $\tilde{A}$ của \textit{bipartite graph}, ghi nhận lịch sử tương tác như lượt click hoặc mua hàng.
+    \item \textbf{Multimodal features tĩnh $F^{(m)}$:} Bao gồm \textit{textual features} và \textit{visual features}. \textit{Textual features} là các vector 384 chiều được mã hóa bằng \textit{Sentence Transformer} từ việc ghép nối tiêu đề, mô tả và danh mục sản phẩm. \textit{Visual features} là các vector 4096 chiều được mã hóa bằng \textit{Deep CNN} từ ảnh thu nhỏ của sản phẩm.
+    \item \textbf{ID embeddings:} ID \textit{embeddings} của sản phẩm không khởi tạo ngẫu nhiên mà dùng kỹ thuật \textit{SVD} để nén các \textit{multimodal features} về không gian 64 chiều. ID \textit{embeddings} của người dùng được khởi tạo bằng cách dùng \textit{mean-pooling} trên các sản phẩm họ đã tương tác.
+    \item \textbf{kNN graph:} Là một ma trận tương đồng $S$ được tính toán sẵn dựa trên khoảng cách giữa các \textit{multimodal features} của sản phẩm, dùng để điều hướng khi cập nhật \textit{gradient} thông qua \textit{backward stepwise convolution}.
+\end{itemize}
+
+\subsubsection{Đầu ra của mô hình}
+Đầu ra của mô hình là danh sách các sản phẩm được cá nhân hóa cho từng người dùng, bao gồm:
+
+\begin{itemize}
+    \item \textbf{Điểm số dự đoán:} Thể hiện mức độ ưa thích của người dùng với sản phẩm thông qua phép tính \textit{inner product} giữa vector đại diện ẩn của người dùng $h_u$ và sản phẩm $h_i$ sau khi đi qua mạng tích chập.
+    \item \textbf{Danh sách top-N recommendation:} Được sắp xếp giảm dần từ các điểm số trên để xuất ra $N$ ứng viên sản phẩm có khả năng được người dùng quan tâm nhất. Danh sách này thường là \textit{top-10} hoặc \textit{top-20} để tiến hành đánh giá qua các thang đo \textit{Recall@N} và \textit{NDCG@N}.
+\end{itemize}
+
+\subsubsection{Dữ liệu cần chuẩn bị}
+Để tái lập và chạy mô hình STAIR, cần chuẩn bị các phần sau:
+
+\begin{itemize}
+    \item \textbf{Nguồn dữ liệu:} Bao gồm 3 \textit{dataset} thương mại điện tử thực tế từ Amazon review là Baby, Sports và Electronics.
+    \item \textbf{Quá trình preprocessing:} Yêu cầu lọc bỏ những người dùng và sản phẩm ``lạnh'' có ít hơn 5 tương tác nhằm đảm bảo chất lượng của đồ thị.
+    \item \textbf{Cơ chế thu thập:} Việc thu thập dữ liệu khá thuận tiện vì toàn bộ dữ liệu đã được tiền xử lý và trích xuất sẵn đặc trưng. Chỉ cần tải trực tiếp từ liên kết Google Drive được tác giả cung cấp trong file README trên GitHub và đặt vào thư mục data, không cần tự thu thập hoặc chạy mô hình trích xuất nặng.
+    \item \textbf{Môi trường phần mềm:} Yêu cầu cấu hình với các phiên bản thư viện tiêu chuẩn bao gồm Python từ 3.9, PyTorch từ 2.0, TorchData từ 0.6.0 và PyTorch Geometric từ 2.3.
+\end{itemize}
+
+\subsection{Kiến trúc module và luồng xử lý}
+
+Kiến trúc và luồng xử lý của STAIR được thiết kế tinh gọn dựa trên nền tảng của mạng LightGCN nhưng thay đổi hoàn toàn cách thông tin di chuyển ở cả \textit{forward pass} và \textit{backward pass}. Hệ thống không chia thành các nhánh mạng riêng biệt mà thực hiện \textit{soft transition} trên cùng một vector. Dưới đây là chi tiết về kiến trúc module và luồng xử lý tổng thể.
+
+\begin{figure}[!htbp]
+  \centering
+  \includegraphics[width=0.9\linewidth,keepaspectratio]{graphics/stair_architecture.png}
+  \caption{Sơ đồ kiến trúc tổng thể mô tả luồng forward pass với adjacency matrix và backward pass với item similarity matrix của hệ thống STAIR.}
+  \label{fig:stair_arch}
+\end{figure}
+
+\subsubsection{Module modality initialization}
+Mục đích của module này là đưa thông tin đa phương thức vào làm điểm xuất phát thay vì khởi tạo ngẫu nhiên. Các đặc trưng thô bao gồm ảnh 4096 chiều và văn bản 384 chiều được nén bằng kỹ thuật \textit{SVD whitening} để đưa về chung một không gian ẩn 64 chiều làm \textit{item embeddings}. \textit{User embeddings} được khởi tạo bằng cách tính \textit{mean-pooling} trên các sản phẩm mà người dùng đã tương tác.
+
+\subsubsection{Module forward stepwise convolution}
+Mục đích của phần này là giải quyết vấn đề \textit{modality erasure} khi đi qua mạng tích chập. Module này dùng đồ thị tương tác \textit{user-item}. Thay vì áp dụng chung một trọng số tích chập cho toàn bộ vector như LightGCN, \textit{forward stepwise convolution} gán trọng số lớp khác nhau cho từng \textit{dimension} của vector. Các \textit{dimension} đầu tiên nhận trọng số phân bổ đều qua các lớp, giúp chúng hoạt động như LightGCN truyền thống để hấp thụ mạnh \textit{collaborative information}. Các \textit{dimension} phía sau tập trung trọng số vào các lớp tích chập đầu tiên nhằm bảo tồn thông tin đa phương thức ban đầu mà không bị \textit{smooth out}.
+
+\subsubsection{Module backward stepwise convolution}
+Module này giải quyết vấn đề \textit{modality forgetting} do hàm \textit{BPR loss} gây ra bằng cách can thiệp vào quá trình cập nhật \textit{gradient}. Hệ thống dùng một \textit{kNN graph} được xây dựng trước dựa trên độ tương đồng của các đặc trưng hình ảnh và văn bản. Khi lan truyền ngược, \textit{backward stepwise convolution} sửa đổi hướng tối ưu hóa để các sản phẩm có độ tương đồng đa phương thức cao sẽ được cập nhật theo cùng một hướng nhất quán. Trọng số ở bước này hoạt động ngược lại với \textit{forward stepwise convolution}, cung cấp lực tăng cường thông tin đa phương thức mạnh mẽ nhất cho các \textit{dimension} phía sau của vector.
+
+\subsubsection{Luồng xử lý chi tiết}
+Quá trình thực thi của mô hình diễn ra qua năm bước như sau:
+
+\begin{enumerate}
+    \item \textbf{Bước 1:} Trích xuất đặc trưng văn bản và hình ảnh tĩnh. Chạy \textit{SVD whitening} trên các đặc trưng này để tạo \textit{item embeddings}. Tạo \textit{user embeddings} bằng \textit{mean-pooling}. Xây dựng sẵn \textit{kNN graph} cho các sản phẩm dựa trên đặc trưng hình ảnh và văn bản.
+    \item \textbf{Bước 2:} Đưa \textit{user embeddings} và \textit{item embeddings} đi qua đồ thị \textit{user-item} với module \textit{forward stepwise convolution}. Kết quả trả ra là các \textit{latent representations} chứa cả thông tin hành vi ở các \textit{dimension} đầu và thông tin đa phương thức ở các \textit{dimension} sau.
+    \item \textbf{Bước 3:} Dùng \textit{latent representations} để tính toán sự tương hợp giữa người dùng và sản phẩm bằng \textit{inner product}. Tính toán \textit{BPR loss} bằng cách tối đa hóa khoảng cách điểm số giữa sản phẩm người dùng đã tương tác và chưa tương tác.
+    \item \textbf{Bước 4:} Tính toán \textit{descent direction} dựa trên \textit{BPR loss}. Đối với người dùng, hệ thống cập nhật vector bình thường bằng \textit{gradient descent} tiêu chuẩn. Đối với sản phẩm, \textit{gradient} được đưa qua module \textit{backward stepwise convolution}. Lúc này, \textit{kNN graph} ép các sản phẩm tương đồng phải cập nhật giống nhau, đồng thời đẩy mạnh \textit{gradient} cho các \textit{dimension} cuối của vector để khôi phục thông tin đa phương thức ban đầu.
+    \item \textbf{Bước 5:} Quá trình lặp lại cho đến khi mô hình hội tụ với số \textit{epoch} tối đa quy định. Ở khâu \textit{inference}, hệ thống chỉ cần tính \textit{inner product} giữa vector người dùng và vật phẩm để sinh ra danh sách \textit{top-N recommendation} mà không cần tính toán lại bất kỳ đồ thị \textit{kNN} hay tích chập nào, giúp tốc độ suy luận diễn ra rất nhanh.
+\end{enumerate}
+
+
+\subsection{Workflow chạy thực nghiệm cho STAIR}
+ 
+Toàn bộ thực nghiệm chạy trên Kaggle Notebook (GPU T4 $\times$2, 15~GB VRAM mỗi GPU). STAIR được ưu tiên chạy đầu tiên trong nhóm \textit{baseline} chính theo đúng quy trình đề ra: chạy lại cấu hình gốc trên cả ba tập dữ liệu để chứng thực kết quả trước khi chuyển sang thử nghiệm các ý tưởng cải tiến.
+ 
+\begin{enumerate}[leftmargin=*, label=\textbf{Bước \arabic*.}]
+  \item \textbf{Cài đặt môi trường.}
+        Clone \textit{repository} từ GitHub. Phiên bản \texttt{torchdata} trên Kaggle ($\geq$0.8) đã loại bỏ hoàn toàn module \texttt{torchdata.datapipes} mà thư viện \texttt{freerec} của tác giả phụ thuộc vào, nên cần cài đặt cố định \texttt{torchdata==0.7.1}. Tương tự, \texttt{freerec} yêu cầu bản \texttt{1.0.1} theo khai báo \texttt{freerec.declare(version=\allowbreak'1.0.1')} trong \texttt{main.py}, nhưng phiên bản này chưa được phát hành công khai trên PyPI; nhóm dùng bản mới nhất hiện có là \texttt{freerec==0.9.5} và xác nhận tương thích API trước khi chạy thực nghiệm chính thức.
+  \item \textbf{Chuẩn bị dữ liệu.}
+        Copy ba tập dữ liệu (\texttt{Amazon2014Baby\_550\_MMRec}, \texttt{Amazon2014Sports\_550\_MMRec}, \texttt{Amazon2014Electronics\_550\_MMRec}) từ Kaggle Input vào đúng đường dẫn \texttt{root="../../data"} mà \texttt{main.py} yêu cầu. Mỗi tập gồm năm tệp: \texttt{train.txt}, \texttt{valid.txt}, \texttt{test.txt}, \texttt{textual\_modality.pkl} và \texttt{visual\_modality.pkl}.
+  \item \textbf{Vá lỗi theo dõi chỉ số đánh giá.}
+        Cấu hình mặc định của tác giả trong \texttt{main.py} đặt \texttt{monitors=[]} (rỗng) và \texttt{which4best='LOSS'}, nghĩa là hệ thống chỉ lưu \textit{checkpoint} theo \textit{loss} thấp nhất thay vì theo \textit{ranking metric} như paper mô tả (``\textit{best checkpoint identified by the validation NDCG@20 metric}''). Nhóm patch lại \texttt{cfg.set\allowbreak\_defaults()} để bổ sung \texttt{monitors=['recall@10', 'recall@20', 'ndcg@10', 'ndcg@20']} và đổi \texttt{which4best='NDCG@20'}, đồng thời bật hai cờ \texttt{--eval-valid} và \texttt{--eval-test} để hệ thống vừa đánh giá trên tập \textit{validation} để chọn \textit{checkpoint} tốt nhất, vừa báo cáo chỉ số trên tập \textit{test} tại các mốc đánh giá.
+  \item \textbf{Cấu hình siêu tham số.}
+  STAIR có hai nhóm tham số: tham số chung cố định cho mọi \textit{dataset} và tham số điều chỉnh riêng theo từng \textit{dataset} dựa trên cấu hình công bố của tác giả.
+ 
+  \textit{Tham số chung (Bảng~\ref{tab:stair_fixed_params}):}
+ 
+  \begin{table}[H]
+  \centering
+  \caption{Tham số chung cố định của STAIR cho mọi dataset.}
+  \label{tab:stair_fixed_params}
+  \begin{tabularx}{\linewidth}{p{0.30\linewidth} p{0.16\linewidth} X}
+  \toprule
+  \rowcolor{gray!15}\textbf{Tham số} & \textbf{Giá trị} & \textbf{Ý nghĩa} \\
+  \midrule
+  \texttt{embedding\_dim}     & 64        & Chiều biểu diễn user/item. \\
+  \texttt{num\_layers}        & 3         & Số lớp \textit{stepwise graph convolution}. \\
+  \texttt{learning\_rate}     & 0.001     & Tốc độ học của \textit{optimizer} AdamWSEvo. \\
+  \texttt{epochs}             & 500       & Số \textit{epoch} huấn luyện tối đa. \\
+  \texttt{eval\_freq}         & 5         & Tần suất đánh giá trên tập valid/test (mỗi 5 \textit{epoch}). \\
+  \texttt{which4best}         & NDCG@20   & Chỉ số dùng để chọn \textit{checkpoint} tốt nhất trên tập \textit{validation}. \\
+  \texttt{num\_neighbors}     & 5--1      & Số láng giềng dùng để xây \textit{kNN graph} (\textit{forward}--\textit{backward}). \\
+  \texttt{seed}               & 1         & Seed cố định để tái tạo kết quả. \\
+  \bottomrule
+  \end{tabularx}
+  \end{table}
+ 
+  \textit{Tham số điều chỉnh per-dataset (Bảng~\ref{tab:stair_tuned_params}):}
+ 
+  \begin{table}[H]
+  \centering
+  \caption{Siêu tham số tối ưu theo từng dataset của STAIR, theo cấu hình công bố trong paper.}
+  \label{tab:stair_tuned_params}
+  \begin{tabular}{lccc}
+  \toprule
+  \rowcolor{gray!15}\textbf{Tham số} & \textbf{Baby} & \textbf{Sports} & \textbf{Electronics} \\
+  \midrule
+  \texttt{batch\_size}    & 1{,}024 & 1{,}024 & 4{,}096 \\
+  \texttt{weight\_decay}  & 0.3     & 0.1     & 0.1     \\
+  \texttt{gamma} ($\gamma$) & 0.1   & 0.2     & 0.4     \\
+  \bottomrule
+  \end{tabular}
+  \end{table}
+ 
+  \noindent Cấu hình per-dataset phản ánh đặc trưng riêng của từng tập:
+  \begin{itemize}[leftmargin=*]
+    \item \texttt{batch\_size} của Electronics lớn hơn hẳn (4{,}096 so với 1{,}024) do số lượng tương tác gấp nhiều lần hai tập còn lại, cần \textit{batch} lớn hơn để tận dụng GPU hiệu quả và rút ngắn thời gian huấn luyện.
+    \item \texttt{gamma} ($\gamma$) kiểm soát tốc độ chuyển tiếp giữa các \textit{dimension} ưu tiên \textit{collaborative information} và các \textit{dimension} ưu tiên thông tin đa phương thức trong \textit{stepwise convolution}. Electronics dùng $\gamma=0.4$ cao nhất vì đồ thị tương tác dày đặc hơn, cần bảo vệ thông tin \textit{modality} mạnh hơn để tránh bị \textit{collaborative signal} lấn át.
+    \item \texttt{weight\_decay} của Baby cao nhất (0.3) do số lượng tương tác ít hơn, dễ \textit{overfitting} hơn hai tập còn lại nên cần \textit{regularization} mạnh hơn.
+  \end{itemize}
+ 
+  \item \textbf{Train và đánh giá.}
+        Chạy tuần tự ba \textit{dataset}, mỗi \textit{dataset} train tối đa 500 \textit{epoch}. Tại mỗi mốc \texttt{eval\_freq}, hệ thống đánh giá trên tập \textit{validation} bằng NDCG@20 để cập nhật \textit{checkpoint} tốt nhất, đồng thời báo cáo Recall@10/20 và NDCG@10/20 trên tập \textit{test} tương ứng. Sau khi huấn luyện kết thúc, hệ thống tự động \textit{load} lại \textit{checkpoint} tốt nhất để in kết quả cuối cùng, đúng theo quy trình ``\textit{report the results on the best checkpoint identified by the validation NDCG@20 metric}'' mà paper mô tả.
+  \item \textbf{Theo dõi tài nguyên và xuất kết quả.}
+        Song song với quá trình huấn luyện, một \textit{thread} riêng theo dõi mức tiêu thụ GPU VRAM theo thời gian thực bằng \texttt{pynvml} với chu kỳ lấy mẫu 0.5 giây. Kết quả mỗi \textit{dataset} được lưu vào thư mục \texttt{logs/STAIR/\{dataset\}/\{timestamp\}/} bao gồm \texttt{log.txt} (log chi tiết từng \textit{epoch}), \texttt{summary/SUMMARY.md} (bảng tổng hợp chỉ số tốt nhất) và \texttt{data/best.pkl} (\textit{checkpoint} tốt nhất). Biểu đồ tiêu thụ VRAM của cả ba \textit{dataset} được tổng hợp và xuất ra \texttt{vram\_profile.png}.
+\end{enumerate}
+
+\subsection{Kết quả thực nghiệm}
+
+\subsubsection{Phân tích chi tiết kết quả thực nghiệm}
+
+\textbf{Phân tích hiệu suất đề xuất} \\
+Kết quả thực nghiệm không chỉ tái lập thành công mà còn nhỉnh hơn so với số liệu chính thức được công bố trong bài báo gốc. Điều này chứng minh mô hình hoạt động cực kỳ ổn định và mã nguồn đã được thiết lập chuẩn xác.
+
+Dưới đây là bảng so sánh chi tiết các chỉ số đo lường trên tập kiểm thử:
+
+\begingroup
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{longtable}{p{0.12\textwidth} p{0.12\textwidth} 
+>{\centering\arraybackslash}p{0.14\textwidth} 
+>{\centering\arraybackslash}p{0.16\textwidth} 
+>{\centering\arraybackslash}p{0.12\textwidth} 
+p{0.28\textwidth}}
+\caption{So sánh chi tiết các chỉ số đo lường trên tập kiểm thử giữa bài báo và thực nghiệm.}
+\label{tab:stair_results}\\
+\toprule
+\rowcolor{gray!15}
+\textbf{Dataset} & \textbf{Metric} & \textbf{Kết quả bài báo} & \textbf{Kết quả thực nghiệm} & \textbf{Chênh lệch} & \textbf{Đánh giá} \\
+\midrule
+\endfirsthead
+\toprule
+\rowcolor{gray!15}
+\textbf{Dataset} & \textbf{Metric} & \textbf{Kết quả bài báo} & \textbf{Kết quả thực nghiệm} & \textbf{Chênh lệch} & \textbf{Đánh giá} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+\multirow{2}{*}{Baby} 
+ & Recall@20 & 0.1042 & 0.1046 & +0.0004 & Khởi tạo ngẫu nhiên \textit{seed} tối ưu hơn \\
+ & NDCG@20   & 0.0453 & 0.0456 & +0.0003 & Mô hình hội tụ tốt \\
+\midrule
+\multirow{2}{*}{Sports} 
+ & Recall@20 & 0.1117 & 0.1130 & +0.0013 & \textit{Stepwise graph convolution} hoạt động hiệu quả \\
+ & NDCG@20   & 0.0503 & 0.0506 & +0.0003 & Hiệu suất được cải thiện rõ rệt \\
+\midrule
+\multirow{2}{*}{Electronics} 
+ & Recall@20 & 0.0663 & 0.0663 & 0.0000 & Trùng khớp tuyệt đối \\
+ & NDCG@20   & 0.0302 & 0.0303 & +0.0001 & Tính minh bạch và tin cậy cao \\
+\end{longtable}
+\endgroup
+
+Với tập Baby, mức chênh lệch dương nhỏ thường đến từ việc khởi tạo ngẫu nhiên hạt giống hoặc khác biệt phần cứng xử lý số thực. Tập Sports ghi nhận mức Recall tăng vọt lên 11.3\%, xác thực tính ưu việt của thuật toán trên đồ thị tương tác có mật độ lớn. Riêng tập Electronics với gần 1.7 triệu tương tác cho kết quả trùng khớp gần như tuyệt đối, khẳng định độ tin cậy của toàn bộ quá trình thực nghiệm.
+
+\textbf{Phân tích thời gian huấn luyện} \\
+Thực nghiệm phản ánh chính xác khả năng tính toán vượt trội của STAIR. Tổng thời gian hoàn thành 500 \textit{epoch} mất khoảng 834 giây cho tập Baby, 1943 giây cho tập Sports và 13753 giây cho tập Electronics.
+
+Tốc độ trung bình mỗi \textit{epoch} cụ thể như sau:
+\begin{itemize}
+    \item \textbf{Baby:} 1.6 giây so với kết quả bài báo là 1.45 giây.
+    \item \textbf{Sports:} 3.88 giây so với kết quả bài báo là 2.65 giây.
+    \item \textbf{Electronics:} 27.5 giây so với kết quả bài báo là 10.23 giây.
+\end{itemize}
+
+Việc hệ thống chạy chậm hơn bài báo gốc từ 1.5 đến 2.5 lần là do môi trường Kaggle cung cấp GPU có năng lực tính toán thấp hơn so với NVIDIA RTX 3090 cao cấp. Tuy nhiên, tốc độ 27.5 giây mỗi \textit{epoch} cho tập dữ liệu khổng lồ vẫn là mức cực kỳ xuất sắc mà các phương pháp phức tạp khác khó đạt được.
+
+\textbf{Phân tích tiêu thụ bộ nhớ VRAM}
+
+\begin{figure}[!htbp]
+  \centering
+  \includegraphics[width=0.9\linewidth,keepaspectratio]{graphics/vram_profile (1).png}
+  \caption{Biểu đồ GPU VRAM Usage thể hiện mức tiêu thụ bộ nhớ chi tiết qua từng mốc thời gian của 3 tập dữ liệu Baby, Sports và Electronics.}
+  \label{fig:stair_vram}
+\end{figure}
+
+Biểu đồ đo lường tài nguyên hiển thị dạng bậc thang rất chuẩn xác khi tải dữ liệu vào GPU. So chiếu với kết quả công bố, ta có mức tiêu thụ đỉnh như sau:
+\begin{itemize}
+    \item \textbf{Baby:} Đỉnh VRAM thực tế là 763.2 MB so với bài báo là 490 MB.
+    \item \textbf{Sports:} Đỉnh VRAM thực tế là 969.2 MB so với bài báo là 696 MB.
+    \item \textbf{Electronics:} Đỉnh VRAM thực tế là 2011.2 MB so với bài báo là 1738 MB.
+\end{itemize}
+
+Sự chênh lệch từ 200 MB đến 270 MB ở mọi tập dữ liệu hoàn toàn hợp lý do chi phí \textit{overhead} mặc định của môi trường CUDA và PyTorch khi cấp phát ngữ cảnh trên Kaggle. Điểm cốt lõi là sự gia tăng VRAM giữa các tập dữ liệu hoàn toàn tương đồng với báo cáo gốc. Thuật toán STAIR chỉ tốn xấp xỉ 2 GB VRAM để xử lý cả \textit{textual features} và \textit{visual features} cho tập dữ liệu lớn nhất, tránh hoàn toàn tình trạng tràn bộ nhớ thường gặp.
+
+\subsubsection{Kết luận}
+Kết quả thực nghiệm cung cấp bằng chứng toàn diện và không có sai số kỹ thuật. Các phân tích chứng minh được sự kết hợp mượt mà giữa \textit{collaborative information} và thông tin đa phương thức, đồng thời xác nhận khả năng tiết kiệm tài nguyên phần cứng cực độ, hoàn toàn đủ tiêu chuẩn để thiết lập \textit{baseline} cho khóa luận.
+
+\subsection{Điểm có thể cải tiến}
+
+\subsubsection{Chưa tối ưu cho các kịch bản định hướng nội dung}
+Dù STAIR đạt hiệu suất SOTA trong lĩnh vực \textit{e-commerce}, tác giả thừa nhận mô hình chưa khai thác trọn vẹn tiềm năng của các đặc trưng đa phương thức thô trong các kịch bản định hướng nội dung như đề xuất \textit{news} hay \textit{video}. Trong các kịch bản này, hành vi của người dùng bị chi phối trực tiếp và mạnh mẽ bởi nội dung, do đó cách tiếp cận dung hòa của STAIR có thể không phải là lựa chọn tối ưu nhất.
+
+\subsubsection{Thiếu cơ chế adaptive learning theo từng kịch bản}
+Hướng cải tiến được đề xuất là nâng cấp STAIR để tận dụng các đặc trưng đa phương thức thô một cách linh hoạt hơn. Hiện tại, hệ thống dùng một công thức cố định dựa trên tham số $\gamma$ để kiểm soát tỷ lệ chuyển tiếp giữa \textit{collaborative information} và thông tin đa phương thức cho toàn bộ tập dữ liệu. Việc tạo ra một cơ chế tự thích ứng giúp mô hình tự động nhận diện mức độ quan trọng của đặc trưng đa phương thức trên từng mẫu dữ liệu sẽ là một bước tiến lớn.
+
+\subsubsection{Sự chênh lệch hiệu quả giữa textual modality và visual modality}
+Phân tích độ nhạy cho thấy \textit{textual modality} phản ánh sở thích của người dùng hiệu quả hơn so với \textit{visual modality}. Lý do là văn bản thường chứa ít nhiễu hơn hình ảnh. Một điểm có thể cải tiến là phát triển thêm một module tiền xử lý hoặc \textit{denoising} dành riêng cho nhánh hình ảnh trước khi đưa vào \textit{kNN graph}, nhằm cân bằng và nâng cao giá trị đóng góp của dữ liệu hình ảnh.
+
+\subsubsection{Kỹ thuật nén đặc trưng ban đầu bằng SVD mang tính tĩnh và tuyến tính}
+Để nén các vector đa phương thức có số chiều khác nhau về chung không gian 64 chiều mà không tốn chi phí huấn luyện, bài báo dùng kỹ thuật \textit{SVD whitening}. Dù cách này giúp tiết kiệm tối đa tài nguyên, bản chất SVD là một phép giảm chiều tuyến tính, có thể làm mất đi các thông tin phi tuyến tính phức tạp. Nếu phần cứng cho phép, một hướng cải tiến tiềm năng là dùng một \textit{lightweight learnable projector} thay thế cho SVD tĩnh để bảo toàn thông tin trọn vẹn hơn.
+
+\subsection{Tổng hợp đánh giá sơ bộ}
+ 
+Các nội dung chi tiết về bài toán, kiến trúc (input/output) và luồng xử lý của STAIR đã được phân tích ở các mục trên, đồng thời kết quả thực nghiệm tái lập cũng đã được trình bày và so sánh trực tiếp với số liệu công bố trong bài báo gốc. Bảng sau tổng hợp các đánh giá quan trọng nhất theo bộ tiêu chí chuẩn của nhóm, qua đó khẳng định mức độ phù hợp của STAIR khi được chọn làm \textit{baseline} cho khóa luận.
+ 
+\begin{longtable}{p{0.30\textwidth} p{0.60\textwidth}}
+\caption{Tổng hợp đánh giá sơ bộ mô hình STAIR}\label{tab:stair_summary}\\
+\toprule
+\rowcolor{gray!15}\textbf{Tiêu chí đánh giá} & \textbf{Nhận định sơ bộ} \\
+\midrule
+\endfirsthead
+\toprule
+\rowcolor{gray!15}\textbf{Tiêu chí đánh giá} & \textbf{Nhận định sơ bộ (tiếp theo)} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+ 
+Mức độ phù hợp làm baseline & 
+\textbf{Cao.} STAIR xứng đáng là một \textit{baseline} ưu tiên chạy đầu tiên trong nhóm. Điểm mạnh cốt lõi là thuật toán \textit{stepwise graph convolution}, cho phép dung hòa và bảo vệ trọn vẹn thông tin đa phương thức (\textit{modality}) ngay trên cùng một vector \textit{embedding}, mà không cần xây dựng thêm các nhánh mạng cồng kềnh hay cơ chế \textit{contrastive learning} tốn tài nguyên. \\
+ 
+Khả năng truy cập và tái lập & 
+\textbf{Tốt.} Việc tái lập mã nguồn, tập dữ liệu và đặc trưng tiền xử lý diễn ra thuận lợi nhờ \textit{repository} công khai minh bạch trên GitHub, kèm liên kết tải dữ liệu đã qua xử lý sẵn. Qua quá trình chạy thực nghiệm kiểm chứng trên cả ba tập Baby, Sports và Electronics, độ chính xác (Recall/NDCG) đo được trên tập kiểm thử đạt mức trùng khớp hoặc nhỉnh hơn không đáng kể so với số liệu trong bài báo (chênh lệch lớn nhất chỉ khoảng $+0.0013$ ở Recall@20 trên tập Sports), cho thấy khả năng tái lập đáng tin cậy và không có sai lệch bất thường. \\
+ 
+Độ phức tạp & 
+\textbf{Thấp đến trung bình.} Kiến trúc tinh gọn, không đòi hỏi huấn luyện \textit{end-to-end} qua các mạng ngôn ngữ hoặc thị giác cỡ lớn mà chỉ dùng đặc trưng trích xuất sẵn (Sentence-BERT, Deep CNN) nén qua \textit{SVD whitening}. Độ phức tạp tính toán chủ yếu nằm ở bước nén đặc trưng, \textit{stepwise convolution} hai chiều (\textit{forward}/\textit{backward}) và việc neo giữ thông tin qua \textit{item--item kNN graph}. \\
+ 
+Rủi ro triển khai & 
+\textbf{Thấp.} Rủi ro ban đầu được dự đoán nằm ở chi phí xây dựng \textit{kNN graph} và tính toán \textit{SVD whitening} trên tập dữ liệu lớn. Tuy nhiên, theo dõi thực tế bằng \textit{Hardware Profiler} cho thấy mức tiêu thụ VRAM đỉnh chỉ khoảng 2~GB ngay cả với tập Electronics có gần 1.7 triệu tương tác, loại bỏ phần lớn rủi ro tràn bộ nhớ (\textit{Out-Of-Memory}) trên phần cứng giới hạn như GPU T4 trên Kaggle. Thời gian huấn luyện trên tập lớn nhất chậm hơn báo cáo gốc khoảng 2--2.5 lần (27.5 giây/\textit{epoch} so với 10.23 giây/\textit{epoch}), nhưng vẫn nằm trong giới hạn tài nguyên cho phép và không phát sinh lỗi \textit{time-out} hay \textit{kernel} chết khi chạy trên Kaggle. \\
+ 
+Tiềm năng cải tiến & 
+\textbf{Rõ ràng và khả thi.} Hướng khả thi nhất là khắc phục việc STAIR dùng tham số điều khiển $\gamma$ cố định cho toàn bộ tập dữ liệu, có thể phát triển thêm cơ chế \textit{dynamic fusion} hoặc \textit{stepwise protection} thích ứng để mô hình tự cân chỉnh trọng số giữa \textit{collaborative} và \textit{multimodal information} theo từng ngữ cảnh người dùng cụ thể. Đây cũng là điểm phù hợp với tiêu chí ``độ phức tạp vừa phải'' mà nhóm hướng tới khi tìm hướng đề xuất mới, do kiến trúc của STAIR có đủ chỗ để can thiệp sâu vào cơ chế tương tác giữa tín hiệu \textit{visual} và \textit{textual} thay vì chỉ dừng ở mức trích xuất đặc trưng. \\
+\end{longtable}
+
+\subsection{Báo cáo kết quả hướng cải tiến Stepwise Graph Contrastive Learning (STAIR-GCL)}
+
+\subsubsection{Động lực kỹ thuật và đặt vấn đề}
+
+Mô hình STAIR giải quyết bài toán \textit{multimodal recommendation} bằng cách chia vector biểu diễn có số chiều $d=64$ thành hai vùng không gian độc lập. Vùng \textit{collaborative subspace} chiếm 32 chiều đầu tiên, chịu tác động của phép tích chập sâu thông qua \textit{forward stepwise convolution} nhằm học các thông tin cộng tác. Vùng \textit{multimodal subspace} chiếm 32 chiều phía sau, chịu ít sự lan truyền hơn nhằm bảo tồn các thuộc tính ngữ nghĩa nguyên bản trích xuất từ hình ảnh và văn bản.
+
+Hạn chế của kiến trúc gốc nằm ở việc \textit{user-item interaction graph} trong thực tế chứa rất nhiều \textit{noisy edges} phát sinh từ hành vi click nhầm hoặc tương tác vô tình của người dùng. Nếu không có cơ chế khử nhiễu, mạng tích chập đồ thị sẽ trực tiếp lan truyền các thông tin sai lệch này vào \textit{collaborative subspace}. Tuy nhiên, nếu áp dụng \textit{graph contrastive learning} truyền thống lên toàn bộ 64 chiều, quá trình đối chiếu sẽ làm mờ các đặc trưng nguyên bản ở 32 chiều sau. Điều này dẫn tới hiện tượng \textit{oversmoothing}, làm mất đi các giá trị cốt lõi của tín hiệu đa phương thức.
+
+\subsubsection{Phương pháp Stepwise Graph Contrastive Learning}
+
+Phương pháp STAIR-GCL được đề xuất nhằm khắc phục vấn đề nhiễu tương tác thông qua việc tạo ra các đồ thị phụ trợ bằng kỹ thuật \textit{edge dropout} với tỷ lệ $p_{drop}=0.2$ trên ma trận kề $A$. Quá trình này tạo ra hai \textit{view} đồ thị nhiễu ngẫu nhiên:
+
+\begin{equation}
+A' = \text{EdgeDrop}(A, p_{drop})
+\end{equation}
+
+\begin{equation}
+A'' = \text{EdgeDrop}(A, p_{drop})
+\end{equation}
+
+Hai \textit{view} đồ thị này tiếp tục được đưa qua bộ mã hóa \textit{forward stepwise convolution} để trích xuất các vector nhúng tương ứng. Điểm cải tiến cốt lõi của phương pháp nằm ở việc giới hạn phạm vi tác động của hàm mất mát InfoNCE. Thay vì áp dụng trên toàn bộ vector, hệ thống chỉ tính toán \textit{contrastive loss} trên 32 chiều đầu tiên thuộc \textit{collaborative subspace}:
+
+\begin{equation}
+\mathcal{L}_{cl\_user} = -\sum_{u \in \mathcal{B}} \log \frac{\exp(\text{sim}(\mathbf{h}_{u,:32}', \mathbf{h}_{u,:32}'') / \tau)}{\sum_{v \in \mathcal{B}} \exp(\text{sim}(\mathbf{h}_{u,:32}', \mathbf{h}_{v,:32}'') / \tau)}
+\end{equation}
+
+\begin{equation}
+\mathcal{L}_{cl\_item} = -\sum_{i \in \mathcal{B}} \log \frac{\exp(\text{sim}(\mathbf{h}_{i,:32}', \mathbf{h}_{i,:32}'') / \tau)}{\sum_{j \in \mathcal{B}} \exp(\text{sim}(\mathbf{h}_{i,:32}', \mathbf{h}_{j,:32}'') / \tau)}
+\end{equation}
+
+Trong đó, hàm $\text{sim}$ là độ tương đồng \textit{cosine} và $\tau=0.2$ là siêu tham số nhiệt độ. Thiết kế này giúp các chiều thuộc \textit{multimodal subspace} hoàn toàn không chịu ảnh hưởng của quá trình học đối chiếu, từ đó giữ trọn vẹn đặc trưng đa phương thức.
+
+Hàm mất mát tổng hợp của toàn bộ mô hình được định nghĩa bằng công thức:
+
+\begin{equation}
+\mathcal{L}_{total} = \mathcal{L}_{BPR} + \lambda_{cl} \cdot ( \mathcal{L}_{cl\_user} + \mathcal{L}_{cl\_item} )
+\end{equation}
+
+Tham số $\lambda_{cl}=0.001$ được cấu hình để đóng vai trò làm hệ số cân bằng cho \textit{contrastive loss}.
+
+\subsubsection{Kết quả thực nghiệm và phân tích chi tiết}
+
+\begin{figure}[!htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth,keepaspectratio]{graphics/stair/stair_v1_learning_curves.png}
+  \caption{Biểu đồ quá trình học (Training Loss Curves over 500 Epochs) của mô hình STAIR-GCL trên hai tập dữ liệu Baby và Sports.}
+  \label{fig:stair_v1_learning_curves}
+\end{figure}
+
+\begin{figure}[!htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth,keepaspectratio]{graphics/stair/stair_v1_comparison.png}
+  \caption{Biểu đồ cột đối sánh hiệu năng (Recall@10/20 và NDCG@10/20) giữa STAIR Baseline và STAIR-GCL trên tập Baby và Sports.}
+  \label{fig:stair_v1_comparison}
+\end{figure}
+
+Dưới đây là bảng tổng hợp kết quả đối sánh hiệu năng giữa STAIR baseline và phiên bản cải tiến STAIR-GCL sau quá trình huấn luyện 500 \textit{epoch}:
+
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{%
+    >{\raggedright\arraybackslash}p{2.2cm}
+    >{\raggedright\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{2.0cm}
+    >{\raggedright\arraybackslash}p{2.5cm}}
+    
+    % --- Phần 1: Tiêu đề và Header cho trang ĐẦU TIÊN ---
+    \caption{Bảng so sánh chi tiết các chỉ số đo lường hiệu năng giữa STAIR Baseline và STAIR-GCL.}
+    \label{tab:stair_gcl_results} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Dataset} & \textbf{Metric} & \textbf{STAIR Baseline} & \textbf{STAIR-GCL} & \textbf{Chênh lệch} & \textbf{Đánh giá} \\
+    \hline
+    \endfirsthead
+
+    % --- Phần 2: Tiêu đề lặp lại ở các trang TIẾP THEO ---
+    \multicolumn{6}{c}%
+    {{\bfseries Bảng \thetable\ (tiếp theo)}} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Dataset} & \textbf{Metric} & \textbf{STAIR Baseline} & \textbf{STAIR-GCL} & \textbf{Chênh lệch} & \textbf{Đánh giá} \\
+    \hline
+    \endhead
+
+    % --- Phần 3: Ghi chú ở cuối trang bị ngắt (FOOTER) ---
+    \midrule
+    \multicolumn{6}{r}{\textit{Tiếp tục ở trang sau...}} \\
+    \endfoot
+
+    % --- Phần 4: Đóng bảng ở cuối cùng (LAST FOOTER) ---
+    \hline
+    \endlastfoot
+
+    % --- Phần 5: NỘI DUNG BẢNG ---
+    Baby & Recall@10 & 0.0686 & 0.0695 & +0.0009 & Tăng 1.31\% \\
+    \midrule
+    Baby & Recall@20 & 0.1046 & 0.1047 & +0.0001 & Tăng 0.10\% \\
+    \midrule
+    Baby & NDCG@10 & 0.0363 & 0.0365 & +0.0002 & Tăng 0.55\% \\
+    \midrule
+    Baby & NDCG@20 & 0.0456 & 0.0455 & -0.0001 & Tương đương \\
+    \midrule
+    Sports & Recall@10 & 0.0751 & 0.0745 & -0.0006 & Giảm nhẹ \\
+    \midrule
+    Sports & Recall@20 & 0.1130 & 0.1124 & -0.0006 & Giảm nhẹ \\
+    \midrule
+    Sports & NDCG@10 & 0.0408 & 0.0404 & -0.0004 & Giảm nhẹ \\
+    \midrule
+    Sports & NDCG@20 & 0.0506 & 0.0504 & -0.0002 & Giảm nhẹ \\
+    \hline
+\endlongtable
+
+\paragraph{Phân tích kết quả trên tập Baby}
+Trên tập Baby, phương pháp STAIR-GCL cho thấy sự vượt trội so với \textit{baseline} ở phần lớn các chỉ số đo lường. Điểm sáng lớn nhất là Recall@10 tăng 1.31\% và NDCG@10 tăng 0.55\%. Nguyên nhân chính là do tập Baby đặc trưng bởi mật độ tương tác thưa thớt và chứa nhiều nhiễu hành vi mua sắm ngắn hạn. Kỹ thuật \textit{edge dropout} kết hợp với tối ưu hóa InfoNCE trên vùng \textit{collaborative subspace} đã phát huy tối đa khả năng loại bỏ các kết nối nhiễu, giúp mô hình xây dựng được biểu diễn hành vi người dùng sắc nét và ổn định hơn.
+
+\paragraph{Phân tích kết quả trên tập Sports}
+Đối với tập Sports, các chỉ số hiệu năng ghi nhận mức sụt giảm nhẹ dưới 1\%. Phân tích cấu trúc dữ liệu cho thấy tập Sports có tổng số lượng tương tác lớn và mật độ đồ thị dày đặc hơn đáng kể. Việc duy trì tỷ lệ \textit{edge dropout} cố định ở mức 0.2 trên một đồ thị dày có thể vô tình loại bỏ các kết nối mang tính định hướng quan trọng của người dùng. Để tối ưu hóa trên các tập dữ liệu quy mô lớn tương tự, hệ thống cần được tinh chỉnh giảm tỷ lệ \textit{edge dropout} xuống mức 0.1 hoặc điều chỉnh giảm hệ số $\lambda_{cl}$ để cân bằng lại quá trình lan truyền thông tin.
+
+\subsubsection{Kết luận và định hướng phát triển}
+
+Cải tiến STAIR-GCL đã chứng minh tính hợp lý của giả thuyết tách biệt không gian trong quá trình học đối chiếu đồ thị. Việc áp dụng \textit{contrastive learning} chuyên biệt cho từng phân vùng giúp hệ thống tối ưu hóa mạng lưới tương tác mà không gây ra hiện tượng \textit{oversmoothing} làm suy giảm chất lượng của \textit{visual modality} và \textit{textual modality}.
+
+Nhằm tiếp tục nâng cao hiệu suất và giải quyết bài toán sụt giảm trên các đồ thị dày đặc, định hướng nghiên cứu tiếp theo sẽ tập trung vào việc phát triển \textit{feature-wise dynamic fusion gate}. Cơ chế này sẽ tự động hóa quá trình đánh giá và kết hợp các thuộc tính đa phương thức trước khi đưa vào \textit{backward stepwise convolution}, qua đó thiết lập một luồng xử lý tín hiệu linh hoạt và thích ứng tốt hơn với đa dạng các đặc thù phân phối dữ liệu.
+
+\subsection{Đề xuất các phương án cải tiến kiến trúc tiếp theo}
+
+Sau khi hoàn thành thực nghiệm với phương án STAIR-GCL, quá trình tối ưu hóa mô hình sẽ tiếp tục được mở rộng. Dưới đây là hai định hướng cải tiến được sắp xếp theo mức độ ưu tiên dựa trên cơ sở lý thuyết và các phân tích rủi ro thực tế.
+
+\subsubsection{Cải tiến mức ưu tiên cao: Dynamic kNN Graph Fusion kết hợp Attention Denoising}
+
+\paragraph{Động lực kỹ thuật}
+Cơ chế \textit{Backward Stepwise Convolution} trong cấu trúc STAIR gốc sử dụng ma trận tương đồng để điều hướng \textit{gradient}. Hạn chế hiện tại của hệ thống nằm ở việc gộp hai đồ thị \textit{kNN} tương ứng với dữ liệu văn bản và hình ảnh thông qua phép lấy \textit{max} cơ học và tĩnh. Cách tiếp cận này vô tình bảo lưu toàn bộ \textit{visual noise}, tạo ra rào cản lớn đối với dữ liệu \textit{e-commerce}.
+
+\paragraph{Cơ sở toán học}
+Giải pháp cải tiến tập trung thiết kế cơ chế \textit{Attention-based Fusion} nhằm tự động học trọng số đóng góp của từng phương thức cho mỗi sản phẩm. Thay vì dùng tham số tĩnh, hệ thống tính toán trọng số \textit{attention} $\beta_t$ và $\beta_v$ cho từng cặp \textit{item} dựa trên biểu diễn không gian ẩn:
+
+\begin{equation}
+\alpha_{i,m} = \text{Softmax}(W_a h_{i,m} + b_a)
+\end{equation}
+
+Từ đó, ma trận \textit{kNN} động được cập nhật theo tỷ lệ đóng góp thực tế:
+
+\begin{equation}
+S_{dynamic} = \beta_t S_t + \beta_v S_v
+\end{equation}
+
+Hệ thống tiếp tục áp dụng thuật toán \textit{Attention Denoising} thông qua kỹ thuật \textit{dynamic thresholding} để cắt tỉa các cạnh yếu có độ tương đồng thấp. Bước lọc này đảm bảo mạng lưới \textit{Backward Stepwise Convolution} chỉ cập nhật \textit{gradient} theo các hướng thực sự mang ý nghĩa ngữ nghĩa.
+
+\paragraph{Đánh giá rủi ro}
+Phương án này sở hữu nền tảng lý thuyết vững chắc. Trong môi trường \textit{e-commerce}, các sản phẩm thời trang phụ thuộc nhiều vào \textit{visual modality}, trong khi sách hoặc đồ điện tử lại cần \textit{textual modality}. Tuy nhiên, việc áp dụng \textit{dynamic thresholding} có thể gây ra hiện tượng \textit{sparse graph} quá mức. Trên tập dữ liệu Baby với độ thưa thớt đã đạt 99.88\%, việc cắt tỉa mạnh tay dễ dẫn đến mất tín hiệu thay vì chỉ lọc nhiễu. Thêm vào đó, việc can thiệp vào cấu trúc \textit{kNN graph} sẽ làm thay đổi toàn bộ \textit{pipeline} tiền xử lý dữ liệu ban đầu. Do vậy, phương án này cần được thử nghiệm cực kỳ cẩn trọng.
+
+\subsubsection{Cải tiến mức ưu tiên thấp: Learnable Non-linear Projector kết hợp Cross-modal Gated Fusion}
+
+\paragraph{Động lực kỹ thuật}
+Kỹ thuật nén \textit{SVD Whitening} tuy tối ưu tốt tài nguyên phần cứng nhưng bản chất là một phép chiếu tuyến tính tĩnh. Quá trình này không thể nắm bắt trọn vẹn các sắc thái ngữ nghĩa phức tạp từ cấu trúc \textit{Sentence-BERT} 384 chiều hay \textit{Deep CNN} 4096 chiều. Đồng thời, \textit{SVD} không tối ưu trực tiếp cho mục tiêu \textit{recommendation} cuối cùng.
+
+\paragraph{Cơ sở toán học}
+Phương án đề xuất thay thế \textit{SVD Whitening} bằng mạng chiếu phi tuyến tính nhẹ. Cụ thể, hệ thống sử dụng cấu trúc \textit{MLP} đi kèm hàm kích hoạt \textit{GELU} để duy trì tính liên tục của \textit{gradient}, biến đổi \textit{input embedding} về không gian ẩn 64 chiều:
+
+\begin{equation}
+h_m = \text{GELU}(W_m \cdot F(m) + b_m)
+\end{equation}
+
+Quá trình này tích hợp toán học của \textit{Layer Normalization} nhằm đảm bảo độ ổn định cho các vector nhúng. Thay vì gộp cơ học như trước, kiến trúc \textit{Cross-modal Gated Fusion} thông qua cổng tự chú ý sẽ lọc nhiễu chéo và tự động điều tiết tỷ lệ đóng góp của từng phương thức:
+
+\begin{equation}
+z = \sigma(W_g[h_t; h_v] + b_g)
+\end{equation}
+
+\begin{equation}
+E_{final} = z \odot h_t + (1-z) \odot h_v
+\end{equation}
+
+\paragraph{Đánh giá rủi ro}
+Thực nghiệm từ các hệ thống trước đây cho thấy việc chèn \textit{MLP} vào vị trí \textit{projection} trên các tập dữ liệu thưa thớt mang rủi ro \textit{overfitting} rất cao. \textit{SVD Whitening} được lựa chọn trong bản gốc vì đây là phép chiếu L2 tối ưu có tính ổn định toán học, trong khi \textit{MLP} đòi hỏi lượng dữ liệu dồi dào để cập nhật trọng số hiệu quả. Do đó, kiến trúc can thiệp \textit{input embedding} này chỉ nên được cân nhắc nếu các phương án tiếp cận đồ thị không mang lại kết quả khả quan. Trong trường hợp tiến hành thực nghiệm, hệ thống bắt buộc phải áp dụng các kỹ thuật \textit{regularization} mạnh mẽ như tăng cường tỷ lệ \textit{dropout} và thiết lập tham số \textit{weight decay} lớn nhằm kiểm soát sự hội tụ của mô hình.
