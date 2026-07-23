@@ -44,7 +44,9 @@ cfg.set_defaults(
     optimizer='adamwsevo',
     lr=1e-3,
     weight_decay=0.1,
-    seed=1
+    seed=1,
+    monitors=["Recall@10", "Recall@20", "NDCG@10", "NDCG@20"],
+    which4best="NDCG@20",
 )
 cfg.compile()
 
