@@ -1,0 +1,111 @@
+ĐỀ CƯƠNG KỸ THUẬT: TÁI CẤU TRÚC TOÁN HỌC VÀ TỐI ƯU HÓA PYTORCH CHO MÔ HÌNH STAIR TRONG HỆ THỐNG GỢI Ý THƯƠNG MẠI ĐIỆN TỬ
+1. Phân tích Baseline STAIR và Động lực Cải tiến
+Mô hình STAIR (AAAI 2025) đã giới thiệu một hướng đi đột phá trong việc dung hòa thông tin cộng tác (Collaborative Information) và đặc trưng đa phương thức (Multimodal Features) thông qua cơ chế  Stepwise Graph Convolution . Bằng cách gán trọng số tích chập khác nhau trên từng chiều (dimension) của cùng một vector embedding, STAIR cho phép các chiều đầu hấp thụ hành vi người dùng trong khi các chiều sau bảo tồn thuộc tính hình ảnh/văn bản. Tuy nhiên, dưới góc độ nghiên cứu hệ thống gợi ý chuyên sâu, việc STAIR dựa quá nhiều vào các phép biến đổi tuyến tính (SVD Whitening) và gộp thông tin cơ học (static fusion) đã tạo ra một "điểm nghẽn" về mặt biểu diễn, đặc biệt là sự biến dạng của các thực thể trên không gian đa tạp (feature manifold) khi đối mặt với dữ liệu nhiễu cao như Amazon Electronics.
+Bảng 1: Phân tích giới hạn cốt lõi của baseline STAIR
+Thành phần,Hạn chế kỹ thuật,Hệ quả chiến lược
+Input Embedding,"SVD Whitening tĩnh, thuần túy tuyến tính.",Triệt tiêu các mối quan hệ phi tuyến cấp cao; gây hiện tượng  Feature Manifold Distortion .
+Feature Fusion,Gộp thông tin dựa trên tham số  $\gamma$  cố định cho toàn bộ dataset.,Thiếu khả năng thích ứng ở mức thực thể (instance-level); dẫn đến  Modality Erasure  sớm.
+Learning Strategy,Chỉ tối ưu bằng BPR Loss; thiếu cơ chế điều tiết không gian latent.,Vector đại diện kém bền vững (robustness); dễ bị dẫn dắt bởi các tương tác nhiễu.
+Graph Core,"Đồ thị kNN tĩnh, phép gộp max gây nhiễu gradient pass.","BSC (Backward Stepwise Convolution) bị lệch hướng, gây ra  Modality Forgetting ."
+Việc cải tiến STAIR không chỉ dừng lại ở việc gia tăng độ chính xác mà còn là bài toán tối ưu hóa dòng chảy gradient (gradient flow) và tính ổn định của không gian ẩn. Chúng tôi đề xuất ba phương án can thiệp sâu vào cấu trúc Input, Core và Loss của mô hình.
+2. Phương án 1: Learnable Non-linear Projector với Cross-modal Gated Fusion
+SVD Whitening trong STAIR tuy tiết kiệm tài nguyên nhưng lại là một phép chiếu tuyến tính thô sơ, không thể nắm bắt được các sắc thái ngữ nghĩa phức tạp từ Sentence-BERT (384-d) hay Deep CNN (4096-d). Chúng tôi đề xuất thay thế nó bằng một bộ Projector phi tuyến tính có khả năng học để giảm thiểu tổn thất thông tin ban đầu.
+Thiết lập Toán học
+Chúng tôi định nghĩa phép chiếu phi tuyến tính từ không gian modality  $m \in \{t, v\}$  về không gian ẩn chung  $d=64$ :  $$h_m = GELU(W_m \cdot F^{(m)} + b_m)$$  Trong đó hàm kích hoạt GELU ( $x\Phi(x)$ ) được ưu tiên để duy trì tính liên tục của gradient. Tiếp theo, thay vì gộp cơ học, cơ chế  Cross-modal Gated Fusion  sẽ tự động điều tiết tỷ lệ đóng góp:  $$z = \sigma(W_gh_t; h_v + b_g)$$   $$E_{final} = z \odot h_t + (1-z) \odot h_v$$
+Thực thi PyTorch (GatedProjector)
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class GatedProjector(nn.Module):
+    def __init__(self, d_text=384, d_visual=4096, d_hidden=64):
+        super(GatedProjector, self).__init__()
+        # Projector phi tuyến: Bảo toàn cấu trúc đa tạp phi tuyến
+        self.text_proj = nn.Sequential(
+            nn.Linear(d_text, d_hidden),
+            nn.GELU()
+        )
+        self.vis_proj = nn.Sequential(
+            nn.Linear(d_visual, d_hidden),
+            nn.GELU()
+        )
+        # Gated Fusion: Tự thích ứng dòng thông tin giữa các modality
+        self.gate = nn.Sequential(
+            nn.Linear(d_hidden * 2, d_hidden),
+            nn.Sigmoid()
+        )
+
+    def forward(self, text_feat, vis_feat):
+        h_t = self.text_proj(text_feat)
+        h_v = self.vis_proj(vis_feat)
+        
+        # Concatenate và tính toán trọng số cổng z
+        gate_input = torch.cat([h_t, h_v], dim=-1)
+        z = self.gate(gate_input)
+        
+        # Output được đưa trực tiếp vào Modality Initialization module
+        return z * h_t + (1 - z) * h_v
+
+Phân tích chiến lược:  Việc can thiệp này giúp loại bỏ hiện tượng mất mát thông tin ngay từ tầng khởi tạo. Bằng cách sử dụng cổng Gated, mô hình có thể linh hoạt ưu tiên văn bản (thường ít nhiễu hơn) hoặc hình ảnh tùy thuộc vào đặc thù của từng sản phẩm, tạo tiền đề vững chắc cho quá trình  Forward Stepwise Convolution (FSC) .
+3. Phương án 2: Stepwise Graph Contrastive Learning (STAIR-GCL)
+Để tăng cường tính mạnh mẽ của vector đại diện mà không làm xáo trộn đặc trưng đa phương thức ở các chiều cuối, chúng tôi đề xuất tích hợp Graph Contrastive Learning (GCL) một cách có chọn lọc.
+Can thiệp chiến lược vào Core GCN
+Chúng tôi thiết lập hai views đồ thị  $\mathcal{G}'$  và  $\mathcal{G}''$  thông qua Edge Dropout. Hàm mất mát InfoNCE sẽ được áp dụng:  $$\mathcal{L}{cl} = -\log \frac{\exp(sim(h_u', h_u'')/\tau)}{\sum{i \in \mathcal{B}} \exp(sim(h_u', h_i'')/\tau)}$$   Lý do dimension-split (32/64):  Trong kiến trúc STAIR, 32 chiều đầu tiên là khu vực có trọng số  $w_l^d$  phân bổ sâu qua các lớp (theo logic của LightGCN) để học hành vi. 32 chiều sau được FSC bảo vệ để giữ thuộc tính modality. Do đó, GCL chỉ nên áp dụng cho 32 chiều đầu để làm mạnh Collaborative Base, tránh việc Contrastive Learning gây ra hiện tượng  oversmoothing  làm hỏng các đặc trưng đa phương thức ở các chiều cuối.
+Thực thi PyTorch (Contrastive Loss)
+def calc_contrastive_loss(self, out_view1, out_view2, temp=0.2):
+    """
+    Áp dụng GCL chỉ cho collaborative dimensions (32 chiều đầu)
+    để ổn định behavior representation mà không làm mờ modality features.
+    """
+    # Lấy 32 chiều đầu và chuẩn hóa L2
+    v1 = F.normalize(out_view1[:, :32], dim=1)
+    v2 = F.normalize(out_view2[:, :32], dim=1)
+    
+    # Cosine similarity matrix với nhiệt độ tau
+    pos_score = torch.exp(torch.sum(v1 * v2, dim=1) / temp)
+    all_score = torch.matmul(v1, v2.t())
+    all_score = torch.exp(all_score / temp).sum(dim=1)
+    
+    return -torch.log(pos_score / all_score + 1e-8).mean()
+
+4. Phương án 3: Dynamic kNN Graph Fusion với Attention Denoising
+Cơ chế  Backward Stepwise Convolution (BSC)  trong STAIR sử dụng ma trận tương đồng  $S$  để điều hướng gradient. Tuy nhiên, phép gộp tĩnh bằng tham số  $\gamma$  và phép max hiện tại đang đưa rất nhiều "cạnh nhiễu" từ nhánh hình ảnh vào BSC.
+Chứng minh Toán học: Attention thay thế Static  $\gamma$
+Thay vì dùng  $\gamma$  cố định, chúng tôi tính toán trọng số Attention  $\beta_t, \beta_v$  cho từng cặp item dựa trên embedding ẩn:  $$\alpha_{i,m} = \text{Softmax}(W_a h_{i,m} + b_a)$$  Ma trận kNN động sẽ là:  $S_{dynamic} = \beta_t S_t + \beta_v S_v$ . Đồng thời, chúng tôi áp dụng thuật toán  Attention Denoising  để loại bỏ các cạnh có trọng số thấp, đảm bảo BSC chỉ cập nhật gradient theo các hướng thực sự có ý nghĩa ngữ nghĩa.
+Thực thi PyTorch (AttentionDenoisingFusion)
+class AttentionDenoisingFusion(nn.Module):
+    def __init__(self, dim=64, threshold=0.1):
+        super().__init__()
+        self.attn = nn.Linear(dim, 1)
+        self.threshold = threshold
+
+    def forward(self, adj_t, adj_v, feat_t, feat_v):
+        # Tính trọng số thích ứng instance-level thay thế cho gamma tĩnh
+        w_t = torch.sigmoid(self.attn(feat_t)).mean()
+        w_v = torch.sigmoid(self.attn(feat_v)).mean()
+        
+        # Chuẩn hóa
+        beta_t, beta_v = w_t / (w_t + w_v), w_v / (w_t + w_v)
+        
+        # Gộp ma trận sparse để bảo toàn VRAM < 2.5GB
+        combined_values = adj_t._values() * beta_t + adj_v._values() * beta_v
+        
+        # Denoising: Lọc bỏ các cạnh yếu (weak edges) dưới ngưỡng threshold
+        mask = combined_values > self.threshold
+        new_indices = adj_t._indices()[:, mask]
+        new_values = combined_values[mask]
+        
+        # Trả về ma trận kNN đã được khử nhiễu để BSC điều hướng gradient
+        return torch.sparse_coo_tensor(new_indices, new_values, adj_t.shape).coalesce()
+
+Giá trị chiến lược:  Cơ chế này trực tiếp giải quyết vấn đề  Modality Forgetting . Bằng cách tinh lọc đồ thị dẫn dắt gradient trong BSC, mô hình sẽ không bị "quên" các đặc trưng hình ảnh/văn bản khi hội tụ về phía behavior loss.
+5. Kế hoạch Thực nghiệm và Mục tiêu Hiệu suất
+Lộ trình thực nghiệm sẽ tập trung vào việc chứng minh tính hiệp đồng: Phương án 1 cung cấp đầu vào sạch (Input), Phương án 2 làm mạnh Collaborative Base (Loss), và Phương án 3 tinh chỉnh Gradient Guidance (Core).
+Mục tiêu cải thiện hiệu suất (Targeted Performance Gains)
+Chúng tôi đặt ra các cột mốc kỳ vọng sau khi tích hợp toàn bộ giải pháp:
+●	Recall@20 & NDCG@20:  Mục tiêu tăng trưởng từ  +3% đến +5%  trên các tập dữ liệu Baby và Sports.
+●	Đột phá trên Electronics:  Với tập dữ liệu lớn và nhiễu nhất (~1.7M tương tác), mục tiêu cải thiện tối thiểu là  +7%  nhờ vào khả năng khử nhiễu của Attention Denoising.
+●	Ràng buộc tài nguyên:  Đảm bảo mức tiêu thụ VRAM đỉnh không vượt quá  2.5GB  cho tập Electronics thông qua việc tối ưu hóa torch.sparse và sử dụng torch.cuda.empty_cache() sau mỗi giai đoạn xây dựng đồ thị kNN.
+Kết luận
+Đề xuất này chuyển đổi STAIR từ một baseline hiệu quả về tài nguyên thành một kiến trúc học sâu mạnh mẽ và có tính thích ứng cao. Việc kết hợp giữa tính phi tuyến tại Input, tính đối chiếu tại Core Behavior và tính khử nhiễu tại Backward Pass hứa hẹn sẽ mang lại những đóng góp khoa học quan trọng cho lĩnh vực hệ thống gợi ý đa phương thức.
+
