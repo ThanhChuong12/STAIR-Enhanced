@@ -1,0 +1,178 @@
+\section{COHESION: Composite Graph Convolutional Network with Dual-Stage Fusion}
+
+\subsection{Đề xuất các phương án cải tiến kiến trúc COHESION}
+
+Dựa trên kiến trúc COHESION nguyên bản với cơ chế \textit{Dual-Stage Fusion}, nhóm nhận thấy hệ thống vẫn còn các điểm nghẽn tại ba giai đoạn: dung hợp sớm, dung hợp muộn và tối ưu hóa hàm mục tiêu. Vì vậy, ba phương án cải tiến được đề xuất theo hướng can thiệp nhẹ, hạn chế làm tăng số lượng tham số và duy trì chi phí huấn luyện gần với baseline.
+
+\subsubsection{Cải tiến 1: Confidence-aware Early Fusion}
+
+\paragraph{Động lực kỹ thuật:}
+Ở giai đoạn Early Fusion, COHESION gốc kết hợp ID embedding với đặc trưng hình ảnh và văn bản bằng phép gộp tĩnh. Khi đặc trưng nội dung của một vật phẩm có chất lượng thấp, cơ chế này có thể truyền nhiễu trực tiếp vào biểu diễn cộng tác và làm suy giảm thông tin ID ban đầu.
+
+\paragraph{Cơ sở toán học:}
+Phiên bản cải tiến bổ sung một \textit{Confidence Gate} để ước lượng độ tin cậy của đặc trưng nội dung trước khi dung hợp với ID embedding:
+
+\begin{equation}
+c_{conf}=\operatorname{Sigmoid}\!\left(
+\mathbf{W}_{conf}[\mathbf{e}_{id}\parallel\mathbf{e}_{content}]+b_{conf}
+\right).
+\end{equation}
+
+Dựa trên $c_{conf}\in(0,1)$, biểu diễn dung hợp sớm được xác định theo công thức bảo toàn năng lượng:
+
+\begin{equation}
+\mathbf{e}_{early}
+=\sqrt{
+c_{conf}\mathbf{e}_{id}^{2}
++(1-c_{conf})\mathbf{e}_{content}^{2}
++\epsilon
+}.
+\end{equation}
+
+Cơ chế này ưu tiên ID embedding khi đặc trưng nội dung có độ tin cậy thấp và tăng đóng góp của nội dung khi hai nguồn biểu diễn có mức tương quan cao.
+
+\paragraph{So sánh tham số:}
+COHESION baseline sử dụng phép gộp tĩnh nên không có tham số học tại vị trí này. Cải tiến 1 bổ sung tầng Linear $128\rightarrow1$, tương ứng $128$ trọng số và một bias, làm tăng tổng cộng $129$ tham số so với khoảng $3$ triệu tham số của mô hình gốc.
+
+\subsubsection{Cải tiến 2: Conditioned Late Fusion}
+
+\paragraph{Động lực kỹ thuật:}
+Ở bước Late Fusion, COHESION điều chỉnh đóng góp của các phương thức dựa trên chênh lệch điểm giữa mẫu dương và mẫu âm. Tuy nhiên, tín hiệu này chưa mô hình hóa trực tiếp ý định người dùng, trong khi mỗi người dùng có thể ưu tiên hình ảnh, văn bản hoặc tín hiệu cộng tác ở mức độ khác nhau.
+
+\paragraph{Cơ sở toán học:}
+Phương án đề xuất sử dụng một mạng attention có điều kiện theo cặp người dùng--vật phẩm. Biểu diễn tương tác chéo được tính bởi:
+
+\begin{equation}
+\mathbf{h}_{cross}
+=\operatorname{ReLU}\!\left(
+\mathbf{W}_{att1}[\mathbf{u}\parallel\mathbf{v}]+\mathbf{b}_{att1}
+\right).
+\end{equation}
+
+Ba trọng số dung hợp cho ID, hình ảnh và văn bản được chuẩn hóa bằng Softmax:
+
+\begin{equation}
+[\alpha_{id},\alpha_{vis},\alpha_{txt}]
+=\operatorname{Softmax}\!\left(
+\mathbf{W}_{att2}\mathbf{h}_{cross}+\mathbf{b}_{att2}
+\right).
+\end{equation}
+
+Nhờ đó, tỷ lệ đóng góp của từng phương thức được điều chỉnh theo ngữ cảnh cụ thể thay vì dùng một cơ chế chung cho mọi người dùng và vật phẩm.
+
+\paragraph{So sánh tham số:}
+Mạng MLP $128\rightarrow32\rightarrow3$ làm tăng $4{,}227$ tham số, tương đương khoảng $4.2$K. Mức tăng này đủ để mô hình hóa ngữ cảnh nhưng vẫn nhỏ so với tổng số tham số của COHESION.
+
+\subsubsection{Cải tiến 3: Uncertainty-aware Adaptive BPR Loss}
+
+\paragraph{Động lực kỹ thuật:}
+Đặc trưng đa phương thức có thể chứa thông tin thiếu, sai lệch hoặc không đồng nhất. Nếu BPR loss phạt mạnh các mẫu có độ bất định cao, gradient dễ bị chi phối bởi tín hiệu nhiễu. Cải tiến 3 sử dụng độ bất định để giảm ảnh hưởng của những mẫu mà các nhánh phương thức đang đưa ra dự đoán thiếu nhất quán.
+
+\paragraph{Cơ sở toán học:}
+Mạng \textit{Uncertainty Projection} nhận vector chênh lệch điểm số của ba phương thức và dự đoán độ bất định tương ứng:
+
+\begin{equation}
+\mathbf{u}_{score}
+=\operatorname{Sigmoid}\!\left(
+\mathbf{W}_{u}(\mathbf{s}_{pos}-\mathbf{s}_{neg})+\mathbf{b}_{u}
+\right).
+\end{equation}
+
+Trọng số của từng phương thức được hiệu chỉnh theo độ bất định:
+
+\begin{equation}
+\widetilde{\boldsymbol{\alpha}}
+=\boldsymbol{\alpha}\odot(\mathbf{1}-\mathbf{u}_{score}).
+\end{equation}
+
+Các phương thức có độ bất định cao sẽ nhận trọng số nhỏ hơn, qua đó hạn chế nhiễu tác động trực tiếp đến gradient của hàm BPR.
+
+\paragraph{So sánh tham số:}
+Tầng Linear $3\rightarrow3$ chỉ bổ sung chín trọng số và ba bias, tương ứng $12$ tham số. Vì vậy, chi phí tính toán của Cải tiến 3 gần như không thay đổi so với baseline.
+
+\subsection{Kết quả thực nghiệm và phân tích định lượng}
+
+Bảng~\ref{tab:cohesion_improvement_results} tổng hợp kết quả hiện có giữa COHESION baseline và ba phương án cải tiến trên Baby, Sports và Clothing. Kết quả của Cải tiến 2 và Cải tiến 3 sẽ được cập nhật sau khi quá trình huấn luyện hoàn tất.
+
+\begingroup
+\fontsize{8.5}{10}\selectfont
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{%
+    >{\raggedright\arraybackslash}p{1.35cm}
+    >{\raggedright\arraybackslash}p{2.90cm}
+    *{4}{>{\centering\arraybackslash}p{1.25cm}}
+    >{\raggedright\arraybackslash}p{4.40cm}}
+\caption{Đối sánh hiệu năng giữa COHESION baseline và các phiên bản cải tiến.}
+\label{tab:cohesion_improvement_results}\\
+\toprule
+\rowcolor{gray!15}
+\textbf{Tập dữ liệu} & \textbf{Mô hình} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{Đánh giá so với baseline}\\
+\midrule
+\endfirsthead
+\multicolumn{7}{c}{\bfseries Bảng \thetable\ (tiếp theo)}\\
+\toprule
+\rowcolor{gray!15}
+\textbf{Tập dữ liệu} & \textbf{Mô hình} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{Đánh giá so với baseline}\\
+\midrule
+\endhead
+\midrule
+\multicolumn{7}{r}{\textit{Tiếp tục ở trang sau...}}\\
+\endfoot
+\bottomrule
+\endlastfoot
+
+\multirow{4}{*}{Baby}
+& COHESION Baseline & \textbf{0.0674} & \textbf{0.1029} & 0.0356 & 0.0447 & --\\
+& Cải tiến 1 (Early Fusion) & 0.0666 & 0.1019 & \textbf{0.0358} & \textbf{0.0449} & N@10 tăng 0.56\%\\
+& Cải tiến 2 (Late Fusion) & \multicolumn{4}{c}{\textit{Đang chạy}} & Chờ cập nhật\\
+& Cải tiến 3 (Adaptive BPR) & \multicolumn{4}{c}{\textit{Đang chạy}} & Chờ cập nhật\\
+\midrule
+\multirow{4}{*}{Sports}
+& COHESION Baseline & \textbf{0.0738} & \textbf{0.1107} & \textbf{0.0397} & \textbf{0.0492} & --\\
+& Cải tiến 1 (Early Fusion) & 0.0722 & 0.1101 & 0.0388 & 0.0485 & Giảm nhẹ khoảng 1--2\%\\
+& Cải tiến 2 (Late Fusion) & \multicolumn{4}{c}{\textit{Đang chạy}} & Chờ cập nhật\\
+& Cải tiến 3 (Adaptive BPR) & \multicolumn{4}{c}{\textit{Đang chạy}} & Chờ cập nhật\\
+\midrule
+\multirow{4}{*}{Clothing}
+& COHESION Baseline & \textbf{0.0588} & \textbf{0.0867} & \textbf{0.0322} & \textbf{0.0392} & --\\
+& Cải tiến 1 (Early Fusion) & 0.0578 & 0.0866 & 0.0318 & 0.0391 & Giảm nhẹ khoảng 0.2--1.7\%\\
+& Cải tiến 2 (Late Fusion) & \multicolumn{4}{c}{\textit{Đang chạy}} & Chờ cập nhật\\
+& Cải tiến 3 (Adaptive BPR) & \multicolumn{4}{c}{\textit{Đang chạy}} & Chờ cập nhật\\
+\end{longtable}
+\endgroup
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.98\linewidth]{graphics/cohesion/cohesion_improvement_metrics.png}
+    \caption{Biểu đồ cột nhóm so sánh Recall@10, Recall@20, NDCG@10 và NDCG@20 giữa COHESION baseline và Cải tiến 1 trên ba tập dữ liệu. Cải tiến 2 và Cải tiến 3 chưa được thể hiện do quá trình thực nghiệm đang tiếp tục.}
+    \label{fig:cohesion_improvement_metrics}
+\end{figure}
+
+\subsubsection{Biện luận về Cải tiến 1}
+
+Kết quả của Confidence-aware Early Fusion cho thấy Recall giảm nhẹ trên cả ba tập dữ liệu, trong khi NDCG@10 và NDCG@20 trên Baby tăng tương ứng từ $0.0356$ lên $0.0358$ và từ $0.0447$ lên $0.0449$. Sự thay đổi này có thể được giải thích bởi hai nguyên nhân chính:
+
+\begin{itemize}[leftmargin=*,labelsep=6pt]
+    \item \textbf{Gradient starvation do gating sớm:} Confidence Gate can thiệp trước khi đặc trưng được lan truyền qua GNN. Nếu cổng giảm quá mạnh đóng góp của hình ảnh hoặc văn bản trong giai đoạn đầu, các tầng biểu diễn phía trước nhận ít tín hiệu cập nhật và khó học được quan hệ đa phương thức ổn định.
+    \item \textbf{Feature misalignment:} ID embedding và content feature chưa được căn chỉnh hoàn toàn tại thời điểm Early Fusion. Việc ước lượng độ tin cậy trực tiếp từ hai không gian còn sai lệch có thể khiến cổng loại bỏ cả những tín hiệu hữu ích thay vì chỉ lọc nhiễu.
+\end{itemize}
+
+Kết quả bước đầu cho thấy Confidence Gate có khả năng cải thiện thứ hạng các vật phẩm đầu danh sách trên Baby, nhưng cần cơ chế kích hoạt trễ hoặc căn chỉnh đặc trưng tốt hơn để tránh làm giảm độ bao phủ của Recall.
+
+\subsection{Đề xuất hướng phát triển tương lai}
+
+Từ kết quả bước đầu và cấu trúc Dual-Stage Fusion của COHESION, nhóm đề xuất ba hướng phát triển tiếp theo:
+
+\begin{enumerate}[leftmargin=*,label=\textbf{Hướng \arabic*.}]
+    \item \textbf{Warm-up Gating Strategy:}
+    Trong các epoch đầu, mô hình giữ phép gộp tĩnh để các nhánh ID và Content học được biểu diễn cơ bản. Sau giai đoạn warm-up, mức tác động của Confidence Gate được tăng dần từ $0$ đến $1$, giúp hạn chế gradient starvation và tránh khóa đặc trưng quá sớm.
+
+    \item \textbf{Modality-specific Dynamic Routing:}
+    Thay vì gộp hình ảnh và văn bản thành một khối Content duy nhất, mỗi phương thức sử dụng một router riêng. Mô hình có thể giảm đóng góp của hình ảnh khi dữ liệu hình ảnh bị lỗi nhưng vẫn giữ lại thông tin văn bản có chất lượng tốt, và ngược lại.
+
+    \item \textbf{Cross-layer Attention Diffusion:}
+    Các biểu diễn từ nhiều lớp GCN được kết hợp bằng attention thay cho phép cộng cố định. Cơ chế này giúp cân bằng thông tin cá nhân hóa ở tầng nông với thông tin khái quát ở tầng sâu, đồng thời giảm nguy cơ over-smoothing.
+\end{enumerate}
+
+\clearpage

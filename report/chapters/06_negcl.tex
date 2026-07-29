@@ -1,0 +1,246 @@
+\section{NEGCL: Noise-Enhanced Graph Contrastive Learning}
+
+\subsection{Đề xuất các phương án cải tiến kiến trúc NEGCL}
+
+Sau khi phân tích và tái tạo thành công mô hình NEGCL nguyên bản, nhóm đề xuất ba hướng cải tiến bao phủ toàn bộ luồng xử lý của hệ thống, gồm đầu vào dữ liệu, kiến trúc lõi và hàm mục tiêu đầu ra. Mỗi phương án được thực nghiệm độc lập để xác định rõ tác động của thành phần mới và lượng tham số tăng thêm so với baseline.
+
+\subsubsection{Cải tiến 1: Adaptive Noise Generator}
+
+\paragraph{Động lực kỹ thuật:}
+Kiến trúc NEGCL gốc bổ sung nhiễu Gaussian với biên độ tĩnh $\varepsilon$ đồng đều cho mọi vật phẩm trong không gian biểu diễn. Tuy nhiên, trên các tập dữ liệu có độ thưa xấp xỉ $99.9\%$, các vật phẩm thuộc nhóm đuôi dài chỉ có rất ít tương tác. Một mức nhiễu cố định có thể làm sai lệch mạnh đặc trưng ngữ nghĩa của các vật phẩm này thay vì tạo hiệu ứng tăng cường độ bền vững như kỳ vọng.
+
+\paragraph{Cơ sở toán học:}
+Phiên bản NEGCL-v1 bổ sung một mạng MLP nhỏ đóng vai trò là \textit{Adaptive Noise Generator}. Mạng nhận vector nhúng của node và dự đoán vector tỷ lệ nhiễu $\boldsymbol{\alpha}_{noise}\in(0,1)^d$ theo từng chiều đặc trưng:
+
+\begin{equation}
+\boldsymbol{\alpha}_{noise}
+= \operatorname{Sigmoid}\!\left(
+\mathbf{W}_2\operatorname{ReLU}(\mathbf{W}_1\mathbf{e}_{node}+\mathbf{b}_1)+\mathbf{b}_2
+\right).
+\end{equation}
+
+Vector biểu diễn sau tăng cường được xác định bởi:
+
+\begin{equation}
+\widetilde{\mathbf{e}}_{node}
+= \mathbf{e}_{node}+\boldsymbol{\alpha}_{noise}\odot\boldsymbol{\xi},
+\qquad
+\boldsymbol{\xi}\sim\mathcal{N}(\mathbf{0},\varepsilon^2\mathbf{I}).
+\end{equation}
+
+Cơ chế này cho phép mô hình tự điều chỉnh cường độ nhiễu theo trạng thái biểu diễn của từng node, qua đó hạn chế làm biến dạng các node có tín hiệu yếu.
+
+\paragraph{So sánh tham số:}
+NEGCL baseline không có tham số học cho quá trình sinh nhiễu. NEGCL-v1 sử dụng MLP $256\rightarrow128\rightarrow256$, làm tăng khoảng $65.9$K tham số, tương đương xấp xỉ $0.9\%$ so với mô hình gốc khoảng $6.8$M tham số.
+
+\subsubsection{Cải tiến 2: Cross-Modal Attention Gating}
+
+\paragraph{Động lực kỹ thuật:}
+Trong NEGCL nguyên bản, đặc trưng hình ảnh và văn bản được kết hợp bằng phép cộng tuyến tính hoặc phép nối cố định. Cơ chế này chưa phản ánh thực tế rằng mức độ hữu ích của từng phương thức thay đổi theo sản phẩm: quần áo thường phụ thuộc nhiều vào hình ảnh, trong khi sách hoặc sản phẩm có mô tả kỹ thuật lại phụ thuộc nhiều hơn vào văn bản.
+
+\paragraph{Cơ sở toán học:}
+NEGCL-v2 sử dụng cơ chế \textit{gated fusion} để học mức độ quan trọng của từng phương thức thông qua tương tác giữa ID embedding và đặc trưng đa phương thức:
+
+\begin{align}
+\mathbf{g}_{visual}
+&= \operatorname{Sigmoid}\!\left(\mathbf{W}_v[\mathbf{e}_{id}\parallel\mathbf{e}_{visual}]+\mathbf{b}_v\right),\\
+\mathbf{g}_{text}
+&= \operatorname{Sigmoid}\!\left(\mathbf{W}_t[\mathbf{e}_{id}\parallel\mathbf{e}_{text}]+\mathbf{b}_t\right),\\
+\mathbf{e}_{fusion}
+&= \mathbf{g}_{visual}\odot\mathbf{e}_{visual}
++\mathbf{g}_{text}\odot\mathbf{e}_{text}.
+\end{align}
+
+Hai cổng chú ý được tính riêng cho từng vật phẩm, vì vậy mô hình có thể điều tiết động tỷ lệ đóng góp của hình ảnh và văn bản thay vì sử dụng một hệ số toàn cục.
+
+\paragraph{So sánh tham số:}
+Phép gộp tĩnh của NEGCL baseline không làm phát sinh tham số học. NEGCL-v2 bổ sung hai ma trận trọng số $\mathbf{W}_v$ và $\mathbf{W}_t$ ánh xạ từ không gian $512$ chiều xuống $256$ chiều, làm tăng khoảng $262.6$K tham số.
+
+\subsubsection{Cải tiến 3: Adaptive BPR Loss}
+
+\paragraph{Động lực kỹ thuật:}
+Hàm BPR gốc tối ưu chênh lệch điểm giữa mẫu dương và mẫu âm nhưng chưa phân biệt rõ độ khó của từng mẫu âm. NEGCL-v3 điều chỉnh mức phạt theo khoảng cách điểm số nhằm tập trung nhiều hơn vào các \textit{hard negatives}, tức các vật phẩm âm có điểm dự đoán gần với vật phẩm dương.
+
+Với $\Delta_{uij}=\hat{y}_{ui}-\hat{y}_{uj}$, trọng số thích ứng của một bộ ba huấn luyện được xác định trực tiếp từ độ khó của mẫu:
+
+\begin{equation}
+w_{uij}=\operatorname{Sigmoid}(-\Delta_{uij}),
+\qquad
+\mathcal{L}_{ABPR}
+=-\sum_{(u,i,j)}w_{uij}\log\sigma(\Delta_{uij}).
+\end{equation}
+
+Khi điểm của mẫu âm tiến gần điểm của mẫu dương, $w_{uij}$ tăng và tạo lực phạt lớn hơn. Cơ chế này không sử dụng trọng số học mới nên NEGCL-v3 hoàn toàn \textit{parameter-free}.
+
+\subsection{Kết quả thực nghiệm và phân tích định lượng}
+
+Các Hình~\ref{fig:negcl_v1_training_stats}--\ref{fig:negcl_v3_training_stats} minh họa diễn biến huấn luyện của ba phiên bản cải tiến trên các tập dữ liệu Baby, Sports và Clothing. Sau đó, Bảng~\ref{tab:negcl_improvement_results} tổng hợp các chỉ số đánh giá để đối chiếu hiệu năng giữa NEGCL baseline và từng phiên bản cải tiến.
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}{0.98\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{graphics/negcl/adaptive_noise_training_stats_baby.png}
+        \caption{Tập dữ liệu Baby.}
+    \end{subfigure}
+
+    \vspace{4pt}
+    \begin{subfigure}{0.98\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{graphics/negcl/adaptive_noise_training_stats_sports.png}
+        \caption{Tập dữ liệu Sports.}
+    \end{subfigure}
+
+    \vspace{4pt}
+    \begin{subfigure}{0.98\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{graphics/negcl/adaptive_noise_training_stats_clothing.png}
+        \caption{Tập dữ liệu Clothing.}
+    \end{subfigure}
+    \caption{Thống kê quá trình huấn luyện NEGCL-v1 với Adaptive Noise Generator trên ba tập dữ liệu. Mỗi biểu đồ thể hiện training loss, thời gian huấn luyện mỗi epoch và Recall@20 trên tập validation.}
+    \label{fig:negcl_v1_training_stats}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}{0.98\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{graphics/negcl/cross_modal_attention_training_stats_baby.png}
+        \caption{Tập dữ liệu Baby.}
+    \end{subfigure}
+
+    \vspace{4pt}
+    \begin{subfigure}{0.98\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{graphics/negcl/cross_modal_attention_training_stats_sports.png}
+        \caption{Tập dữ liệu Sports.}
+    \end{subfigure}
+
+    \vspace{4pt}
+    \begin{subfigure}{0.98\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{graphics/negcl/cross_modal_attention_training_stats_clothing.png}
+        \caption{Tập dữ liệu Clothing.}
+    \end{subfigure}
+    \caption{Thống kê quá trình huấn luyện NEGCL-v2 với Cross-Modal Attention Gating trên ba tập dữ liệu. Mỗi biểu đồ thể hiện training loss, thời gian huấn luyện mỗi epoch và Recall@20 trên tập validation.}
+    \label{fig:negcl_v2_training_stats}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}{0.98\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{graphics/negcl/adaptive_bpr_loss_training_stats_baby.png}
+        \caption{Tập dữ liệu Baby.}
+    \end{subfigure}
+
+    \vspace{4pt}
+    \begin{subfigure}{0.98\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{graphics/negcl/adaptive_bpr_loss_training_stats_sports.png}
+        \caption{Tập dữ liệu Sports.}
+    \end{subfigure}
+
+    \vspace{4pt}
+    \begin{subfigure}{0.98\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{graphics/negcl/adaptive_bpr_loss_training_stats_clothing.png}
+        \caption{Tập dữ liệu Clothing.}
+    \end{subfigure}
+    \caption{Thống kê quá trình huấn luyện NEGCL-v3 với Adaptive BPR Loss trên ba tập dữ liệu. Mỗi biểu đồ thể hiện training loss, thời gian huấn luyện mỗi epoch và Recall@20 trên tập validation.}
+    \label{fig:negcl_v3_training_stats}
+\end{figure}
+
+\begingroup
+\fontsize{8.5}{10}\selectfont
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{%
+    >{\raggedright\arraybackslash}p{1.35cm}
+    >{\raggedright\arraybackslash}p{2.90cm}
+    *{4}{>{\centering\arraybackslash}p{1.25cm}}
+    >{\raggedright\arraybackslash}p{4.40cm}}
+\caption{Đối sánh hiệu năng giữa NEGCL baseline và các phiên bản cải tiến.}
+\label{tab:negcl_improvement_results}\\
+\toprule
+\rowcolor{gray!15}
+\textbf{Tập dữ liệu} & \textbf{Mô hình} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{Đánh giá so với baseline}\\
+\midrule
+\endfirsthead
+\multicolumn{7}{c}{\bfseries Bảng \thetable\ (tiếp theo)}\\
+\toprule
+\rowcolor{gray!15}
+\textbf{Tập dữ liệu} & \textbf{Mô hình} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{Đánh giá so với baseline}\\
+\midrule
+\endhead
+\midrule
+\multicolumn{7}{r}{\textit{Tiếp tục ở trang sau...}}\\
+\endfoot
+\bottomrule
+\endlastfoot
+
+\multirow{4}{*}{Baby}
+& NEGCL Baseline & 0.0667 & 0.1018 & 0.0359 & 0.0450 & --\\
+& NEGCL-v1 (Adaptive Noise) & 0.0663 & \textbf{0.1028} & 0.0354 & 0.0448 & R@20 tăng 0.98\%\\
+& NEGCL-v2 (Cross-Modal Att.) & \textbf{0.0672} & 0.1027 & \textbf{0.0359} & \textbf{0.0450} & R@10 tăng 0.75\%; R@20 tăng 0.88\%\\
+& NEGCL-v3 (Adaptive BPR) & 0.0479 & 0.0728 & 0.0253 & 0.0317 & Giảm khoảng 28--29\% trên toàn bộ chỉ số\\
+\midrule
+\multirow{4}{*}{Sports}
+& NEGCL Baseline & 0.0760 & \textbf{0.1125} & 0.0413 & 0.0507 & --\\
+& NEGCL-v1 (Adaptive Noise) & \textbf{0.0766} & 0.1116 & \textbf{0.0425} & \textbf{0.0515} & N@10 tăng 2.91\%; N@20 tăng 1.58\%\\
+& NEGCL-v2 (Cross-Modal Att.) & 0.0747 & \textbf{0.1126} & 0.0407 & 0.0504 & R@20 tăng 0.09\%\\
+& NEGCL-v3 (Adaptive BPR) & 0.0558 & 0.0847 & 0.0295 & 0.0370 & Giảm khoảng 24--28\% trên toàn bộ chỉ số\\
+\midrule
+\multirow{4}{*}{Clothing}
+& NEGCL Baseline & 0.0602 & 0.0883 & 0.0331 & 0.0402 & --\\
+& NEGCL-v1 (Adaptive Noise) & \textbf{0.0609} & \textbf{0.0888} & \textbf{0.0334} & \textbf{0.0405} & Tăng đồng đều khoảng 0.5--1.1\%\\
+& NEGCL-v2 (Cross-Modal Att.) & 0.0604 & 0.0884 & 0.0332 & 0.0404 & Tăng đồng đều khoảng 0.1--0.5\%\\
+& NEGCL-v3 (Adaptive BPR) & 0.0524 & 0.0779 & 0.0283 & 0.0348 & Giảm khoảng 11--14\% trên toàn bộ chỉ số\\
+\end{longtable}
+\endgroup
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.98\linewidth]{graphics/negcl/negcl_versions_metrics.png}
+    \caption{Biểu đồ cột nhóm so sánh Recall@10, Recall@20, NDCG@10 và NDCG@20 giữa NEGCL baseline và ba phiên bản cải tiến trên ba tập dữ liệu.}
+    \label{fig:negcl_versions_metrics}
+\end{figure}
+
+\subsubsection{Phân tích sự thành công của NEGCL-v1 và NEGCL-v2}
+
+Kết quả thực nghiệm cho thấy việc kiểm soát luồng nhiễu và luồng thông tin đa phương thức mang lại cải thiện ổn định hơn so với can thiệp trực tiếp vào hàm mục tiêu.
+
+\begin{itemize}[leftmargin=*,labelsep=6pt]
+    \item \textbf{NEGCL-v1 (Adaptive Noise):} Phiên bản này cải thiện đồng đều nhất trên Clothing, với các chỉ số tăng khoảng $0.5\%$--$1.1\%$, đồng thời đạt mức tăng NDCG@10 là $2.91\%$ trên Sports. Với chỉ khoảng $65.9$K tham số bổ sung, mạng sinh nhiễu thích ứng giúp hạn chế biến dạng ngữ nghĩa ở các node yếu và cải thiện biểu diễn cho nhóm sản phẩm đuôi dài.
+    \item \textbf{NEGCL-v2 (Cross-Modal Attention):} Phiên bản này đạt kết quả nổi bật trên Baby, trong đó Recall@10 tăng $0.75\%$ và Recall@20 tăng $0.88\%$, đồng thời duy trì cải thiện nhẹ trên Clothing. Kết quả cho thấy cơ chế cổng chú ý có khả năng cân bằng động đóng góp của hình ảnh và văn bản theo đặc thù từng sản phẩm.
+\end{itemize}
+
+Tuy nhiên, mức tăng của v1 và v2 chưa đồng đều trên mọi metric và mọi tập dữ liệu. Điều này cho thấy hiệu quả của hai cơ chế vẫn phụ thuộc vào phân phối tương tác, chất lượng đặc trưng và mức độ thưa của từng tập dữ liệu.
+
+\subsubsection{Biện luận về sự sụt giảm của NEGCL-v3}
+
+NEGCL-v3 ghi nhận mức giảm từ $11\%$ đến $29\%$ trên toàn bộ ba tập dữ liệu. Kết quả này cho thấy việc nhấn mạnh hard negatives trong môi trường đồ thị thưa có thể tạo ra hai rủi ro chính:
+
+\begin{itemize}[leftmargin=*,labelsep=6pt]
+    \item \textbf{Over-penalization:} Trên dữ liệu có độ thưa gần $99.9\%$, nhiều vật phẩm chưa được quan sát có thể là \textit{false negatives}, tức người dùng chưa tương tác nhưng vẫn có khả năng quan tâm. Việc gán trọng số lớn cho các mẫu này vô tình đẩy các vật phẩm tiềm năng ra xa người dùng và làm mất thông tin xếp hạng cục bộ.
+    \item \textbf{Mất cân bằng gradient:} NEGCL đã sử dụng InfoNCE để học đối chiếu. Khi BPR tiếp tục tăng lực phạt lên các mẫu âm khó, tín hiệu gradient từ hai thành phần loss có thể cạnh tranh nhau, làm quá trình hội tụ kém ổn định và suy giảm chất lượng biểu diễn cuối cùng.
+\end{itemize}
+
+Kết quả của v3 chỉ ra rằng đối với GNN kết hợp contrastive learning trên đồ thị thưa, can thiệp vào cấu trúc biểu diễn như v1 và v2 có độ ổn định cao hơn so với điều chỉnh mạnh hàm mất mát xếp hạng.
+
+\subsection{Đề xuất hướng phát triển tương lai}
+
+Dựa trên kết quả định lượng và các rủi ro ghi nhận từ ba phiên bản thực nghiệm, nhóm đề xuất các hướng phát triển tiếp theo như sau:
+
+\begin{enumerate}[leftmargin=*,label=\textbf{Hướng \arabic*.}]
+    \item \textbf{Gated Modality-specific Noise:}
+    Phát triển từ NEGCL-v1 bằng cách dự đoán tỷ lệ nhiễu riêng cho hình ảnh và văn bản. Nếu hình ảnh của một sản phẩm rõ ràng nhưng mô tả văn bản bị thiếu hoặc nhiễu, mô hình có thể tăng cường nhiễu cho nhánh văn bản để cải thiện độ bền vững nhưng vẫn bảo toàn tín hiệu hình ảnh cốt lõi.
+
+    \item \textbf{Semantic-aware False Negative Mining:}
+    Để khắc phục thất bại của NEGCL-v3, đồ thị ngữ nghĩa có thể được sử dụng như một bộ lọc trước khi tăng trọng số cho hard negatives. Những mẫu âm có độ tương đồng ngữ nghĩa cao với mẫu dương sẽ được xem là ứng viên false negative và được loại bỏ hoặc giảm lực phạt trong BPR loss, qua đó giúp quá trình tối ưu hội tụ an toàn hơn.
+
+    \item \textbf{Lightweight Hypergraph Attention:}
+    NEGCL phụ thuộc đáng kể vào Hypergraph Contrastive Learning ở giai đoạn cuối, trong khi các hyperedge hiện được xem là có mức độ quan trọng tương đương. Một cơ chế hyperedge attention gọn nhẹ có thể giúp mô hình tập trung vào các liên kết bậc cao có ý nghĩa nhất mà không làm tăng mạnh số lượng tham số và tài nguyên huấn luyện.
+\end{enumerate}
+
+\clearpage

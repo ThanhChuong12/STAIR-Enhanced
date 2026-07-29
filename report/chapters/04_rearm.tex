@@ -1,0 +1,225 @@
+\section{REARM: Refining Contrastive Learning and Homography Relations}
+
+\subsection{Kết quả thực nghiệm các hướng cải tiến mô hình REARM}
+
+\subsubsection{Tổng quan và kết quả định lượng tổng hợp}
+
+Nhằm nâng cao hiệu năng của kiến trúc REARM gốc, bốn hướng cải tiến đã được đề xuất và thực nghiệm độc lập trên tập dữ liệu Baby với độ thưa đạt 99.91\%. Các thực nghiệm được triển khai trên môi trường phần cứng sử dụng GPU Tesla T4. Bốn phiên bản cải tiến bao gồm:
+
+\begin{itemize}
+    \item \textbf{Phiên bản v1:} Áp dụng feature-wise gating tại tầng projection đầu vào nhằm lọc nhiễu đặc trưng.
+    \item \textbf{Phiên bản v2:} Thiết kế dynamic multi-modal gating tại khâu late fusion nhằm dung hợp động các biểu diễn.
+    \item \textbf{Phiên bản v3:} Tích hợp adaptive feature perturbation nhằm bơm nhiễu thích ứng không tham số vào contrastive loss.
+    \item \textbf{Phiên bản v4:} Triển khai comprehensive hard negative mining để tối ưu hóa hàm mất mát BPR và InfoNCE.
+\end{itemize}
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=0.95\linewidth]{graphics/rearm/v4_comparison_chart.png}
+    \caption{Biểu đồ đối sánh hiệu năng các chỉ số Recall@10, Recall@20, NDCG@10 và NDCG@20 giữa REARM Baseline và bốn phiên bản cải tiến trên tập dữ liệu Baby.}
+    \label{fig:rearm_v4_comparison}
+\end{figure}
+
+Bảng~\ref{tab:rearm_v1_v4_results} mô tả chi tiết đối sánh hiệu năng giữa REARM Baseline và bốn phiên bản cải tiến:
+
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{%
+    >{\raggedright\arraybackslash}p{2.3cm}
+    >{\centering\arraybackslash}p{1.6cm}
+    >{\centering\arraybackslash}p{1.8cm}
+    >{\centering\arraybackslash}p{1.5cm}
+    >{\centering\arraybackslash}p{1.5cm}
+    >{\centering\arraybackslash}p{1.5cm}
+    >{\centering\arraybackslash}p{1.5cm}
+    >{\raggedright\arraybackslash}p{2.3cm}}
+    
+    % --- Phần 1: Tiêu đề và Header cho trang ĐẦU TIÊN ---
+    \caption{Bảng đối sánh hiệu năng chi tiết giữa REARM Baseline và 4 phiên bản cải tiến trên tập dữ liệu Baby.}
+    \label{tab:rearm_v1_v4_results} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Mô hình} & \textbf{Tham số thêm} & \textbf{Early stop epoch} & \textbf{Recall@10} & \textbf{Recall@20} & \textbf{NDCG@10} & \textbf{NDCG@20} & \textbf{Chênh lệch Recall@20} \\
+    \hline
+    \endfirsthead
+
+    % --- Phần 2: Tiêu đề lặp lại ở các trang TIẾP THEO ---
+    \multicolumn{8}{c}%
+    {{\bfseries Bảng \thetable\ (tiếp theo)}} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Mô hình} & \textbf{Tham số thêm} & \textbf{Early stop epoch} & \textbf{Recall@10} & \textbf{Recall@20} & \textbf{NDCG@10} & \textbf{NDCG@20} & \textbf{Chênh lệch Recall@20} \\
+    \hline
+    \endhead
+
+    % --- Phần 3: Ghi chú ở cuối trang bị ngắt (FOOTER) ---
+    \midrule
+    \multicolumn{8}{r}{\textit{Tiếp tục ở trang sau...}} \\
+    \endfoot
+
+    % --- Phần 4: Đóng bảng ở cuối cùng (LAST FOOTER) ---
+    \hline
+    \endlastfoot
+
+    % --- Phần 5: NỘI DUNG BẢNG ---
+    REARM Baseline & 0 & 120 & 0.0690 & 0.1085 & 0.0380 & 0.0474 & 0.00\% \\
+    \midrule
+    REARM-v1 & +16.6K & 100 & 0.0675 & 0.1051 & 0.0371 & 0.0462 & Giảm 3.13\% \\
+    \midrule
+    REARM-v2 & +73.9K & 145 & 0.0620 & 0.0983 & 0.0345 & 0.0437 & Giảm 9.40\% \\
+    \midrule
+    REARM-v3 & 0 & 110 & 0.0681 & 0.1056 & 0.0375 & 0.0464 & Giảm 2.67\% \\
+    \midrule
+    REARM-v4 & 0 & 61 & 0.0695 & 0.1054 & 0.0374 & 0.0467 & Giảm 2.85\% \\
+    \hline
+\endlongtable
+
+\subsubsection{Chi tiết các hướng cải tiến và phân tích kỹ thuật}
+
+\paragraph{Đánh giá REARM-v1 với feature-wise gating:}
+Trong REARM gốc, đặc trưng thô từ hình ảnh và văn bản được chiếu tuyến tính xuống không gian ẩn 64 chiều. Phép chiếu tuyến tính đơn thuần này không tự chọn lọc thông tin, dẫn đến việc giữ lại nhiều nhiễu từ bộ trích xuất tĩnh ban đầu. Giải pháp v1 bổ sung cơ chế feature-wise gating ngay sau tầng projection để hệ thống tự động học và giữ lại các chiều đặc trưng quan trọng, đồng thời triệt tiêu nhiễu trước khi đưa vào đồ thị đồng nhất:
+
+\begin{equation}
+s_m = \sigma(W_{gate}^m i_m + b_{gate}^m)
+\end{equation}
+
+\begin{equation}
+i_m^{refined} = s_m \odot i_m
+\end{equation}
+
+Kết quả thực nghiệm cho thấy Recall@20 giảm 3.13\%. Việc thêm 16.6K tham số tự do tại tầng projection làm gia tăng độ phức tạp của mạng. Trên tập dữ liệu cực kỳ thưa thớt, các ma trận cổng này bị overfitting vào các mẫu nhiễu ở đầu vào trước khi đặc trưng được lan truyền qua mạng GNN.
+
+\paragraph{Đánh giá REARM-v2 với dynamic multi-modal gating:}
+Kiến trúc gốc thực hiện concatenation ba thành phần biểu diễn chung và riêng ở bước cuối cùng. Cơ chế này ép mọi vật phẩm phải nhận tỷ lệ đóng góp cố định như nhau, không phân biệt sản phẩm thiên về hình ảnh hay văn bản. Phiên bản v2 thiết kế một gating network tự học để điều tiết tỷ lệ dung hợp này một cách linh hoạt:
+
+\begin{equation}
+g_{item} = \sigma(W_g [if_{share} \parallel if_{uni}] + b_g)
+\end{equation}
+
+\begin{equation}
+i^* = g_{item} \odot if_{share} + (1 - g_{item}) \odot if_{uni}
+\end{equation}
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=0.95\linewidth]{graphics/rearm/v2_recall_ndcg_curves.png}
+    \caption{Biểu đồ theo dõi chỉ số Recall và NDCG qua các epoch của mô hình REARM-v2.}
+    \label{fig:rearm_v2_recall_ndcg}
+\end{figure}
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=0.95\linewidth]{graphics/rearm/v2_learning_curves.png}
+    \caption{Biểu đồ biến thiên hàm mất mát (Learning Curves) trong quá trình huấn luyện REARM-v2.}
+    \label{fig:rearm_v2_learning}
+\end{figure}
+
+Kết quả ghi nhận mức giảm mạnh 9.40\% tại chỉ số Recall@20. Quá trình huấn luyện cho thấy loss giảm rất sâu nhưng metric trên tập test lại đi xuống. Đây là bằng chứng của hiện tượng overfitting nghiêm trọng. Mạng cổng với gần 74K tham số có quá nhiều tự do nhưng lại thiếu tín hiệu giám sát trực tiếp, dẫn đến việc mô hình triệt tiêu các chiều thông tin quan trọng thay vì chọn lọc chúng.
+
+\paragraph{Đánh giá REARM-v3 với adaptive feature perturbation:}
+Các phương pháp contrastive learning trên đồ thị thưa thớt dễ rơi vào trạng thái representation collapse. Giải pháp v3 chủ động bơm adaptive noise trực tiếp vào các vector nhúng trong không gian latent trước khi tính InfoNCE loss:
+
+\begin{equation}
+i_m' = i_m + \Delta
+\end{equation}
+
+\begin{equation}
+\Delta = \epsilon \cdot \text{sgn}(i_m) \odot \eta, \quad \eta \sim \mathcal{N}(0, I)
+\end{equation}
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=0.95\linewidth]{graphics/rearm/v3_recall_ndcg_curves.png}
+    \caption{Biểu đồ theo dõi chỉ số Recall và NDCG qua các epoch của mô hình REARM-v3.}
+    \label{fig:rearm_v3_recall_ndcg}
+\end{figure}
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=0.95\linewidth]{graphics/rearm/v3_learning_curves.png}
+    \caption{Biểu đồ biến thiên hàm mất mát trong quá trình huấn luyện REARM-v3.}
+    \label{fig:rearm_v3_learning}
+\end{figure}
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=0.95\linewidth]{graphics/rearm/v3_gpu_memory.png}
+    \caption{Mức tiêu thụ dung lượng GPU VRAM khi huấn luyện mô hình REARM-v3.}
+    \label{fig:rearm_v3_gpu}
+\end{figure}
+
+Cơ chế này hoàn toàn không thêm tham số học mới. Kết quả cho thấy hệ thống duy trì độ ổn định cao hơn v1 và v2. Tuy nhiên, hệ số nhiễu được cấu hình chỉ tác động nhẹ vào phần loss đối chiếu và chưa đủ lực để làm thay đổi thứ tự xếp hạng BPR chính, dẫn đến hiệu năng tổng thể vẫn giảm nhẹ 2.67\%.
+
+\paragraph{Đánh giá REARM-v4 với comprehensive hard negative mining:}
+Phiên bản v4 giải quyết vấn đề gradient starvation của BPR loss gốc thông qua kỹ thuật softmax dynamic negative sampling. Hệ thống lấy mẫu nhiều ứng viên âm và gán trọng số softmax để tập trung vào các hard negatives. Đồng thời, semantic-aware InfoNCE loss được áp dụng để phạt nặng hơn các mẫu âm có độ tương đồng ngữ nghĩa cao.
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=0.95\linewidth]{graphics/rearm/v4_recall_ndcg_curves.png}
+    \caption{Biểu đồ theo dõi chỉ số Recall và NDCG qua các epoch của mô hình REARM-v4.}
+    \label{fig:rearm_v4_recall_ndcg}
+\end{figure}
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=0.95\linewidth]{graphics/rearm/v4_learning_curves.png}
+    \caption{Biểu đồ biến thiên hàm mất mát trong quá trình huấn luyện REARM-v4.}
+    \label{fig:rearm_v4_learning}
+\end{figure}
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=0.95\linewidth]{graphics/rearm/v4_gpu_memory.png}
+    \caption{Mức tiêu thụ dung lượng GPU VRAM khi huấn luyện mô hình REARM-v4.}
+    \label{fig:rearm_v4_gpu}
+\end{figure}
+
+Mô hình hội tụ cực kỳ nhanh và chạm ngưỡng early stopping ngay tại epoch 61. BPR loss giảm tốc độ cao chứng tỏ gradient được thúc đẩy mạnh mẽ. Dù vậy, trên tập dữ liệu thưa, việc lấy mẫu âm quá gắt dẫn đến hiện tượng false negative penalty. Hệ thống đã phạt nhầm những sản phẩm mà thực chất người dùng có thể thích nhưng chưa tương tác, làm cản trở quá trình tối ưu hóa toàn cục.
+
+\subsubsection{Phân tích tổng hợp và giá trị khoa học}
+
+Quá trình phân tích thực nghiệm chỉ ra hai nguyên nhân hệ thống khiến các cải tiến chưa thể vượt qua baseline trên tập Baby. Đầu tiên là sự bão hòa dung lượng mạng. Kiến trúc REARM gốc vốn đã chứa nhiều lớp đồ thị phức tạp và cơ chế attention kép. Với lượng tương tác nhỏ bé, hệ thống gốc đã khai thác gần như cạn kiệt tín hiệu supervision. Thứ hai là lỗ hổng do dữ liệu thưa. Việc bổ sung tham số dễ dàng dẫn đến overfitting, trong khi các kỹ thuật tinh chỉnh loss lại dễ vướng vào việc phạt nhầm thông tin.
+
+Trong bối cảnh nghiên cứu khoa học, các kết quả chưa như kỳ vọng được đo lường định lượng và giải thích logic mang lại giá trị học thuật cao. Loạt thực nghiệm này đã chứng minh rõ ràng giới hạn của các kỹ thuật gating khi áp dụng vào mạng GNN đa phương thức trên dữ liệu cực thưa. Đồng thời, báo cáo khẳng định định hướng parameter-free là hướng đi an toàn và ổn định hơn cho các nghiên cứu tiếp theo.
+
+\subsubsection{Đề xuất hướng phát triển tương lai}
+
+Từ những phân tích trên, quá trình tối ưu hóa mô hình sẽ chuyển sang hai hướng tiếp cận mới. Thứ nhất, hệ thống cần tinh chỉnh lại cơ chế soft mining bằng cách tăng tham số nhiệt độ và giảm số lượng ứng viên âm nhằm kiểm soát lực phạt đối với các false negatives. Thứ hai, các kỹ thuật bơm nhiễu và tinh chỉnh loss sẽ được mở rộng thử nghiệm trên các tập dữ liệu có mật độ tương tác cao hơn như Sports hay Clothing, nơi dung lượng của kiến trúc gốc chưa bị bão hòa để có thể phát huy tối đa tiềm năng của các thuật toán cải tiến.
+
+
+\subsection{Đề xuất các phương án cải tiến kiến trúc tiếp theo}
+
+\subsubsection{Định hướng ưu tiên: Hierarchical Multi-stage Contrastive Alignment}
+
+\paragraph{Động lực kỹ thuật:}
+Kiến trúc REARM gốc chỉ thực hiện quá trình học đối chiếu InfoNCE ở giai đoạn cuối cùng sau khi các đặc trưng đã lan truyền qua nhiều lớp LightGCN của đồ thị tương tác. Việc trì hoãn tối ưu hóa này tiềm ẩn rủi ro lớn làm cho đặc trưng đa phương thức bị lẫn nhiễu từ hành vi của các node láng giềng trước khi kịp căn chỉnh.
+
+\paragraph{Cơ sở toán học:}
+Phương án cải tiến đề xuất áp dụng hierarchical multi-stage contrastive learning nhằm bổ sung một tầng loss đối chiếu sớm. Cụ thể, hệ thống sẽ thực hiện local alignment ngay sau bước homography, tức là thời điểm các vector hình ảnh và văn bản vừa được tinh chỉnh qua khối self-attention và cross-attention. Bước can thiệp này giúp căn chỉnh không gian vector nguyên bản một cách triệt để trước khi chúng bị hòa trộn trong đồ thị hai phía. Quá trình global alignment vẫn giữ nguyên hàm loss đối chiếu ở giai đoạn cuối như thiết kế gốc để tiếp tục căn chỉnh các biểu diễn bậc cao.
+
+Hàm mục tiêu tổng thể của mô hình được thiết lập lại thông qua việc bổ sung thành phần $\mathcal{L}_{cl\_early}$:
+
+\begin{equation}
+\mathcal{L} = \mathcal{L}_{bpr} + \lambda_{cl} \mathcal{L}_{cl} + \beta \mathcal{L}_{cl\_early} + \lambda_{ort} \mathcal{L}_{ort} + \lambda_p \|\Theta\|_2^2
+\end{equation}
+
+\paragraph{Đánh giá rủi ro:}
+Mức độ phức tạp của phương án này nằm ở mức trung bình do cần khảo sát mã nguồn kỹ lưỡng để xác định chính xác module xuất ra intermediate feature. Việc tích hợp thêm một thành phần loss mới đòi hỏi hệ thống phải tinh chỉnh thêm tham số $\beta$. Phương án có khả năng cải thiện hiệu suất tốt nhưng phụ thuộc rất lớn vào giá trị của $\beta$. Nếu cấu hình tham số này quá lớn, quá trình huấn luyện sẽ bị mất cân bằng và dẫn đến mất ổn định toàn cục.
+
+\subsubsection{Định hướng bổ trợ: Semantic-aware Hard Negative Sampling}
+
+\paragraph{Động lực kỹ thuật:}
+Hàm mất mát InfoNCE hiện tại coi mọi vật phẩm khác trong cùng một batch huấn luyện là các mẫu âm có vai trò hoàn toàn ngang hàng. Cơ chế này bỏ qua thực tế rằng tồn tại những mặt hàng có mức độ tương đồng ngữ nghĩa cực kỳ cao với mẫu dương. Việc rèn luyện hệ thống phân biệt rạch ròi các mặt hàng tương đồng này mới là chìa khóa để mô hình trở nên sắc bén hơn.
+
+\paragraph{Cơ sở toán học:}
+Giải pháp đề xuất tận dụng đồ thị ngữ nghĩa $\tilde{G}_{ii}$ có sẵn của hệ thống để xác định trực tiếp các hard negative samples. Đối với mỗi vật phẩm $i$, những vật phẩm $i'$ có độ tương đồng ngữ nghĩa cao trên đồ thị $\tilde{G}_{ii}$ nhưng người dùng chưa từng tương tác sẽ bị gán trọng số phạt nặng hơn trong hàm loss đối chiếu.
+
+Công thức toán học của hàm InfoNCE cải tiến được định nghĩa như sau:
+
+\begin{equation}
+\mathcal{L}_{i\_cl} = - \log \frac{\exp(\text{sim}(\bar{i}_v, \bar{i}_t) / \tau)}{\exp(\text{sim}(\bar{i}_v, \bar{i}_t) / \tau) + \sum_{i' \in N_{hard}(i)} w_{ii'} \exp(\text{sim}(\bar{i}_v, \bar{i}'_t) / \tau)}
+\end{equation}
+
+Trong hệ thức trên, tham số $w_{ii'}$ tỷ lệ thuận với độ tương đồng ngữ nghĩa giữa hai mặt hàng được trích xuất từ đồ thị $\tilde{G}_{ii}$.
+
+\paragraph{Đánh giá rủi ro:}
+Dù sở hữu nền tảng lý thuyết xuất sắc, phương án này bị xếp ở mức ưu tiên thấp hơn do rào cản lớn về mặt triển khai thực tế. Việc thực thi yêu cầu hệ thống phải truy cập trực tiếp đồ thị ngữ nghĩa tại runtime và tính toán trọng số tương đồng cho từng batch. Quy trình này làm gia tăng hàm lượng tính toán lên nhiều lần, khiến tốc độ huấn luyện giảm sút nghiêm trọng. Đây cũng là phương án đòi hỏi kỹ thuật can thiệp sâu nhất vào luồng truyền dữ liệu gốc của hệ thống.
+
+\clearpage
