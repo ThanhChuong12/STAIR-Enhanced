@@ -26,7 +26,7 @@ from optimizers.Adam import AdamSEvo
 from optimizers.AdamW import AdamWSEvo
 from optimizers.utils import Smoother
 
-freerec.declare(version='1.0.1')
+freerec.declare(version='0.9.7')
 
 cfg = freerec.parser.Parser()
 cfg.add_argument("--embedding-dim",  type=int,   default=64)
