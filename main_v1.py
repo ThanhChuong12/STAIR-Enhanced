@@ -245,12 +245,15 @@ class CoachForSTAIR(freerec.launcher.Coach):
     def set_optimizer(self):
         opt = self.cfg.optimizer.lower()
         kwargs = dict(lr=self.cfg.lr, weight_decay=self.cfg.weight_decay)
-        betas  = (self.cfg.beta1, self.cfg.beta2)
+        # freerec 0.9.x does not expose beta1/beta2 by default; use Adam defaults
+        betas  = (getattr(self.cfg, 'beta1', 0.9), getattr(self.cfg, 'beta2', 0.999))
 
         if opt == 'sgd':
             self.optimizer = torch.optim.SGD(
-                self.model.marked_params(), momentum=self.cfg.momentum,
-                nesterov=self.cfg.nesterov, **kwargs)
+                self.model.marked_params(),
+                momentum=getattr(self.cfg, 'momentum', 0.9),
+                nesterov=getattr(self.cfg, 'nesterov', False),
+                **kwargs)
         elif opt == 'adam':
             self.optimizer = torch.optim.Adam(self.model.marked_params(), betas=betas, **kwargs)
         elif opt == 'adamw':

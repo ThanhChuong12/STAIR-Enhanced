@@ -120,25 +120,36 @@ class STAIR(freerec.models.GenRecArch):
 
     def compute_confidence(self, feat_t: torch.Tensor, feat_v: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Compute per-item modality confidence scores from raw L2 norms.
+        Compute per-item modality confidence scores.
 
-        norm mode    : c_v = ||f_v|| / (||f_v|| + ||f_t|| + eps)
-        softmax mode : c_v = softmax([||f_v||, ||f_t||] / tau)[0]
+        Uses per-dimension standard deviation (feature spread) instead of L2-norm,
+        because text features are often pre-L2-normalized (norm=1, std~=0 across items)
+        while visual features are not. Std across the item axis captures how much
+        each modality varies per dimension — a proxy for information richness.
+
+        std mode     : c_v = std_v / (std_v + std_t + eps)  [default]
+        softmax mode : c_v = softmax([std_v, std_t] / tau)[0]
 
         Returns c_v (N,) and c_t (N,) where c_t = 1 - c_v.
         """
-        eps   = 1e-7
-        norm_v = feat_v.norm(p=2, dim=-1)
-        norm_t = feat_t.norm(p=2, dim=-1)
+        eps = 1e-7
+        # std over items per dimension, then mean across dims -> scalar per modality
+        std_v = feat_v.std(dim=0).mean()   # scalar: average feature spread of visual
+        std_t = feat_t.std(dim=0).mean()   # scalar: average feature spread of textual
 
         if cfg.conf_mode == 'softmax':
-            exp_v = torch.exp(norm_v / cfg.conf_temp)
-            exp_t = torch.exp(norm_t / cfg.conf_temp)
-            c_v = exp_v / (exp_v + exp_t + eps)
+            exp_v = torch.exp(std_v / cfg.conf_temp)
+            exp_t = torch.exp(std_t / cfg.conf_temp)
+            global_cv = exp_v / (exp_v + exp_t + eps)
         else:
-            c_v = norm_v / (norm_v + norm_t + eps)
+            global_cv = std_v / (std_v + std_t + eps)
 
-        return c_v, 1.0 - c_v
+        # Broadcast global confidence to per-item scores
+        # Items within the same dataset share the same global confidence ratio,
+        # but we keep per-item structure for future item-level extensions.
+        c_v = torch.full((feat_v.shape[0],), global_cv.item(), device=feat_v.device)
+        c_t = 1.0 - c_v
+        return c_v, c_t
 
     def prepare(self, path: str):
         """
@@ -252,12 +263,15 @@ class CoachForSTAIR(freerec.launcher.Coach):
     def set_optimizer(self):
         opt    = self.cfg.optimizer.lower()
         kwargs = dict(lr=self.cfg.lr, weight_decay=self.cfg.weight_decay)
-        betas  = (self.cfg.beta1, self.cfg.beta2)
+        # freerec 0.9.x does not expose beta1/beta2 by default; use Adam defaults
+        betas  = (getattr(self.cfg, 'beta1', 0.9), getattr(self.cfg, 'beta2', 0.999))
 
         if opt == 'sgd':
             self.optimizer = torch.optim.SGD(
-                self.model.marked_params(), momentum=self.cfg.momentum,
-                nesterov=self.cfg.nesterov, **kwargs)
+                self.model.marked_params(),
+                momentum=getattr(self.cfg, 'momentum', 0.9),
+                nesterov=getattr(self.cfg, 'nesterov', False),
+                **kwargs)
         elif opt == 'adam':
             self.optimizer = torch.optim.Adam(self.model.marked_params(), betas=betas, **kwargs)
         elif opt == 'adamw':
