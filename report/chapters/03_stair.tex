@@ -42,19 +42,21 @@ Tham số $\lambda_{cl}=0.001$ được cấu hình để đóng vai trò làm h
 
 \subsubsection{Kết quả thực nghiệm và phân tích chi tiết}
 
-\begin{figure}[!htbp]
+\begin{figure}[H]
     \centering
     \includegraphics[width=0.95\linewidth]{graphics/stair/stair_v1_learning_curves.png}
-    \caption{Biểu đồ quá trình huấn luyện (Training Loss Curves) của mô hình STAIR-v1 (STAIR-GCL) trên hai tập dữ liệu Baby và Sports qua 500 epoch.}
+    \caption[Biểu đồ quá trình huấn luyện của mô hình STAIR-v1]{Biểu đồ quá trình huấn luyện của mô hình STAIR-v1.\protect\\[2pt]
+    \textit{Ghi chú: Tiến trình giảm Training Loss (BPR Loss) của STAIR-GCL trên hai tập dữ liệu Baby và Sports qua 500 epoch.}}
     \label{fig:stair_v1_learning_curves}
 \end{figure}
 
 Các biểu đồ mô tả quá trình giảm hàm mất mát (\textit{learning curves}) và kết quả so sánh hiệu năng thực nghiệm giữa mô hình STAIR Baseline và mô hình cải tiến STAIR-GCL trên hai tập dữ liệu Baby và Sports.
 
-\begin{figure}[!htbp]
+\begin{figure}[H]
     \centering
     \includegraphics[width=0.95\linewidth]{graphics/stair/stair_v1_comparison.png}
-    \caption{Biểu đồ đối sánh hiệu năng các chỉ số Recall@10, Recall@20, NDCG@10, NDCG@20 giữa STAIR Baseline và STAIR-v1 (STAIR-GCL).}
+    \caption[Đối sánh hiệu năng giữa STAIR Baseline và STAIR-v1]{Đối sánh hiệu năng giữa STAIR Baseline và STAIR-v1.\protect\\[2pt]
+    \textit{Ghi chú: Đánh giá chi tiết các chỉ số Recall@10, Recall@20, NDCG@10 và NDCG@20 của mô hình cải tiến STAIR-GCL so với baseline trên hai tập dữ liệu.}}
     \label{fig:stair_v1_comparison}
 \end{figure}
 
@@ -126,34 +128,168 @@ Cải tiến STAIR-GCL đã chứng minh tính hợp lý của giả thuyết t�
 Nhằm tiếp tục nâng cao hiệu suất và giải quyết bài toán sụt giảm trên các đồ thị dày đặc, định hướng nghiên cứu tiếp theo sẽ tập trung vào việc phát triển \textit{feature-wise dynamic fusion gate}. Cơ chế này sẽ tự động hóa quá trình đánh giá và kết hợp các thuộc tính đa phương thức trước khi đưa vào \textit{backward stepwise convolution}, qua đó thiết lập một luồng xử lý tín hiệu linh hoạt và thích ứng tốt hơn với đa dạng các đặc thù phân phối dữ liệu.
 
 
+\subsection{Kết quả thực nghiệm cải tiến 2: Modality-Adaptive kNN Graph Reweighting (STAIR-DyFuse)}
+ 
+\subsubsection{Động lực kỹ thuật và đặt vấn đề}
+ 
+Trong STAIR gốc, đồ thị kNN đa phương thức \textit{mAdj} được xây dựng bằng cách kết hợp hai đồ thị kNN riêng biệt từ đặc trưng văn bản và hình ảnh thông qua phép lấy \textit{max} sau khi chuẩn hóa:
+ 
+\begin{equation}
+s_{ij} = \max(s_{ij}^v,\, s_{ij}^t)
+\end{equation}
+ 
+Cách kết hợp này xử lý mọi sản phẩm như nhau, không phân biệt sản phẩm nào có đặc trưng hình ảnh mạnh hơn hay ngược lại. Trên thực tế, mỗi sản phẩm trong thương mại điện tử có đặc tính khác nhau: sản phẩm thời trang thường có đặc trưng hình ảnh rõ nét hơn, trong khi sản phẩm đồ chơi trẻ em hay thiết bị điện tử lại có mô tả văn bản chi tiết và phân biệt hơn. Khi áp dụng cùng một tỷ lệ kết hợp cho mọi sản phẩm, đồ thị bị nhiễu ở những sản phẩm có một phương thức yếu, dẫn đến việc \textit{backward stepwise convolution} (BSC) điều hướng gradient theo các kết nối không thực sự mang ý nghĩa ngữ nghĩa.
+ 
+\subsubsection{Phương pháp STAIR-DyFuse: Modality-Adaptive Graph Reweighting}
+ 
+Phương án cải tiến được đề xuất nhằm xây dựng đồ thị kNN thích ứng theo từng sản phẩm dựa trên độ mạnh tương đối của từng phương thức, đo bằng norm của vector đặc trưng sau \textit{SVD whitening}. Toàn bộ cơ chế không thêm bất kỳ tham số học nào.
+ 
+\paragraph{Bước 1 — Tính Modality Confidence Score cho từng sản phẩm:}
+ 
+Với mỗi sản phẩm $i$, trọng số tin cậy của từng phương thức được tính theo công thức:
+ 
+\begin{equation}
+c_i^v = \frac{\|\mathbf{f}_i^v\|_2}{\|\mathbf{f}_i^v\|_2 + \|\mathbf{f}_i^t\|_2 + \epsilon}, \qquad c_i^t = 1 - c_i^v
+\end{equation}
+ 
+trong đó $\epsilon = 10^{-7}$ đảm bảo tính ổn định số học. Sau \textit{SVD whitening}, sản phẩm có norm lớn hơn ở phương thức nào thì phương thức đó giải thích nhiều phương sai hơn trong không gian ẩn\subsubsection{Phân tích phân phối confidence score thực tế}
+ 
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.92\linewidth]{graphics/stair/stair_v2_confidence_diagnostics.png}
+    \caption[Phân phối confidence score và đặc trưng phương thức của STAIR-DyFuse]{Phân phối confidence score và đặc trưng phương thức của STAIR-DyFuse.\protect\\[2pt]
+    \textit{Ghi chú: Phân phối L2-norm, modality confidence score và per-dimension feature std của hai phương thức trên tập Baby và Sports. Text feature (Sentence-BERT) được pre-normalize về L2-norm = 1, trong khi visual feature (Deep CNN) có norm phân tán từ 40 đến 150.}}
+    \label{fig:stair_v2_confidence}
+\end{figure}
+ 
+Trước khi chạy thực nghiệm đầy đủ, nhóm kiểm tra phân phối confidence score thực tế trên cả hai tập dữ liệu (Hình~\ref{fig:stair_v2_confidence}). Kết quả chẩn đoán cho thấy một vấn đề nghiêm trọng về sự mất cân bằng giữa hai phương thức:
+ 
+\begin{itemize}[leftmargin=*]
+    \item Đặc trưng văn bản (Sentence-BERT 384 chiều) đã được \textit{pre-normalize} về L2-norm $= 1.0$ trước khi đưa vào mô hình, tức mọi sản phẩm đều có norm văn bản bằng nhau.
+    \item Đặc trưng hình ảnh (Deep CNN 4096 chiều) không qua chuẩn hóa trước, có L2-norm phân bố rộng từ khoảng 40 đến 150.
+    \item Kết quả là confidence score visual trung bình đạt $c_v \approx 0.956$ trên Baby và $c_v \approx 0.955$ trên Sports, trong khi confidence score textual chỉ còn $c_t \approx 0.044$.
+\end{itemize}
+ 
+Sự mất cân bằng này xuất phát từ chính sách tiền xử lý đặc trưng không đồng nhất giữa hai phương thức trong bộ dữ liệu gốc. Khi áp dụng norm-based confidence với dữ liệu ở trạng thái này, đồ thị văn bản thực tế bị nhân với hệ số 0.044 — gần như bị loại bỏ khỏi quá trình lan truyền BSC.
+ 
+\subsubsection{Kết quả thực nghiệm và phân tích chi tiết}
+ 
+Bảng~\ref{tab:stair_v2_results} tổng hợp kết quả thực nghiệm đầy đủ sau 500 epoch huấn luyện trên cả hai tập dữ liệu:
+ 
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{%
+    >{\raggedright\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{2.3cm}
+    >{\centering\arraybackslash}p{2.3cm}
+    >{\centering\arraybackslash}p{2.3cm}
+    >{\centering\arraybackslash}p{2.3cm}}
+ 
+    \caption{Kết quả thực nghiệm ba phiên bản STAIR trên tập Baby và Sports.}
+    \label{tab:stair_v2_results} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{Baseline} & \textbf{v1 (GCL)} & \textbf{v2 (DyFuse)} & \textbf{$\Delta$ v2 vs BL} \\
+    \hline
+    \endfirsthead
+    \multicolumn{6}{c}{{\bfseries Bảng \thetable\ (tiếp theo)}} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{Baseline} & \textbf{v1 (GCL)} & \textbf{v2 (DyFuse)} & \textbf{$\Delta$ v2 vs BL} \\
+    \hline
+    \endhead
+    \midrule
+    \multicolumn{6}{r}{\textit{Tiếp tục ở trang sau...}} \\
+    \endfoot
+    \hline
+    \endlastfoot
+ 
+    Baby & Recall@10 & \textbf{0.0686} & \textbf{0.0695} & 0.0578 & $-15.69\%$ \\
+    \midrule
+    & Recall@20 & \textbf{0.1034} & \textbf{0.1047} & 0.0898 & $-13.17\%$ \\
+    \midrule
+    & NDCG@10   & \textbf{0.0363} & \textbf{0.0365} & 0.0309 & $-14.96\%$ \\
+    \midrule
+    & NDCG@20   & \textbf{0.0451} & \textbf{0.0455} & 0.0388 & $-14.05\%$ \\
+    \hline
+    Sports & Recall@10 & \textbf{0.0743} & \textbf{0.0745} & 0.0669 & $-9.97\%$  \\
+    \midrule
+    & Recall@20 & \textbf{0.1119} & \textbf{0.1124} & 0.1002 & $-10.46\%$ \\
+    \midrule
+    & NDCG@10   & \textbf{0.0402} & \textbf{0.0404} & 0.0366 & $-8.96\%$  \\
+    \midrule
+    & NDCG@20   & \textbf{0.0500} & \textbf{0.0504} & 0.0449 & $-10.29\%$ \\
+    \hline
+\end{longtable}
+
+STAIR-DyFuse cho kết quả thấp hơn baseline từ 9\% đến gần 16\% trên tất cả các chỉ số và cả hai tập dữ liệu. Phân tích learning curves (Hình~\ref{fig:stair_v2_curves}) cho thấy BPR Loss giảm rất nhanh về gần 0 sau 100 epoch, trong khi các chỉ số Recall và NDCG trên tập validation đạt đỉnh sớm ở epoch 10--15 rồi gần như đi ngang. Đây là dấu hiệu của việc mô hình hội tụ nhanh nhưng chất lượng đồ thị đầu vào bị giới hạn.
+ 
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.92\linewidth]{graphics/stair/stair_v2_learning_curves.png}
+    \caption[Learning curves của STAIR-DyFuse trên Baby và Sports]{Learning curves của STAIR-DyFuse trên Baby và Sports.\protect\\[2pt]
+    \textit{Ghi chú: Tiến trình BPR Loss, Recall@10/20 và NDCG@10/20. Loss giảm nhanh về 0.02 sau 100 epoch, trong khi Recall và NDCG đạt đỉnh sớm ở epoch 10--15 rồi đi ngang.}}
+    \label{fig:stair_v2_curves}
+\end{figure}
+ 
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.92\linewidth]{graphics/stair/stair_v2_comparison.png}
+    \caption[So sánh hiệu năng ba phiên bản STAIR]{So sánh hiệu năng ba phiên bản STAIR Baseline, STAIR-v1 (GCL) và STAIR-v2 (DyFuse).\protect\\[2pt]
+    \textit{Ghi chú: Đối sánh hiệu năng trên bốn chỉ số đánh giá. Phiên bản STAIR-v2 (DyFuse) có kết quả sụt giảm so với cả baseline và STAIR-v1 trên cả hai tập dữ liệu.}}
+    \label{fig:stair_v2_comparison}
+\end{figure}
+ 
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.92\linewidth]{graphics/stair/stair_v2_heatmap.png}
+    \caption[Heatmap mức độ thay đổi tương đối giữa các phiên bản STAIR]{Heatmap mức độ thay đổi tương đối giữa các phiên bản STAIR.\protect\\[2pt]
+    \textit{Ghi chú: Biểu diễn mức độ thay đổi tương đối (\%) của từng phiên bản so với baseline và so với nhau. STAIR-v1 tăng trưởng nhẹ (+0.3\% đến +1.3\%), trong khi STAIR-v2 suy giảm từ 9\% đến 16\% so với baseline.}}
+    \label{fig:stair_v2_heatmap}
+\end{figure}
+
+\subsubsection{Phân tích nguyên nhân và bài học kinh nghiệm}
+ 
+Kết quả thực nghiệm cho thấy ba vấn đề kỹ thuật chính dẫn đến hiệu năng suy giảm:
+ 
+\paragraph{Nguyên nhân 1 — Mất cân bằng norm giữa hai phương thức:}
+Văn bản đã được pre-normalize về $\|\mathbf{f}^t\|_2 = 1$ trong khi hình ảnh có norm phân tán từ 40 đến 150. Khi tính confidence score dựa trên norm, đồ thị văn bản bị nhân với hệ số trung bình chỉ 0.044, gần như bị loại hoàn toàn khỏi BSC. Vì thông tin văn bản (tên sản phẩm, mô tả, danh mục) là tín hiệu ngữ nghĩa quan trọng trong Amazon Baby và Sports, việc triệt tiêu đồ thị văn bản làm giảm rõ rệt khả năng kết nối các sản phẩm tương đồng về chức năng.
+ 
+\paragraph{Nguyên nhân 2 — Trọng số liên tục làm mất ổn định Laplacian:}
+STAIR gốc dùng đồ thị nhị phân (edge weight = 1 sau normalize) với phép lấy \textit{max}. STAIR-DyFuse thay bằng trọng số cosine similarity liên tục nhân với confidence score. Phân phối trọng số kết quả bị lệch nặng, các cạnh có similarity thấp bị nén về gần 0, làm giảm đáng kể hiệu quả lan truyền đa bước trong BSC.
+ 
+\paragraph{Nguyên nhân 3 — Giả thiết về norm chưa phù hợp sau whitening:}
+SVD whitening trong STAIR gốc biến đổi không gian đặc trưng theo singular values, không đảm bảo rằng norm của feature vector sau whitening phản ánh chất lượng thông tin của phương thức đó. Vì vậy, dùng norm sau whitening làm confidence signal là giả thiết không có đủ cơ sở lý thuyết trong ngữ cảnh này.
+ 
+\subsubsection{Định hướng cải tiến cho phiên bản tiếp theo}
+ 
+Từ ba nguyên nhân trên, định hướng cho STAIR-v3 được xác định cụ thể như sau:
+ 
+\begin{enumerate}[leftmargin=*, label=\textbf{\arabic*.}]
+    \item \textbf{Chuẩn hóa đồng nhất trước khi tính confidence.} Thực hiện L2-normalize cả hai phương thức về cùng magnitude trước khi tính confidence score. Cách này loại bỏ hoàn toàn sự lệch lạc do chính sách tiền xử lý không đồng nhất của bộ dữ liệu gốc. Confidence score khi đó phản ánh đặc điểm phân bố theo chiều (dimension-wise spread) thay vì magnitude tổng thể.
+ 
+    \item \textbf{Đặt ngưỡng tối thiểu cho mỗi phương thức.} Áp dụng ràng buộc $c_i^t \geq \delta$ với $\delta = 0.3$ để đồ thị văn bản luôn đóng góp ít nhất 30\% vào kết quả kết hợp, tránh hiện tượng một phương thức bị triệt tiêu hoàn toàn:
+    \begin{equation}
+        c_i^{t,\text{clip}} = \max(c_i^t,\, \delta), \qquad c_i^{v,\text{clip}} = 1 - c_i^{t,\text{clip}}
+    \end{equation}
+ 
+    \item \textbf{Giữ cấu trúc nhị phân của đồ thị.} Sau khi tính điểm kết hợp $\tilde{s}_{ij}$, áp dụng Top-K để chọn $k$ cạnh có điểm cao nhất và binarize về 0/1 trước khi đưa vào normalize, bảo toàn đặc tính lan truyền ổn định của đồ thị gốc:
+    \begin{equation}
+        A_{ij} = \mathbf{1}\bigl[\tilde{s}_{ij} \in \text{Top-}k\text{neighbors}(i)\bigr]
+    \end{equation}
+ 
+    \item \textbf{Kết hợp với STAIR-GCL.} Tích hợp cơ chế reweight đồ thị từ DyFuse-v2 với contrastive loss trên collaborative subspace từ STAIR-GCL, tạo ra mô hình có cả hai cơ chế: đồ thị đa phương thức thích ứng và regularization hành vi qua học đối chiếu.
+\end{enumerate}
+ 
+\subsubsection{Kết luận}
+ 
+Thực nghiệm STAIR-DyFuse mang lại hai đóng góp quan trọng cho quá trình nghiên cứu. Thứ nhất, thực nghiệm cho thấy norm của đặc trưng sau \textit{SVD whitening} không phải là chỉ số tin cậy để đo lường chất lượng thông tin của từng phương thức khi hai phương thức có chính sách tiền xử lý khác nhau. Thứ hai, kết quả khẳng định rằng cấu trúc topology nhị phân của đồ thị kNN đóng vai trò quan trọng hơn trọng số cạnh liên tục trong bối cảnh FSC/BSC của STAIR. Những bài học này cung cấp cơ sở thực nghiệm rõ ràng để thiết kế phiên bản STAIR-v3 với cơ chế fusion đồ thị chính xác và ổn định hơn.
+
+% ================================================
+
 \subsection{Đề xuất các phương án cải tiến kiến trúc tiếp theo}
 
 Sau khi hoàn thành thực nghiệm với phương án STAIR-GCL, quá trình tối ưu hóa mô hình sẽ tiếp tục được mở rộng. Dưới đây là hai định hướng cải tiến được sắp xếp theo mức độ ưu tiên dựa trên cơ sở lý thuyết và các phân tích rủi ro thực tế.
 
-\subsubsection{Cải tiến mức ưu tiên cao: Dynamic kNN Graph Fusion kết hợp Attention Denoising}
-
-\paragraph{Động lực kỹ thuật:}
-Cơ chế \textit{Backward Stepwise Convolution} trong cấu trúc STAIR gốc sử dụng ma trận tương đồng để điều hướng \textit{gradient}. Hạn chế hiện tại của hệ thống nằm ở việc gộp hai đồ thị kNN tương ứng với dữ liệu văn bản và hình ảnh thông qua phép lấy \textit{max} cơ học và tĩnh. Cách tiếp cận này vô tình bảo lưu toàn bộ \textit{visual noise}, tạo ra rào cản lớn đối với dữ liệu e-commerce.
-
-\paragraph{Cơ sở toán học:}
-Giải pháp cải tiến tập trung thiết kế cơ chế \textit{Attention-based Fusion} nhằm tự động học trọng số đóng góp của từng phương thức cho mỗi sản phẩm. Thay vì dùng tham số tĩnh, hệ thống tính toán trọng số \textit{attention} $\alpha_{i,m}$ cho từng phương thức dựa trên biểu diễn không gian ẩn:
-
-\begin{equation}
-\alpha_{i,m} = \text{Softmax}(W_a h_{i,m} + b_a)
-\end{equation}
-
-Từ đó, ma trận kNN động được cập nhật theo tỷ lệ đóng góp thực tế:
-
-\begin{equation}
-S_{dynamic} = \beta_t S_t + \beta_v S_v
-\end{equation}
-
-Hệ thống tiếp tục áp dụng thuật toán \textit{Attention Denoising} thông qua kỹ thuật \textit{dynamic thresholding} để cắt tỉa các cạnh yếu có độ tương đồng thấp. Bước lọc này đảm bảo mạng lưới \textit{Backward Stepwise Convolution} chỉ cập nhật \textit{gradient} theo các hướng thực sự mang ý nghĩa ngữ nghĩa.
-
-\paragraph{Đánh giá rủi ro:}
-Phương án này sở hữu nền tảng lý thuyết vững chắc. Trong môi trường e-commerce, các sản phẩm thời trang phụ thuộc nhiều vào \textit{visual modality}, trong khi sách hoặc đồ điện tử lại cần \textit{textual modality}. Tuy nhiên, việc áp dụng \textit{dynamic thresholding} có thể gây ra hiện tượng \textit{sparse graph} quá mức. Trên tập dữ liệu Baby với độ thưa thớt đã đạt 99.88\%, việc cắt tỉa mạnh tay dễ dẫn đến mất tín hiệu thay vì chỉ lọc nhiễu. Thêm vào đó, việc can thiệp vào cấu trúc \textit{kNN graph} sẽ làm thay đổi toàn bộ pipeline tiền xử lý dữ liệu ban đầu. Do vậy, phương án này cần được thử nghiệm cực kỳ cẩn trọng.
-
-\subsubsection{Cải tiến mức ưu tiên thấp: Learnable Non-linear Projector kết hợp Cross-modal Gated Fusion}
+\subsubsection{Learnable Non-linear Projector kết hợp Cross-modal Gated Fusion}
 
 \paragraph{Động lực kỹ thuật:}
 Kỹ thuật nén \textit{SVD Whitening} tuy tối ưu tốt tài nguyên phần cứng nhưng bản chất là một phép chiếu tuyến tính tĩnh. Quá trình này không thể nắm bắt trọn vẹn các sắc thái ngữ nghĩa phức tạp từ cấu trúc Sentence-BERT 384 chiều hay Deep CNN 4096 chiều. Đồng thời, SVD không tối ưu trực tiếp cho mục tiêu \textit{recommendation} cuối cùng.
