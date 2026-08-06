@@ -1,28 +1,24 @@
 """
-main_v3.py — STAIR-ClipFuse: Clipped Softmax Fusion with Topology-Preserving Binary Graph
+main_v3.py — STAIR-v3.1 (ClipFuse-Consensus): Prior-Preserving Adaptive Fusion with Cross-Modal Consensus Boosting
 
-Enhancement over STAIR-v2 (DyFuse) — fixes 3 root causes identified in experiments:
-  L1 — Scale Bias: L2-normalize both modalities before computing confidence (removes
-       the text-norm=1 vs visual-norm=76.8 imbalance that collapsed c_v to 95.6%).
-  L2 — Skewed Edge Weights: TopK selection + BINARIZE edges → restores stable binary
-       adjacency, preserving BSC diffusion properties.
-  L3 — Modality Collapse: Clip confidence to [delta, 1-delta] → each modality always
-       contributes at least delta to the fused graph.
+Enhancements over STAIR-v2 & STAIR-v3.0 (Senior Researcher Design):
+  Root Cause Analysis of v3.0:
+    - In Amazon Baby/Sports, Text (title/description) is significantly cleaner and more
+      discriminative than Visual (product thumbnails). STAIR baseline used k_t=5, k_v=1,
+      establishing a 5:1 (83.3% Text : 16.7% Visual) structural prior.
+    - STAIR-v3.0 san-equalized modality weights to ~51% Visual : 49% Text, diluting the
+      high-quality Text graph with 50% Visual noise, causing a drop vs baseline (0.0933 vs 0.1034).
+    - STAIR-v3.0 binarized all edges to 1.0, destroying the 2.0x weight boost that STAIR
+      baseline gave to Cross-Modal Consensus edges (edges present in BOTH Text & Visual kNN).
 
-Confidence signal (v3):
-  Uses kNN-discriminability: for each modality, compute mean of top-k cosine similarities
-  among items. Lower mean similarity → items are more spread out → modality is more
-  discriminative → higher confidence.
-    disc_m = 1 - mean_knn_sim_m
-    c_v_raw = softmax([disc_v/tau, disc_t/tau])[0]
-    c_v = clip(c_v_raw, delta, 1-delta)
-  This is computed AFTER building kNN graphs (meaningful signal, device-safe).
-
-Design reference:
-  - TAMER  : global weighted multi-graph fusion (static alpha per modality)
-  - NLGCL+ : L2-norm as per-sample confidence signal for adaptive weighting
-  - STAIR-v2: per-item std-based confidence (collapsed due to scale bias)
-  - STAIR-v3: kNN-discriminability confidence + binary TopK fusion
+  STAIR-v3.1 Solutions:
+    1. Prior-Preserving Structural Weighting:
+       Edge weights incorporate the k_t : k_v structural prior (5:1).
+       Text edge weight pool = k_t * c_t (~83%), Visual edge weight pool = k_v * c_v (~17%).
+       c_t, c_v are derived adaptively via kNN-discriminability (1 - mean_knn_sim).
+    2. Cross-Modal Consensus Boosting (alpha):
+       Edges present in BOTH Text and Visual kNN receive a consensus multiplier (1 + alpha).
+       This reinforces high-confidence multi-modal alignment edges for the BSC smoother.
 """
 
 import math
@@ -41,22 +37,20 @@ from optimizers.utils import Smoother
 freerec.declare(version='0.9.7')
 
 cfg = freerec.parser.Parser()
-cfg.add_argument("--embedding-dim",  type=int,   default=64)
-cfg.add_argument("--num-layers",     type=int,   default=3,   help="number of FSC/BSC layers")
-cfg.add_argument("--mfiles",         type=str,   default="textual_modality.pkl,visual_modality.pkl",
-                                                 help="modal feature files (textual first, visual second)")
-cfg.add_argument("--num-neighbors",  type=str,   default='5-1',
-                                                 help="kNN neighbors per modality (e.g. 5-1)")
-cfg.add_argument("--gamma",          type=float, default=0.2)
+cfg.add_argument("--embedding-dim",    type=int,   default=64)
+cfg.add_argument("--num-layers",       type=int,   default=3,     help="number of FSC/BSC layers")
+cfg.add_argument("--mfiles",           type=str,   default="textual_modality.pkl,visual_modality.pkl",
+                                                   help="modal feature files (textual first, visual second)")
+cfg.add_argument("--num-neighbors",    type=str,   default='5-1', help="kNN neighbors per modality")
+cfg.add_argument("--gamma",            type=float, default=0.2)
 
-# ClipFuse-specific hyperparameters
-cfg.add_argument("--conf-delta",     type=float, default=0.3,
-                                                 help="connectivity floor: min confidence per modality, in [0.2, 0.4]")
-cfg.add_argument("--conf-temp",      type=float, default=1.0,
-                                                 help="softmax temperature tau for confidence scoring")
+# STAIR-v3.1 Hyperparameters
+cfg.add_argument("--conf-delta",       type=float, default=0.3,   help="min confidence floor in [0.2, 0.4]")
+cfg.add_argument("--conf-temp",        type=float, default=1.0,   help="softmax temperature tau")
+cfg.add_argument("--alpha-consensus",  type=float, default=0.5,   help="consensus boost multiplier for overlapping edges")
 
 cfg.set_defaults(
-    description="STAIR-v3 (ClipFuse — kNN-Discriminability Confidence + Topology-Preserving Binary Graph)",
+    description="STAIR-v3.1 (ClipFuse-Consensus — Prior-Preserving Fusion + Cross-Modal Consensus Boosting)",
     root="../../data",
     dataset='Amazon2014Baby_550_MMRec',
     epochs=500,
@@ -70,7 +64,7 @@ cfg.set_defaults(
 )
 cfg.compile()
 
-cfg.mfiles       = cfg.mfiles.split(',')
+cfg.mfiles        = cfg.mfiles.split(',')
 cfg.num_neighbors = list(map(int, cfg.num_neighbors.split('-')))
 
 # Dimension-wise step weight for BSC: beta_j = 1 - (0.1 + 0.9*(j/D)^gamma)
@@ -127,23 +121,16 @@ class STAIR(freerec.models.GenRecArch):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Build kNN graph from cosine similarity on L2-normalized features.
-
-        Args:
-            features: raw item features (N, D) — any device
-            k:        number of neighbors per item
-
-        Returns:
-            edge_index: (2, N*k) directed source→neighbor edges  [CPU]
-            edge_weight: (N*k,)  cosine similarity clipped to [0, 1] [CPU]
+        Returns CPU tensors for device safety.
         """
-        feat_n = F.normalize(features.float(), p=2, dim=-1)   # unit sphere
-        sim    = feat_n @ feat_n.t()                           # (N, N) cosine sim [CPU]
+        feat_n = F.normalize(features.float(), p=2, dim=-1)
+        sim    = feat_n @ feat_n.t()
         sim.fill_diagonal_(-10.)
 
         edge_index, _ = freerec.graph.get_knn_graph(sim, k, symmetric=False)
         row, col = edge_index[0], edge_index[1]
         edge_weight = sim[row, col].clamp(min=0.0)
-        return edge_index, edge_weight   # both CPU tensors
+        return edge_index, edge_weight
 
     def compute_confidence(
         self,
@@ -152,27 +139,7 @@ class STAIR(freerec.models.GenRecArch):
     ) -> Tuple[float, float]:
         """
         Compute clipped-softmax modality confidence from kNN discriminability.
-
-        Why kNN discriminability (instead of dim-wise std after L2-normalize):
-          After L2-normalizing, visual features (4096-dim, original norm ~76.8) have
-          very small per-dim std (~0.012) compared to text (384-dim, pre-normalized,
-          std ~0.044). This is a dimension-count artifact, not a measure of quality.
-
-          Using mean kNN cosine similarity avoids this bias:
-            low mean kNN sim → items are spread out in this modality's space
-                             → modality is more discriminative → higher confidence
-
-        Steps:
-          1. disc_m = 1 - mean(top-k cosine similarities) for each modality m
-          2. Softmax([disc_v, disc_t] / tau) → raw confidence ratio
-          3. Clip to [delta, 1-delta]         → connectivity floor
-
-        Args:
-            ew_t: textual edge weights (N*k_t,) — cosine similarities [CPU]
-            ew_v: visual  edge weights (N*k_v,) — cosine similarities [CPU]
-
-        Returns:
-            c_v, c_t: global confidence floats in [delta, 1-delta]
+        disc_m = 1 - mean_knn_sim_m
         """
         eps   = 1e-7
         delta = cfg.conf_delta
@@ -181,7 +148,7 @@ class STAIR(freerec.models.GenRecArch):
         mean_sim_t = ew_t.mean().item()
         mean_sim_v = ew_v.mean().item()
 
-        disc_t = max(0.0, 1.0 - mean_sim_t)   # lower sim → more discriminative
+        disc_t = max(0.0, 1.0 - mean_sim_t)
         disc_v = max(0.0, 1.0 - mean_sim_v)
 
         exp_v   = math.exp(disc_v / (tau + eps))
@@ -192,149 +159,98 @@ class STAIR(freerec.models.GenRecArch):
         c_t = 1.0 - c_v
 
         print(
-            f"[ClipFuse] mean_knn_sim: visual={mean_sim_v:.4f}, text={mean_sim_t:.4f} | "
+            f"[ClipFuse-v3.1] mean_knn_sim: visual={mean_sim_v:.4f}, text={mean_sim_t:.4f} | "
             f"disc_v={disc_v:.4f}, disc_t={disc_t:.4f} | "
-            f"raw_c_v={c_v_raw:.4f} → clipped c_v={c_v:.4f}, c_t={c_t:.4f} "
-            f"(delta={delta}, tau={tau})"
+            f"raw_c_v={c_v_raw:.4f} → clipped c_v={c_v:.4f}, c_t={c_t:.4f}"
         )
         return c_v, c_t
 
-    @staticmethod
-    def _topk_binarize(
-        row: torch.Tensor,
-        col: torch.Tensor,
-        score: torch.Tensor,
-        k: int,
-    ) -> torch.Tensor:
-        """
-        Fully-vectorized TopK selection per source node — no Python loops, no dense NxN.
-
-        For each source node, keeps the top-k neighbors by combined score.
-        Returns binary edge_index (caller sets weights to 1.0).
-
-        Algorithm:
-          1. Sort edges by (row ASC, score DESC)
-          2. Compute rank within each row group via vectorized cumsum trick
-          3. Keep edges with rank < k
-
-        Args:
-            row:   (E,) source node indices  [CPU]
-            col:   (E,) destination indices  [CPU]
-            score: (E,) combined scores      [CPU]
-            k:     max neighbors to keep per source node
-
-        Returns:
-            edge_index_kept: (2, E_kept) filtered binary edge_index [CPU]
-        """
-        device = row.device
-
-        # Step 1: Sort by (row ASC, score DESC)
-        max_score = score.max().item() + 1.0
-        sort_key  = row.float() * max_score - score       # row-major, score minor desc
-        order     = torch.argsort(sort_key, stable=True)
-
-        row_s = row[order]
-        col_s = col[order]
-
-        # Step 2: Vectorized rank within each row group
-        n = row_s.size(0)
-        global_pos = torch.arange(n, device=device)
-
-        # Positions where the row changes (start of new group)
-        row_change = torch.cat([
-            torch.tensor([True], device=device),
-            row_s[1:] != row_s[:-1],
-        ])  # bool, shape (n,)
-
-        # group_idx[i] = which group edge i belongs to (0-indexed)
-        group_idx = torch.cumsum(row_change.long(), dim=0) - 1   # (n,)
-
-        # Start position (in sorted array) of each group
-        # change_positions[g] = index of first edge in group g
-        change_positions = torch.where(row_change)[0]   # (n_groups,)
-
-        # Rank = global position − start position of my group
-        start_of_my_group = change_positions[group_idx]   # (n,)
-        rank = global_pos - start_of_my_group             # (n,)
-
-        # Step 3: Keep only top-k per row
-        keep = rank < k
-        edge_index_kept = torch.stack([row_s[keep], col_s[keep]], dim=0)
-        return edge_index_kept   # CPU tensor
-
     def prepare(self, path: str):
         """
-        Build ClipFuse multimodal item graph (mAdj) and initialize embeddings.
+        Build STAIR-v3.1 (ClipFuse-Consensus) multimodal item graph (mAdj).
 
-        Pipeline:
+        Pipeline (v3.1):
           1. Load raw modal features (CPU).
-          2. Build cosine-weighted kNN graphs per modality (CPU).
-          3. Compute kNN-discriminability confidence (no scale bias).
-          4. Scale edge scores by confidence: score_ij = c_v*s_v + c_t*s_t.
-          5. Coalesce (sum overlapping edges from both graphs).
-          6. TopK binarize: keep top (k_t+k_v) neighbors per item → binary 0/1.
-          7. To-undirected + symmetric Laplacian normalization → mAdj.
-          8. Initialize embeddings (identical to STAIR baseline).
-
-        All graph operations are on CPU tensors to avoid device-mismatch errors.
-        register_buffer() moves mAdj to cfg.device automatically.
+          2. Build kNN graphs: Text (k_t=5), Visual (k_v=1).
+          3. Compute kNN discriminability confidence: c_t, c_v.
+          4. Prior-Preserving Scaling:
+             Text edge weight = c_t, Visual edge weight = c_v.
+             Total edge weight pool maintains ~5:1 ratio (k_t * c_t : k_v * c_v).
+          5. Coalesce with Cross-Modal Consensus Boosting:
+             - Single-modality edge: weight = c_t (or c_v)
+             - Consensus edge (present in BOTH kNN graphs):
+               weight = (c_t + c_v) * (1 + alpha_consensus)
+          6. Symmetrize + Symmetric Laplacian normalization → mAdj.
+          7. Initialize item/user embeddings (prior-weighted 5:1 whitening).
         """
         from freerec.utils import import_pickle
 
-        # Step 1 — Load raw features (CPU tensors)
-        raw_mfeats  = [import_pickle(os.path.join(path, f)) for f in cfg.mfiles]
-        feat_t_raw  = raw_mfeats[0]   # textual (N, D_t)
-        feat_v_raw  = raw_mfeats[1]   # visual  (N, D_v)
+        raw_mfeats = [import_pickle(os.path.join(path, f)) for f in cfg.mfiles]
+        feat_t_raw = raw_mfeats[0]   # textual (N, D_t)
+        feat_v_raw = raw_mfeats[1]   # visual  (N, D_v)
         N = feat_t_raw.shape[0]
 
-        # Step 2 — Build cosine-weighted kNN graphs (CPU)
         k_t, k_v = cfg.num_neighbors[0], cfg.num_neighbors[1]
         ei_t, ew_t = self.build_knn_weighted(feat_t_raw, k_t)
         ei_v, ew_v = self.build_knn_weighted(feat_v_raw, k_v)
 
-        # Step 3 — kNN-discriminability confidence (computed from kNN edge weights)
         c_v, c_t = self.compute_confidence(ew_t, ew_v)
 
-        # Step 4 — Scale edge scores by global confidence
-        score_t = c_t * ew_t   # (E_t,) confidence-weighted text scores
-        score_v = c_v * ew_v   # (E_v,) confidence-weighted visual scores
+        # Total structural weight pool:
+        total_t_weight = k_t * c_t
+        total_v_weight = k_v * c_v
+        pct_t = total_t_weight / (total_t_weight + total_v_weight) * 100
+        pct_v = total_v_weight / (total_t_weight + total_v_weight) * 100
 
-        # Step 5 — Coalesce: merge and sum overlapping edges from both graphs
-        edge_index_all = torch.cat([ei_t, ei_v], dim=1)              # (2, E_t+E_v)
-        score_all      = torch.cat([score_t, score_v], dim=0)        # (E_t+E_v,)
-        edge_index_all, score_all = freerec.graph.coalesce(
+        print(
+            f"[ClipFuse-v3.1] Prior-Preserving Structural Weights (k_t={k_t}, k_v={k_v}):\n"
+            f"  Textual total weight: {total_t_weight:.4f} ({pct_t:.1f}%)\n"
+            f"  Visual  total weight: {total_v_weight:.4f} ({pct_v:.1f}%)\n"
+            f"  Consensus Boost Alpha: {cfg.alpha_consensus}"
+        )
+
+        # Assign base confidence weights
+        score_t = torch.full_like(ew_t, fill_value=c_t)
+        score_v = torch.full_like(ew_v, fill_value=c_v)
+
+        # Merge candidate edges
+        edge_index_all = torch.cat([ei_t, ei_v], dim=1)
+        score_all      = torch.cat([score_t, score_v], dim=0)
+
+        # Coalesce with sum: overlapping edges will get (c_t + c_v)
+        edge_index_coalesced, score_coalesced = freerec.graph.coalesce(
             edge_index_all, score_all, reduce='sum'
         )
 
-        # Step 6 — TopK binary fusion: select top (k_t+k_v) neighbors, then binarize
-        k_total = k_t + k_v
-        row, col = edge_index_all[0], edge_index_all[1]
-        edge_index_bin = self._topk_binarize(row, col, score_all, k_total)
+        # Apply Cross-Modal Consensus Boost:
+        # If score_coalesced > max(c_t, c_v), it means the edge appeared in BOTH graphs!
+        eps_threshold = max(c_t, c_v) + 1e-5
+        consensus_mask = score_coalesced >= eps_threshold
+        num_consensus  = consensus_mask.sum().item()
 
-        # Binary weights: 1.0 — keep on CPU (same device as edge_index_bin)
-        edge_weight_bin = torch.ones(edge_index_bin.size(1))   # CPU float tensor
+        # Boost consensus edges by (1 + alpha)
+        score_coalesced[consensus_mask] = score_coalesced[consensus_mask] * (1.0 + cfg.alpha_consensus)
 
-        # Step 7 — To-undirected + symmetric Laplacian normalization (all CPU)
-        edge_index_bin, edge_weight_bin = freerec.graph.to_undirected(
-            edge_index_bin, edge_weight_bin, reduce='max'
+        print(
+            f"[ClipFuse-v3.1] Graph Coalesced: {edge_index_coalesced.size(1)} unique directed edges | "
+            f"Consensus edges (in both kNN): {num_consensus} ({num_consensus/N:.2f} per item) "
+            f"[Boosted by x{1.0 + cfg.alpha_consensus:.2f}]"
         )
-        edge_index_bin, edge_weight_bin = freerec.graph.to_normalized(
-            edge_index_bin, edge_weight_bin, normalization='sym'
+
+        # To-undirected + symmetric Laplacian normalization
+        edge_index_final, edge_weight_final = freerec.graph.to_undirected(
+            edge_index_coalesced, score_coalesced, reduce='max'
+        )
+        edge_index_final, edge_weight_final = freerec.graph.to_normalized(
+            edge_index_final, edge_weight_final, normalization='sym'
         )
 
         mAdj = torch.sparse_coo_tensor(
-            edge_index_bin, edge_weight_bin, size=(N, N)
+            edge_index_final, edge_weight_final, size=(N, N)
         )
-        # register_buffer moves tensor to cfg.device and keeps it in sync
         self.register_buffer('mAdj', mAdj.to_sparse_csr())
 
-        print(
-            f"[ClipFuse] mAdj built: {edge_index_bin.size(1)} edges "
-            f"(after undirected + sym-norm) | "
-            f"k_total={k_total}, c_v={c_v:.4f}, c_t={c_t:.4f}"
-        )
-
-        # Step 8 — Initialize embeddings (identical to STAIR baseline)
+        # Initialize item/user embeddings (prior-weighted whitening)
         mfeats = [self.whitening(feat) * k for feat, k in zip(raw_mfeats, cfg.num_neighbors)]
         mfeats = sum(mfeats).div(sum(cfg.num_neighbors))
         self.Item.embeddings.weight.data.copy_(mfeats)
@@ -410,7 +326,6 @@ class CoachForSTAIR(freerec.launcher.Coach):
     def set_optimizer(self):
         opt    = self.cfg.optimizer.lower()
         kwargs = dict(lr=self.cfg.lr, weight_decay=self.cfg.weight_decay)
-        # freerec 0.9.x does not expose beta1/beta2 by default; use Adam defaults
         betas  = (getattr(self.cfg, 'beta1', 0.9), getattr(self.cfg, 'beta2', 0.999))
 
         if opt == 'sgd':
