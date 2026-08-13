@@ -32,14 +32,14 @@
 
 % BSC & Item Graph (Nhánh phải X = +2.5)
 \node[block, minimum width=3.0cm] (bsc) at (2.5,-2.9) {Backward Stepwise\\Convolution (BSC)};
-\node[smallmod, minimum width=3.4cm] (v2) at (2.5,-4.1) {[v2 DyFuse]\\Norm-based Reweight (thất bại)};
-\node[newmod, minimum width=3.4cm] (v3) at (2.5,-5.5) {[v3 ClipFuse-Consensus]\\kNN Disc. + Prior 5:1\\+ Consensus Boost ($\alpha{=}0.5$)};
+\node[smallmod, minimum width=3.4cm] (v2) at (2.5,-4.2) {[v2 DyFuse]\\Norm-based Reweight (thất bại)};
+\node[newmod, minimum width=3.4cm] (v3) at (2.5,-5.6) {[v3 ClipFuse-Consensus]\\kNN Disc. + Prior 5:1\\+ Consensus Boost ($\alpha{=}0.5$)};
 \draw[arr] ([xshift=2.5cm]subspace.south) -- (bsc.north);
 \draw[modarr] (bsc.south) -- (v2.north);
 \draw[modarr] (v2.south) -- (v3.north);
 
 % Final Embedding & Loss (X = 0)
-\node[merge] (final) at (0,-7.0)
+\node[merge] (final) at (0,-7.1)
 {Final Representation Alignment \& BPR Loss\\$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{BPR}} + \lambda_{\text{cl}}\mathcal{L}_{\text{cl}}$};
 \draw[arr] (v1.south) -- ([xshift=-2.5cm]final.north);
 \draw[arr] (v3.south) -- ([xshift=2.5cm]final.north);
@@ -95,11 +95,11 @@ Tham số $\lambda_{cl}=0.001$ được cấu hình để đóng vai trò làm h
 \centering
 \begin{tikzpicture}[scale=0.95, transform shape,
     block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.4cm, font=\scriptsize, align=center, fill=blue!8},
-    subspace1/.style={rectangle, draw=blue!60, fill=blue!15, rounded corners=2pt, minimum height=0.6cm, minimum width=2.2cm, font=\tiny\bfseries},
-    subspace2/.style={rectangle, draw=gray!60, fill=gray!15, rounded corners=2pt, minimum height=0.6cm, minimum width=2.2cm, font=\tiny\bfseries, text=gray},
-    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.7cm, minimum width=4.2cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    subspace1/.style={rectangle, draw=blue!60, fill=blue!15, rounded corners=2pt, minimum height=0.6cm, minimum width=2.1cm, font=\tiny\bfseries},
+    subspace2/.style={rectangle, draw=gray!60, fill=gray!15, rounded corners=2pt, minimum height=0.6cm, minimum width=2.1cm, font=\tiny\bfseries, text=gray},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.7cm, minimum width=4.4cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
     arr/.style={-{Stealth[length=2mm]}, thick},
-    note/.style={font=\tiny\itshape, text=red!70!black},
+    note/.style={font=\tiny\itshape, text=red!70!black, align=left},
 ]
 \node[block] (graph) at (0,0) {User--Item Interaction Graph $A$};
 \node[block] (view1) at (-2.4,-1.2) {View $A' = \text{EdgeDrop}(A, p_{drop})$};
@@ -107,19 +107,21 @@ Tham số $\lambda_{cl}=0.001$ được cấu hình để đóng vai trò làm h
 \draw[arr] (graph.south) -- ++(0,-0.3cm) -| (view1.north);
 \draw[arr] (graph.south) -- ++(0,-0.3cm) -| (view2.north);
 
-\node[subspace1] (c1) at (-3.5,-2.5) {Collab $[0{:}32]$};
-\node[subspace2] (m1) at (-1.3,-2.5) {Multi $[32{:}64]$};
+% Position Collab (c1, c2) on the inner side, Multi (m1, m2) on the outer side for perfect symmetry
+\node[subspace2] (m1) at (-3.5,-2.5) {Multi $[32{:}64]$};
+\node[subspace1] (c1) at (-1.3,-2.5) {Collab $[0{:}32]$};
 \node[subspace1] (c2) at (1.3,-2.5) {Collab $[0{:}32]$};
 \node[subspace2] (m2) at (3.5,-2.5) {Multi $[32{:}64]$};
-\draw[arr] (view1) -- (c1); \draw[arr] (view1) -- (m1);
+
+\draw[arr] (view1) -- (m1); \draw[arr] (view1) -- (c1);
 \draw[arr] (view2) -- (c2); \draw[arr] (view2) -- (m2);
 
 \node[newmod] (infoNCE) at (0,-3.8)
 {[v1 STAIR-GCL InfoNCE Loss]\\$\mathcal{L}_{\text{cl}}$ CHỈ tính trên 32 chiều Collaborative};
-\draw[arr] (c1.south) -- ++(0,-0.35cm) -| ([xshift=-1.2cm]infoNCE.north);
-\draw[arr] (c2.south) -- ++(0,-0.35cm) -| ([xshift=1.2cm]infoNCE.north);
+\draw[arr] (c1.south) -- ++(0,-0.35cm) -| ([xshift=-1.3cm]infoNCE.north);
+\draw[arr] (c2.south) -- ++(0,-0.35cm) -| ([xshift=1.3cm]infoNCE.north);
 
-\node[note, right=0.2cm of m2] {32 chiều Multimodal\\bảo tồn hoàn toàn,\\chống oversmoothing};
+\node[note, right=0.25cm of m2] {32 chiều Multimodal\\bảo tồn hoàn toàn,\\chống oversmoothing};
 \end{tikzpicture}
 \caption{Cơ chế phân tách không gian và học đối chiếu từng bước (Stepwise Graph Contrastive Learning - STAIR-GCL).}
 \label{fig:stair_gcl_architecture}
@@ -380,23 +382,23 @@ Thực nghiệm STAIR-DyFuse mang lại hai đóng góp quan trọng cho quá tr
 \centering
 \begin{tikzpicture}[scale=0.92, transform shape,
     block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.4cm, font=\scriptsize, align=center, fill=blue!8},
-    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.68cm, minimum width=4.2cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
-    old/.style={rectangle, draw=gray, rounded corners=2pt, minimum height=0.68cm, minimum width=4.0cm, font=\scriptsize, align=center, fill=gray!10, text=gray},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.68cm, text width=4.1cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    old/.style={rectangle, draw=gray, rounded corners=2pt, minimum height=0.68cm, text width=4.1cm, font=\scriptsize, align=center, fill=gray!10, text=gray},
     arr/.style={-{Stealth[length=2mm]}, thick},
     oldarr/.style={-{Stealth[length=2mm]}, thick, gray, dashed},
-    note/.style={font=\tiny\itshape, text=red!70!black},
+    note/.style={font=\tiny\bfseries, align=center, text width=4.5cm},
 ]
-% Left: STAIR-v2 Failure
-\node[note] at (-3.2,1.1) {STAIR-v2 (DyFuse): MODALITY COLLAPSE};
-\node[old] (v2_norm) at (-3.2,0) {Raw Norm: Text=1.0 vs Vis=76.8\\$\rightarrow c_v=95.6\%, c_t=4.4\%$};
-\node[old] (v2_out) at (-3.2,-1.4) {Đồ thị Text gần như bị triệt tiêu\\Loss giảm nhanh nhưng Recall/NDCG tụt 13\%};
+% Left Column: STAIR-v2 Failure (X = -3.3)
+\node[note, text=red!70!black] at (-3.3,1.1) {STAIR-v2 (DyFuse):\\MODALITY COLLAPSE};
+\node[old] (v2_norm) at (-3.3,0) {Raw Norm: Text=1.0 vs Vis=76.8\\$\rightarrow c_v=95.6\%, c_t=4.4\%$};
+\node[old] (v2_out) at (-3.3,-1.5) {Đồ thị Text gần như bị triệt tiêu\\Loss giảm nhanh, Recall/NDCG $-13\%$};
 \draw[oldarr] (v2_norm) -- (v2_out);
 
-% Right: STAIR-v3 Success
-\node[note] at (3.2,1.1) {STAIR-v3 (ClipFuse-Consensus): GIẢI PHÁP THÀNH CÔNG};
-\node[newmod] (v3_disc) at (3.2,0.1) {1. kNN Discriminability: $disc_m = 1 - \overline{sim}_m$\\+ Clip floor $\delta = 0.3$};
-\node[newmod] (v3_prior) at (3.2,-1.2) {2. Prior-Preserving Weighting ($k_t{:}k_v = 5{:}1$)\\Text $82.5\%$, Visual $17.5\%$};
-\node[newmod] (v3_boost) at (3.2,-2.5) {3. Consensus Boost: Cạnh trùng trong cả 2 kNN\\được nhân $(1+\alpha) = 1.5\times$};
+% Right Column: STAIR-v3 Success (X = +3.3)
+\node[note, text=red!70!black] at (3.3,1.1) {STAIR-v3 (ClipFuse-Consensus):\\GIẢI PHÁP THÀNH CÔNG};
+\node[newmod] (v3_disc) at (3.3,0.1) {1. kNN Discriminability: $disc_m = 1 - \overline{sim}_m$\\+ Clip floor $\delta = 0.3$};
+\node[newmod] (v3_prior) at (3.3,-1.2) {2. Prior-Preserving ($k_t{:}k_v = 5{:}1$)\\Text $82.5\%$, Visual $17.5\%$};
+\node[newmod] (v3_boost) at (3.3,-2.5) {3. Consensus Boost: Cạnh trùng 2 kNN\\được nhân $(1+\alpha) = 1.5\times$};
 \draw[arr] (v3_disc) -- (v3_prior);
 \draw[arr] (v3_prior) -- (v3_boost);
 \end{tikzpicture}
@@ -590,27 +592,27 @@ Toàn bộ quy trình chỉ chạy một lần trước khi vào vòng lặp hu�
 % ===== HÌNH MINH HỌA STAIR-SGInit (v4) =====
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}[scale=0.95, transform shape,
+\begin{tikzpicture}[scale=0.94, transform shape,
     block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.8cm, font=\scriptsize, align=center, fill=blue!8},
-    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=4.2cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, text width=4.3cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
     arr/.style={-{Stealth[length=2mm]}, thick},
     note/.style={font=\tiny\itshape, text=red!70!black},
 ]
 \node[block] (item_f) at (0,0) {SVD-Whitened Item Features $\mathbf{f}_i$};
 
-\node[newmod] (local) at (-2.6,-1.3) {Local Branch (Sym-Norm)\\$\mathbf{u}^{local} = D_U^{-1/2} R D_I^{-1/2} \mathbf{F}$};
-\node[newmod] (global) at (2.6,-1.3) {Global Branch (K-Means $K=8$)\\$\mathbf{u}^{cluster} = D_U^{-1} R \mathbf{F}^{clust}$};
+\node[newmod] (local) at (-2.7,-1.4) {Local Branch (Sym-Norm)\\$\mathbf{u}^{local} = D_U^{-1/2} R D_I^{-1/2} \mathbf{F}$};
+\node[newmod] (global) at (2.7,-1.4) {Global Branch (K-Means $K=8$)\\$\mathbf{u}^{cluster} = D_U^{-1} R \mathbf{F}^{clust}$};
 \draw[arr] (item_f.south) -- ++(0,-0.35cm) -| (local.north);
 \draw[arr] (item_f.south) -- ++(0,-0.35cm) -| (global.north);
 
-\node[newmod, minimum width=5.6cm] (blend) at (0,-2.6) {Convex Blend: $\mathbf{u}^{init} = \lambda \mathbf{u}^{local} + (1-\lambda)\mathbf{u}^{cluster} \quad (\lambda=0.1)$};
+\node[newmod, text width=5.8cm] (blend) at (0,-2.8) {Convex Blend: $\mathbf{u}^{init} = \lambda \mathbf{u}^{local} + (1-\lambda)\mathbf{u}^{cluster} \quad (\lambda=0.1)$};
 \draw[arr] (local.south) -- ++(0,-0.3cm) -| ([xshift=-1.5cm]blend.north);
 \draw[arr] (global.south) -- ++(0,-0.3cm) -| ([xshift=1.5cm]blend.north);
 
-\node[newmod, minimum width=5.6cm] (rescale) at (0,-3.8) {Norm Scale Alignment: $\mathbf{u}^{init} \leftarrow \mathbf{u}^{init} \times \frac{\overline{\|\mathbf{f}\|}_2}{\overline{\|\mathbf{u}^{init}\|}_2}$};
+\node[newmod, text width=5.8cm] (rescale) at (0,-4.1) {Norm Scale Alignment: $\mathbf{u}^{init} \leftarrow \mathbf{u}^{init} \times \frac{\overline{\|\mathbf{f}\|}_2}{\overline{\|\mathbf{u}^{init}\|}_2}$};
 \draw[arr] (blend) -- (rescale);
 
-\node[block, minimum width=4.2cm] (user_emb) at (0,-5.0) {\texttt{user\_id\_embedding.weight}};
+\node[block, minimum width=4.2cm] (user_emb) at (0,-5.4) {\texttt{user\_id\_embedding.weight}};
 \draw[arr] (rescale) -- (user_emb);
 \end{tikzpicture}
 \caption{Quy trình khởi tạo biểu diễn người dùng Semantically Guaranteed User Initialization (STAIR-SGInit v4).}
