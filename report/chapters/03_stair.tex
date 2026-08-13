@@ -544,8 +544,8 @@ Sự khác biệt giữa hai tập dữ liệu cho thấy hiệu quả của cơ
 STAIR-ClipFuse-Consensus xác nhận rằng ba điều chỉnh được đề xuất từ bài học của STAIR-DyFuse, gồm dùng độ phân biệt kNN thay cho norm thô, bảo toàn tỷ lệ cấu trúc gốc của bài toán, và tăng cường trọng số cho các cạnh đồng thuận đa phương thức, đã giải quyết đúng nguyên nhân gây suy giảm hiệu năng ở phiên bản trước. Kết quả trên tập Sports cho thấy cơ chế fusion động hoàn toàn có khả năng vượt qua cơ chế fusion tĩnh khi dữ liệu đủ dày đặc để tính toán điểm tin cậy ổn định. Khoảng cách còn lại trên tập Baby gợi ý hướng phát triển tiếp theo là thiết lập ngưỡng $\delta$ thích ứng theo độ thưa của từng tập dữ liệu, hoặc kết hợp cơ chế reweight đồ thị này với contrastive learning trên collaborative subspace của STAIR-GCL để tăng cường tính ổn định trên các tập dữ liệu thưa.
  
 % ================================================
-
-
+ 
+ 
 % ================================================
  
 \subsection{Kết quả thực nghiệm cải tiến 4: Semantically Guaranteed User Representation Initialization (STAIR-SGInit)}
@@ -593,27 +593,37 @@ Toàn bộ quy trình chỉ chạy một lần trước khi vào vòng lặp hu�
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[scale=0.94, transform shape,
-    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.8cm, font=\scriptsize, align=center, fill=blue!8},
-    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, text width=4.3cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
-    arr/.style={-{Stealth[length=2mm]}, thick},
+    block/.style={rectangle, draw, rounded corners=3pt, minimum height=0.65cm, minimum width=3.2cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=3pt, minimum height=0.9cm, text width=4.8cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    widebox/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=3pt, minimum height=0.9cm, text width=6.2cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    arr/.style={-{Stealth[length=2.5mm]}, thick},
     note/.style={font=\tiny\itshape, text=red!70!black},
 ]
+% Item Features Input (Y = 0)
 \node[block] (item_f) at (0,0) {SVD-Whitened Item Features $\mathbf{f}_i$};
 
-\node[newmod] (local) at (-2.7,-1.4) {Local Branch (Sym-Norm)\\$\mathbf{u}^{local} = D_U^{-1/2} R D_I^{-1/2} \mathbf{F}$};
-\node[newmod] (global) at (2.7,-1.4) {Global Branch (K-Means $K=8$)\\$\mathbf{u}^{cluster} = D_U^{-1} R \mathbf{F}^{clust}$};
+% Parallel Branches: Local (X = -2.6) and Global (X = +2.6) at Y = -1.5
+\node[newmod] (local) at (-2.6,-1.5) {Local Branch (Sym-Norm)\\$\mathbf{u}^{local} = D_U^{-1/2} R D_I^{-1/2} \mathbf{F}$};
+\node[newmod] (global) at (2.6,-1.5) {Global Branch (K-Means, $K=8$)\\$\mathbf{u}^{cluster} = D_U^{-1} R \mathbf{F}^{clust}$};
+
 \draw[arr] (item_f.south) -- ++(0,-0.35cm) -| (local.north);
 \draw[arr] (item_f.south) -- ++(0,-0.35cm) -| (global.north);
 
-\node[newmod, text width=5.8cm] (blend) at (0,-2.8) {Convex Blend: $\mathbf{u}^{init} = \lambda \mathbf{u}^{local} + (1-\lambda)\mathbf{u}^{cluster} \quad (\lambda=0.1)$};
-\draw[arr] (local.south) -- ++(0,-0.3cm) -| ([xshift=-1.5cm]blend.north);
-\draw[arr] (global.south) -- ++(0,-0.3cm) -| ([xshift=1.5cm]blend.north);
+% Convex Blend (Y = -3.1)
+\node[widebox] (blend) at (0,-3.1) {Convex Blend ($\lambda = 0.1$)\\$\mathbf{u}^{init} = \lambda \mathbf{u}^{local} + (1-\lambda)\mathbf{u}^{cluster}$};
 
-\node[newmod, text width=5.8cm] (rescale) at (0,-4.1) {Norm Scale Alignment: $\mathbf{u}^{init} \leftarrow \mathbf{u}^{init} \times \frac{\overline{\|\mathbf{f}\|}_2}{\overline{\|\mathbf{u}^{init}\|}_2}$};
-\draw[arr] (blend) -- (rescale);
+\draw[arr] (local.south) -- ++(0,-0.3cm) -| ([xshift=-2.0cm]blend.north);
+\draw[arr] (global.south) -- ++(0,-0.3cm) -| ([xshift=2.0cm]blend.north);
 
-\node[block, minimum width=4.2cm] (user_emb) at (0,-5.4) {\texttt{user\_id\_embedding.weight}};
-\draw[arr] (rescale) -- (user_emb);
+% Norm Scale Alignment (Y = -4.7)
+\node[widebox] (rescale) at (0,-4.7) {Norm Scale Alignment\\$\mathbf{u}^{init} \leftarrow \mathbf{u}^{init} \times \frac{\overline{\|\mathbf{f}\|}_2}{\overline{\|\mathbf{u}^{init}\|}_2}$};
+
+\draw[arr] (blend.south) -- (rescale.north);
+
+% Final Output (Y = -6.1)
+\node[block, minimum width=4.5cm] (user_emb) at (0,-6.1) {\texttt{user\_id\_embedding.weight}};
+
+\draw[arr] (rescale.south) -- (user_emb.north);
 \end{tikzpicture}
 \caption{Quy trình khởi tạo biểu diễn người dùng Semantically Guaranteed User Initialization (STAIR-SGInit v4).}
 \label{fig:stair_sginit_architecture}
