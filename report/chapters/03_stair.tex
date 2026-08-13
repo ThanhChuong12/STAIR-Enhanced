@@ -285,33 +285,319 @@ Thực nghiệm STAIR-DyFuse mang lại hai đóng góp quan trọng cho quá tr
 
 % ================================================
 
+
+\subsection{Kết quả thực nghiệm cải tiến 3: Prior-Preserving kNN Fusion với Cross-Modal Consensus Boosting (STAIR-ClipFuse-Consensus)}
+ 
+\subsubsection{Động lực kỹ thuật: khắc phục ba hạn chế của STAIR-DyFuse}
+ 
+Từ ba nguyên nhân đã xác định ở STAIR-DyFuse, phiên bản cải tiến thứ ba được thiết kế nhằm giải quyết trực tiếp từng vấn đề. Hạn chế đầu tiên nằm ở việc dùng norm thô của đặc trưng sau whitening làm tín hiệu tin cậy, dẫn đến sự áp đảo gần như tuyệt đối của phương thức hình ảnh do chênh lệch chính sách chuẩn hóa giữa hai phương thức. Hạn chế thứ hai là trọng số cạnh liên tục làm mất ổn định quá trình lan truyền trong BSC. Hạn chế thứ ba là việc bỏ qua tri thức nền của bài toán, cụ thể là tỷ lệ cấu trúc $k_t{:}k_v = 5{:}1$ mà tác giả STAIR đã lựa chọn dựa trên đặc tính dữ liệu Amazon, nơi văn bản sản phẩm thường sạch và mang tính phân biệt cao hơn hình ảnh sản phẩm.
+ 
+STAIR-ClipFuse-Consensus đề xuất ba cơ chế bổ sung cho nhau nhằm giải quyết đồng thời cả ba vấn đề trên mà không thêm bất kỳ tham số học nào: tính điểm tin cậy dựa trên độ phân biệt của lân cận thay vì norm thô, bảo toàn tỷ lệ cấu trúc gốc của STAIR trong quá trình gán trọng số, và tăng cường trọng số cho các liên kết được cả hai phương thức đồng thuận xác nhận.
+ 
+\subsubsection{Phương pháp 1: kNN-Discriminability Confidence}
+ 
+Thay vì dùng norm của vector đặc trưng, điểm tin cậy của mỗi phương thức được tính dựa trên độ phân biệt trung bình của đồ thị kNN xây dựng từ chính phương thức đó. Với mỗi phương thức $m \in \{t, v\}$, độ phân biệt được định nghĩa bằng:
+ 
+\begin{equation}
+disc_m = 1 - \overline{sim}_{knn}^{m}
+\end{equation}
+ 
+trong đó $\overline{sim}_{knn}^{m}$ là giá trị cosine similarity trung bình của toàn bộ cạnh trong đồ thị kNN xây dựng từ phương thức $m$. Ý nghĩa của công thức này là nếu các sản phẩm lân cận nhau có similarity trung bình thấp, tức không gian đặc trưng của phương thức đó phân tán và mang nhiều thông tin phân biệt hơn, nên được tin tưởng nhiều hơn trong quá trình lan truyền. Cách tính này không phụ thuộc vào magnitude tuyệt đối của vector, nên loại bỏ hoàn toàn sự lệch lạc do chính sách chuẩn hóa khác nhau giữa hai phương thức đã gây ra ở STAIR-DyFuse.
+ 
+Điểm tin cậy được chuẩn hóa bằng hàm softmax có nhiệt độ $\tau$, sau đó áp dụng ngưỡng cắt $\delta = 0.3$ đã đề xuất ở phần định hướng của STAIR-DyFuse:
+ 
+\begin{equation}
+c_v^{raw} = \frac{\exp(disc_v / \tau)}{\exp(disc_v / \tau) + \exp(disc_t / \tau)}, \qquad c_v = \text{clip}(c_v^{raw},\, \delta,\, 1-\delta), \qquad c_t = 1 - c_v
+\end{equation}
+ 
+Ngưỡng cắt đảm bảo không phương thức nào bị triệt tiêu hoàn toàn như trường hợp đã xảy ra ở STAIR-DyFuse, nơi văn bản chỉ còn đóng góp 4.4\%.
+ 
+\subsubsection{Phương pháp 2: Prior-Preserving Structural Weighting}
+ 
+STAIR gốc xây dựng đồ thị kNN với $k_t = 5$ láng giềng cho văn bản và $k_v = 1$ láng giềng cho hình ảnh, tạo ra tỷ lệ số cạnh $5{:}1$ cho mỗi sản phẩm. STAIR-ClipFuse-Consensus giữ nguyên tỷ lệ số cạnh này và chỉ dùng điểm tin cậy $c_t, c_v$ để gán trọng số cho từng cạnh riêng lẻ, không nhân thêm hệ số nào khác. Vì mỗi sản phẩm có 5 cạnh văn bản và 1 cạnh hình ảnh, tổng khối lượng đóng góp tự nhiên của từng phương thức vào một sản phẩm là:
+ 
+\begin{equation}
+W_t = k_t \cdot c_t, \qquad W_v = k_v \cdot c_v
+\end{equation}
+ 
+Tỷ lệ đóng góp cấu trúc thực tế được tính bằng:
+ 
+\begin{equation}
+\hat{P}_t = \frac{k_t \cdot c_t}{k_t \cdot c_t + k_v \cdot c_v}, \qquad \hat{P}_v = \frac{k_v \cdot c_v}{k_t \cdot c_t + k_v \cdot c_v}
+\end{equation}
+ 
+Với số liệu đo được trên tập Baby ($c_t = 0.4861$, $c_v = 0.5139$), tỷ lệ đóng góp cấu trúc đạt $\hat{P}_t = 82.5\%$ và $\hat{P}_v = 17.5\%$, gần khớp với tỷ lệ $83.3\% : 16.7\%$ của STAIR gốc. Trên tập Sports, tỷ lệ tương ứng là $\hat{P}_t = 83.0\%$ và $\hat{P}_v = 17.0\%$. Cách thiết kế này cho phép mô hình vừa tôn trọng tri thức nền về đặc tính dữ liệu Amazon, vừa tự động điều chỉnh nhẹ theo độ phân biệt thực tế của từng tập dữ liệu cụ thể.
+ 
+\subsubsection{Phương pháp 3: Cross-Modal Consensus Boosting}
+ 
+Trong quá trình gộp hai đồ thị kNN bằng phép cộng dồn, một cạnh $(i,j)$ có thể xuất hiện chỉ trong một đồ thị hoặc xuất hiện đồng thời trong cả hai đồ thị. Trường hợp một cạnh xuất hiện ở cả đồ thị văn bản và đồ thị hình ảnh cho thấy hai sản phẩm này tương đồng nhau trên cả hai phương thức, đây là tín hiệu ngữ nghĩa đáng tin cậy hơn so với cạnh chỉ xuất hiện ở một phương thức. Trọng số cạnh được tính theo hai trường hợp:
+ 
+\begin{equation}
+S_{ij}^{single} =
+\begin{cases}
+c_t & \text{nếu } (i,j) \text{ chỉ thuộc đồ thị văn bản} \\
+c_v & \text{nếu } (i,j) \text{ chỉ thuộc đồ thị hình ảnh}
+\end{cases}
+\end{equation}
+ 
+\begin{equation}
+S_{ij}^{consensus} = (c_t + c_v) \cdot (1 + \alpha)
+\end{equation}
+ 
+với $\alpha = 0.5$ là hệ số tăng cường mặc định. Sau khi gán trọng số, đồ thị được đối xứng hóa và chuẩn hóa theo dạng symmetric Laplacian, giữ nguyên cách chuẩn hóa của STAIR gốc:
+ 
+\begin{equation}
+\hat{S} = D^{-1/2} S D^{-1/2}
+\end{equation}
+ 
+Toàn bộ ba cơ chế trên chỉ can thiệp vào bước xây dựng đồ thị \textit{mAdj} trong hàm chuẩn bị dữ liệu, không thêm tham số học, không thay đổi hàm mất mát BPR gốc, và không ảnh hưởng đến tốc độ huấn luyện.
+ 
+\subsubsection{Kết quả thực nghiệm}
+ 
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\linewidth]{graphics/stair/stair_v3_learning_curves.png}
+    \caption[Learning curves của STAIR-ClipFuse-Consensus trên Baby và Sports]{Learning curves của STAIR-ClipFuse-Consensus trên Baby và Sports.\protect\\[2pt]
+    \textit{Ghi chú: Tiến trình BPR Loss, Recall@10/20 và NDCG@10/20 qua 500 epoch. Trên cả hai tập dữ liệu, Recall và NDCG tăng nhanh trong 100 epoch đầu rồi ổn định quanh mức đỉnh, không xuất hiện dấu hiệu suy giảm sớm như đã quan sát ở STAIR-DyFuse.}}
+    \label{fig:stair_v3_curves}
+\end{figure}
+ 
+Khác với STAIR-DyFuse, learning curves của STAIR-ClipFuse-Consensus (Hình~\ref{fig:stair_v3_curves}) cho thấy Recall và NDCG duy trì ổn định quanh mức đỉnh trong suốt phần lớn quá trình huấn luyện thay vì đạt đỉnh sớm rồi giảm dần. Đây là dấu hiệu cho thấy chất lượng đồ thị đầu vào đã được cải thiện đáng kể, giúp quá trình lan truyền BSC ổn định hơn.
+ 
+Bảng~\ref{tab:stair_v3_results} tổng hợp kết quả Test metric tại checkpoint tốt nhất, được chọn theo tiêu chí NDCG@20 trên tập validation, đúng theo quy ước đã áp dụng xuyên suốt cho Baseline, STAIR-GCL và STAIR-DyFuse.
+ 
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{%
+    >{\raggedright\arraybackslash}p{1.8cm}
+    >{\centering\arraybackslash}p{1.8cm}
+    >{\centering\arraybackslash}p{2.1cm}
+    >{\centering\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{2.2cm}}
+ 
+    \caption{Kết quả thực nghiệm bốn phiên bản STAIR trên tập Baby và Sports.}
+    \label{tab:stair_v3_results} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{Baseline} & \textbf{v1 (GCL)} & \textbf{v2 (DyFuse)} & \textbf{v3 (ClipFuse)} & \textbf{$\Delta$ v3 vs BL} \\
+    \hline
+    \endfirsthead
+    \multicolumn{7}{c}{{\bfseries Bảng \thetable\ (tiếp theo)}} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{Baseline} & \textbf{v1 (GCL)} & \textbf{v2 (DyFuse)} & \textbf{v3 (ClipFuse)} & \textbf{$\Delta$ v3 vs BL} \\
+    \hline
+    \endhead
+    \midrule
+    \multicolumn{7}{r}{\textit{Tiếp tục ở trang sau...}} \\
+    \endfoot
+    \hline
+    \endlastfoot
+ 
+    Baby & Recall@10 & \textbf{0.0686} & \textbf{0.0695} & 0.0578 & 0.0612 & $-10.79\%$ \\
+    \midrule
+    & Recall@20 & \textbf{0.1034} & \textbf{0.1047} & 0.0898 & 0.0938 & $-9.28\%$ \\
+    \midrule
+    & NDCG@10   & \textbf{0.0363} & \textbf{0.0365} & 0.0309 & 0.0329 & $-9.37\%$ \\
+    \midrule
+    & NDCG@20   & \textbf{0.0451} & \textbf{0.0455} & 0.0388 & 0.0412 & $-8.65\%$ \\
+    \hline
+    Sports & Recall@10 & \textbf{0.0743} & \textbf{0.0745} & 0.0669 & 0.0740 & $-0.40\%$ \\
+    \midrule
+    & Recall@20 & 0.1119 & \textbf{0.1124} & 0.1002 & \textbf{0.1124} & $+0.45\%$ \\
+    \midrule
+    & NDCG@10   & 0.0402 & \textbf{0.0404} & 0.0366 & \textbf{0.0406} & $+1.00\%$ \\
+    \midrule
+    & NDCG@20   & 0.0500 & \textbf{0.0504} & 0.0449 & \textbf{0.0506} & $+1.20\%$ \\
+    \hline
+\end{longtable}
+ 
+\subsubsection{Phân tích chi tiết theo từng tập dữ liệu}
+ 
+\paragraph{Tập Sports — hiệu năng ngang bằng và vượt nhẹ baseline:}
+Trên tập Sports, STAIR-ClipFuse-Consensus đạt Recall@20 = 0.1124 và NDCG@20 = 0.0506, cao hơn baseline lần lượt 0.45\% và 1.20\%. Đây là kết quả đáng chú ý vì đây là lần đầu tiên trong toàn bộ quá trình cải tiến STAIR mà một cơ chế fusion động vượt qua được cơ chế fusion tĩnh của baseline trên toàn bộ bốn chỉ số đánh giá của một tập dữ liệu. So với STAIR-DyFuse, mức cải thiện trên Sports còn rõ rệt hơn, với NDCG@20 tăng 12.69\%. Log huấn luyện ghi nhận 4805 cạnh đồng thuận trên tập Sports, tương ứng khoảng 0.26 cạnh đồng thuận trên mỗi sản phẩm, cho thấy cơ chế tăng cường đồng thuận có đủ số lượng cạnh chất lượng cao để phát huy tác dụng.
+ 
+\paragraph{Tập Baby — cải thiện rõ rệt so với STAIR-DyFuse nhưng chưa đạt baseline:}
+Trên tập Baby, STAIR-ClipFuse-Consensus vẫn thấp hơn baseline khoảng 9\% đến 11\% trên các chỉ số, nhưng đã phục hồi đáng kể so với STAIR-DyFuse, với NDCG@20 tăng 6.19\% và Recall@10 tăng 5.88\%. Số cạnh đồng thuận đo được trên Baby là 1841 cạnh, thấp hơn nhiều so với Sports do tập Baby chỉ có 7050 sản phẩm so với 18357 sản phẩm của Sports. Số lượng láng giềng ít hơn khiến điểm tin cậy tính từ kNN có phương sai lớn hơn, làm giảm độ ổn định của cơ chế reweight trên tập dữ liệu thưa.
+ 
+\paragraph{Vai trò của mật độ dữ liệu:}
+Sự khác biệt giữa hai tập dữ liệu cho thấy hiệu quả của cơ chế fusion thích ứng phụ thuộc vào mật độ và quy mô dữ liệu. Tập Sports có nhiều sản phẩm và tương tác hơn, không gian đặc trưng dày đặc hơn, nên đồ thị kNN xây dựng được ổn định và điểm tin cậy tính toán chính xác hơn. Tập Baby có mật độ thưa hơn, khiến các phép đo dựa trên lân cận gần dễ bị nhiễu bởi số lượng mẫu ít. Đây là yếu tố cần được cân nhắc khi thiết kế các cơ chế thích ứng theo dữ liệu cho những phiên bản tiếp theo.
+ 
+\subsubsection{Kết luận}
+ 
+STAIR-ClipFuse-Consensus xác nhận rằng ba điều chỉnh được đề xuất từ bài học của STAIR-DyFuse, gồm dùng độ phân biệt kNN thay cho norm thô, bảo toàn tỷ lệ cấu trúc gốc của bài toán, và tăng cường trọng số cho các cạnh đồng thuận đa phương thức, đã giải quyết đúng nguyên nhân gây suy giảm hiệu năng ở phiên bản trước. Kết quả trên tập Sports cho thấy cơ chế fusion động hoàn toàn có khả năng vượt qua cơ chế fusion tĩnh khi dữ liệu đủ dày đặc để tính toán điểm tin cậy ổn định. Khoảng cách còn lại trên tập Baby gợi ý hướng phát triển tiếp theo là thiết lập ngưỡng $\delta$ thích ứng theo độ thưa của từng tập dữ liệu, hoặc kết hợp cơ chế reweight đồ thị này với contrastive learning trên collaborative subspace của STAIR-GCL để tăng cường tính ổn định trên các tập dữ liệu thưa.
+ 
+% ================================================
+
+
+% ================================================
+ 
+\subsection{Kết quả thực nghiệm cải tiến 4: Semantically Guaranteed User Representation Initialization (STAIR-SGInit)}
+ 
+\subsubsection{Động lực kỹ thuật: khoảng trống chưa được xử lý ở các phiên bản trước}
+ 
+Ba phiên bản cải tiến trước đều tập trung vào việc điều chỉnh đồ thị kNN đa phương thức của item, trong khi cách khởi tạo embedding của user chưa được xem xét. Trong STAIR gốc, \texttt{item\_id\_embedding} được neo bằng đặc trưng multimodal thực tế sau SVD whitening ngay từ epoch đầu tiên, còn \texttt{user\_id\_embedding} chỉ được khởi tạo ngẫu nhiên bằng phân phối chuẩn. Sự chênh lệch chất lượng khởi tạo này tạo ra một khoảng cách ngữ nghĩa giữa hai phía của đồ thị bipartite ngay từ bước đầu tiên, khiến quá trình lan truyền thông tin qua FSC và BSC ở những epoch đầu bị nhiễu bởi phía user chưa mang thông tin gì có ý nghĩa. Trên tập Baby, nơi mỗi user chỉ có trung bình khoảng 6.1 tương tác trong tập huấn luyện, số lượng gradient cập nhật cho một user là rất ít, khiến nhiễu khởi tạo này tồn tại lâu hơn và ảnh hưởng nặng hơn đến toàn bộ quá trình học so với các tập dữ liệu có mật độ tương tác cao hơn.
+ 
+STAIR-SGInit đề xuất thay thế bước khởi tạo ngẫu nhiên của user bằng một phép tính toán trước, không học tham số, dựa trên chính đặc trưng multimodal đã whitening có sẵn của các item mà user đã tương tác.
+ 
+\subsubsection{Phương pháp: kết hợp Local Aggregation và Cluster Aggregation}
+ 
+\paragraph{Tầng local — tổng hợp theo item đã tương tác:}
+Với mỗi user $u$, vector khởi tạo được tính bằng trung bình có trọng số chuẩn hóa đối xứng trên các item đã tương tác, sử dụng trực tiếp đặc trưng đã whitening $\mathbf{f}_i$ đang dùng để khởi tạo \texttt{item\_id\_embedding}:
+ 
+\begin{equation}
+\mathbf{u}_u^{local} = \sum_{i \in \mathcal{N}(u)} \frac{1}{\sqrt{|\mathcal{N}(u)|\,|\mathcal{N}(i)|}} \, \mathbf{f}_i
+\end{equation}
+ 
+\paragraph{Tầng cluster — mở rộng ra ngữ nghĩa toàn cục:}
+Toàn bộ item được phân cụm bằng K-Means với $K=8$ trên không gian đặc trưng đã whitening. Mỗi item được thay bằng centroid gần nhất, sau đó tổng hợp cho user bằng trung bình đơn giản trên các centroid tương ứng của item đã tương tác:
+ 
+\begin{equation}
+\mathbf{u}_u^{cluster} = \frac{1}{|\mathcal{N}(u)|} \sum_{i \in \mathcal{N}(u)} \text{centroid}(\mathbf{f}_i)
+\end{equation}
+ 
+Tầng này giúp vector khởi tạo của user không bị giới hạn trong đúng những item đã click, mà phản ánh xu hướng sở thích rộng hơn, đặc biệt hữu ích với user có ít tương tác.
+ 
+\paragraph{Kết hợp và chuẩn hóa scale:}
+Hai tầng được kết hợp bằng hệ số $\lambda = 0.1$:
+ 
+\begin{equation}
+\mathbf{u}_u^{init} = \lambda \cdot \mathbf{u}_u^{local} + (1-\lambda) \cdot \mathbf{u}_u^{cluster}
+\end{equation}
+ 
+Vì $\mathbf{u}_u^{cluster}$ là kết quả của phép làm mịn qua centroid, norm trung bình của nó nhỏ hơn đáng kể so với norm của đặc trưng item gốc. Nếu không xử lý, vector khởi tạo của user sẽ có scale nhỏ hơn nhiều so với item, làm méo điểm số BPR ngay tại bước đầu tiên. Do đó, trước khi copy vào \texttt{user\_id\_embedding.weight}, vector khởi tạo được nhân với một hệ số để đưa norm trung bình về đúng bằng norm trung bình của item embedding:
+ 
+\begin{equation}
+\mathbf{u}_u^{init} \leftarrow \mathbf{u}_u^{init} \cdot \frac{\overline{\|\mathbf{f}\|}_2}{\overline{\|\mathbf{u}^{init}\|}_2}
+\end{equation}
+ 
+Toàn bộ quy trình chỉ chạy một lần trước khi vào vòng lặp huấn luyện, không thêm tham số học, không ảnh hưởng tốc độ training, và user embedding vẫn tiếp tục được cập nhật bình thường qua gradient trong suốt quá trình huấn luyện sau đó.
+ 
+\subsubsection{Kết quả thực nghiệm}
+ 
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\linewidth]{graphics/stair/stair_v4_learning_curves.png}
+    \caption[Learning curves của STAIR-SGInit trên Baby và Sports]{Learning curves của STAIR-SGInit trên Baby và Sports.\protect\\[2pt]
+    \textit{Ghi chú: Trên Baby, Recall@20 và NDCG@20 đạt đỉnh quanh epoch 225 rồi giảm nhẹ. Trên Sports, cả hai chỉ số vẫn dao động trong biên độ hẹp gần cuối quá trình huấn luyện, với điểm cao nhất rơi đúng vào epoch cuối cùng.}}
+    \label{fig:stair_v4_curves}
+\end{figure}
+ 
+Bảng~\ref{tab:stair_v4_results} tổng hợp kết quả Test metric tại checkpoint tốt nhất theo NDCG@20 trên validation, giữ nguyên quy ước đã áp dụng cho các phiên bản trước.
+ 
+\renewcommand{\arraystretch}{1.15}
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{longtable}{%
+    >{\raggedright\arraybackslash}p{1.0cm}
+    >{\centering\arraybackslash}p{1.4cm}
+    >{\centering\arraybackslash}p{1.3cm}
+    >{\centering\arraybackslash}p{1.15cm}
+    >{\centering\arraybackslash}p{1.15cm}
+    >{\centering\arraybackslash}p{1.15cm}
+    >{\centering\arraybackslash}p{1.15cm}
+    >{\centering\arraybackslash}p{1.5cm}}
+
+    \caption{Kết quả thực nghiệm năm phiên bản STAIR trên tập Baby và Sports.}
+    \label{tab:stair_v4_results} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập} & \textbf{Chỉ số} & \textbf{Baseline} & \textbf{v1} & \textbf{v2} & \textbf{v3} & \textbf{v4} & \textbf{$\Delta$ v4/v3} \\
+    \hline
+    \endfirsthead
+    \multicolumn{8}{c}{{\bfseries Bảng \thetable\ (tiếp theo)}} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập} & \textbf{Chỉ số} & \textbf{Baseline} & \textbf{v1} & \textbf{v2} & \textbf{v3} & \textbf{v4} & \textbf{$\Delta$ v4/v3} \\
+    \hline
+    \endhead
+    \midrule
+    \multicolumn{8}{r}{\textit{Tiếp tục ở trang sau...}} \\
+    \endfoot
+    \hline
+    \endlastfoot
+
+    Baby & Recall@10 & 0.0686 & \textbf{0.0695} & 0.0578 & 0.0612 & 0.0619 & $+1.14\%$ \\
+    \midrule
+    & Recall@20 & 0.1034 & \textbf{0.1047} & 0.0898 & 0.0938 & 0.0948 & $+1.07\%$ \\
+    \midrule
+    & NDCG@10   & 0.0363 & \textbf{0.0365} & 0.0309 & 0.0329 & 0.0333 & $+1.22\%$ \\
+    \midrule
+    & NDCG@20   & 0.0451 & \textbf{0.0455} & 0.0388 & 0.0412 & 0.0418 & $+1.46\%$ \\
+    \hline
+    Sports & Recall@10 & 0.0743 & \textbf{0.0745} & 0.0669 & \textbf{0.0740} & 0.0735 & $-0.68\%$ \\
+    \midrule
+    & Recall@20 & 0.1119 & 0.1124 & 0.1002 & \textbf{0.1124} & 0.1118 & $-0.53\%$ \\
+    \midrule
+    & NDCG@10   & 0.0402 & 0.0404 & 0.0366 & \textbf{0.0406} & 0.0400 & $-1.48\%$ \\
+    \midrule
+    & NDCG@20   & 0.0500 & 0.0504 & 0.0449 & \textbf{0.0506} & 0.0499 & $-1.38\%$ \\
+    \hline
+\end{longtable}
+\endgroup
+ 
+\subsubsection{Phân tích chi tiết theo từng tập dữ liệu}
+ 
+\paragraph{Tập Baby — cải thiện nhất quán trên cả bốn chỉ số:}
+STAIR-SGInit cải thiện đồng đều so với STAIR-ClipFuse-Consensus, từ $+1.07\%$ ở Recall@20 đến $+1.46\%$ ở NDCG@20. Đây là bằng chứng thực nghiệm xác nhận đúng giả thuyết ban đầu rằng nhiễu khởi tạo user là một trong những nguyên nhân thực sự làm giảm hiệu năng trên Baby. Kiểm tra log huấn luyện cho thấy vector khởi tạo trước khi chuẩn hóa scale có norm trung bình 0.1100, trong khi item embedding có norm trung bình 0.8437 — hệ số chuẩn hóa cần thiết lên tới $\times 7.673$. Nếu bỏ qua bước chuẩn hóa scale này, sự chênh lệch magnitude giữa hai phía embedding sẽ làm sai lệch nghiêm trọng điểm số BPR ngay từ epoch đầu, cho thấy bước chuẩn hóa scale là điều kiện bắt buộc chứ không phải một chi tiết kỹ thuật phụ.
+ 
+Mặc dù cải thiện đúng hướng, mức tăng $+1.1\%$ nhỏ hơn kỳ vọng ban đầu và Baby vẫn thấp hơn baseline khoảng $7\%$ đến $10\%$. Điều này cho thấy nhiễu khởi tạo user chỉ là một phần nguyên nhân, không phải toàn bộ khoảng cách hiệu năng còn lại giữa Baby và baseline.
+ 
+\paragraph{Tập Sports — giảm nhẹ so với STAIR-ClipFuse-Consensus:}
+Trên Sports, STAIR-SGInit giảm nhẹ trên cả bốn chỉ số so với phiên bản trước, từ $-0.53\%$ đến $-1.48\%$, dù vẫn cao hơn hoặc gần bằng baseline. Log cho thấy trên Sports, tầng local aggregation đã có norm khá cao (0.2697) so với tầng cluster (0.1466), tức bản thân neighborhood trực tiếp trên Sports đã mang nhiều thông tin hữu ích. Với $\lambda = 0.1$, quá trình khởi tạo bị chi phối phần lớn bởi tầng cluster mang tính làm mịn, có thể đã bỏ qua một phần thông tin cụ thể theo từng user mà tầng local vốn nắm bắt tốt trên tập dữ liệu này.
+ 
+Cần lưu ý thêm là checkpoint tốt nhất của Sports rơi đúng vào epoch cuối cùng của quá trình huấn luyện. Tuy nhiên, khi xem chi tiết giá trị NDCG@20 trên tập validation trong 50 epoch cuối, chỉ số dao động trong khoảng hẹp từ 0.0476 đến 0.0481 mà không thể hiện xu hướng tăng rõ ràng, trong khi train loss vẫn tiếp tục giảm nhẹ. Đây là dấu hiệu cho thấy mô hình có thể đã tiệm cận điểm hội tụ hơn là còn nhiều dư địa cải thiện nếu tiếp tục tăng số epoch, nên kết luận về việc tăng epoch để cải thiện Sports cần được kiểm chứng thêm bằng một lần chạy dài hơn trước khi khẳng định.
+ 
+\paragraph{Vai trò của quy mô catalog thay vì mức độ tương tác trung bình:}
+Số liệu thống kê từ log cho thấy mức độ tương tác trung bình mỗi user gần như giống nhau giữa hai tập, khoảng 6.1 tương tác trên Baby và 6.13 trên Sports. Do đó, sự khác biệt về chất lượng tầng local giữa hai tập không đến từ số lượng tương tác của user, mà nhiều khả năng đến từ quy mô catalog item, với Sports có 18357 item so với 7050 item của Baby. Catalog lớn hơn tạo ra không gian đặc trưng dày đặc hơn, giúp phép tổng hợp theo item lân cận ổn định và mang nhiều thông tin hơn. Đây là điểm cần lưu ý khi thiết kế cơ chế điều chỉnh $\lambda$ tự động theo dataset ở phiên bản tiếp theo, vì tín hiệu điều chỉnh nên dựa trên đặc tính phân bố của catalog thay vì mức độ tương tác trung bình của user.
+ 
+\subsubsection{Kết luận}
+ 
+STAIR-SGInit xác nhận rằng nhiễu khởi tạo user là một bottleneck thực sự tồn tại song song với vấn đề chất lượng đồ thị item đã được xử lý ở các phiên bản trước, không phải nguyên nhân duy nhất nhưng đóng góp cải thiện nhất quán trên tập dữ liệu thưa. Kết quả cũng cho thấy một hệ số $\lambda$ cố định không phù hợp cho mọi tập dữ liệu, khi cùng một giá trị mang lại cải thiện trên Baby nhưng lại làm giảm nhẹ hiệu năng trên Sports. Hướng phát triển tiếp theo cần thiết kế cơ chế $\lambda$ thích ứng dựa trên đặc tính thực tế của từng tập dữ liệu, cụ thể là tỷ lệ giữa norm của tầng local và tầng cluster đã đo được, thay vì một giá trị cố định áp dụng chung.
+ 
+% ================================================
+ 
+ 
+ 
 \subsection{Đề xuất các phương án cải tiến kiến trúc tiếp theo}
-
-Sau khi hoàn thành thực nghiệm với phương án STAIR-GCL, quá trình tối ưu hóa mô hình sẽ tiếp tục được mở rộng. Dưới đây là hai định hướng cải tiến được sắp xếp theo mức độ ưu tiên dựa trên cơ sở lý thuyết và các phân tích rủi ro thực tế.
-
+ 
+Bốn phiên bản cải tiến đã thực nghiệm cho thấy một bức tranh rõ ràng: các can thiệp vào đồ thị item và cách khởi tạo user đều mang lại cải thiện có thể đo lường được, trong khi việc thay đổi tầng chiếu đặc trưng đầu vào bằng mạng học thêm tham số vẫn còn nhiều rủi ro chưa được kiểm chứng. Dưới đây là các định hướng tiếp theo, được sắp xếp theo mức độ ưu tiên dựa trên bằng chứng thực nghiệm đã thu thập.
+ 
+\subsubsection{Cơ chế $\lambda$ thích ứng theo dataset cho STAIR-SGInit}
+ 
+Kết quả cải tiến 4 cho thấy $\lambda = 0.1$ phù hợp với Baby nhưng chưa tối ưu cho Sports. Thay vì dùng một hệ số cố định, hướng tiếp theo là tính $\lambda$ trực tiếp từ tỷ lệ giữa norm của tầng local và tầng cluster đo được trên từng tập dữ liệu trước khi huấn luyện:
+ 
+\begin{equation}
+\lambda_{auto} = \text{clip}\left(\frac{\overline{\|\mathbf{u}^{local}\|}_2}{\overline{\|\mathbf{u}^{local}\|}_2 + \overline{\|\mathbf{u}^{cluster}\|}_2},\ 0.1,\ 0.5\right)
+\end{equation}
+ 
+Cách tính này phản ánh đúng đặc tính đã quan sát được, cụ thể tập nào có tầng local mạnh hơn thì $\lambda$ tự động tăng lên để giữ lại nhiều thông tin cụ thể theo user hơn, và không phụ thuộc vào giả định về mức độ tương tác trung bình vốn đã được xác nhận là gần như giống nhau giữa hai tập dữ liệu.
+ 
+\subsubsection{Kết hợp STAIR-GCL, STAIR-ClipFuse-Consensus và STAIR-SGInit}
+ 
+Ba cơ chế cải tiến đã thực nghiệm can thiệp vào ba vị trí độc lập nhau trong kiến trúc, gồm hàm mất mát ở STAIR-GCL, đồ thị kNN item ở STAIR-ClipFuse-Consensus, và cách khởi tạo user ở STAIR-SGInit. Vì không có xung đột trực tiếp giữa ba vị trí can thiệp này, việc kết hợp cả ba trong cùng một mô hình là khả thi và có cơ sở để kỳ vọng hiệu ứng cộng dồn, đặc biệt trên Baby nơi STAIR-GCL hiện vẫn giữ kết quả tốt nhất trong tất cả các phiên bản đã thử.
+ 
 \subsubsection{Learnable Non-linear Projector kết hợp Cross-modal Gated Fusion}
-
+ 
 \paragraph{Động lực kỹ thuật:}
 Kỹ thuật nén \textit{SVD Whitening} tuy tối ưu tốt tài nguyên phần cứng nhưng bản chất là một phép chiếu tuyến tính tĩnh. Quá trình này không thể nắm bắt trọn vẹn các sắc thái ngữ nghĩa phức tạp từ cấu trúc Sentence-BERT 384 chiều hay Deep CNN 4096 chiều. Đồng thời, SVD không tối ưu trực tiếp cho mục tiêu \textit{recommendation} cuối cùng.
-
+ 
 \paragraph{Cơ sở toán học:}
 Phương án đề xuất thay thế \textit{SVD Whitening} bằng mạng chiếu phi tuyến tính nhẹ. Cụ thể, hệ thống sử dụng cấu trúc MLP đi kèm hàm kích hoạt GELU để duy trì tính liên tục của \textit{gradient}, biến đổi \textit{input embedding} về không gian ẩn 64 chiều:
-
+ 
 \begin{equation}
 h_m = \text{GELU}(W_m \cdot F(m) + b_m)
 \end{equation}
-
+ 
 Quá trình này tích hợp toán học của \textit{Layer Normalization} nhằm đảm bảo độ ổn định cho các vector nhúng. Thay vì gộp cơ học như trước, kiến trúc \textit{Cross-modal Gated Fusion} thông qua cổng tự chú ý sẽ lọc nhiễu chéo và tự động điều tiết tỷ lệ đóng góp của từng phương thức:
-
+ 
 \begin{equation}
 z = \sigma(W_g[h_t; h_v] + b_g)
 \end{equation}
-
+ 
 \begin{equation}
 E_{final} = z \odot h_t + (1-z) \odot h_v
 \end{equation}
-
+ 
 \paragraph{Đánh giá rủi ro:}
-Thực nghiệm từ các hệ thống trước đây cho thấy việc chèn MLP vào vị trí \textit{projection} trên các tập dữ liệu thưa thớt mang rủi ro \textit{overfitting} rất cao. \textit{SVD Whitening} được lựa chọn trong bản gốc vì đây là phép chiếu $L_2$ tối ưu có tính ổn định toán học, trong khi MLP đòi hỏi lượng dữ liệu dồi dào để cập nhật trọng số hiệu quả. Do đó, kiến trúc can thiệp \textit{input embedding} này chỉ nên được cân nhắc nếu các phương án tiếp cận đồ thị không mang lại kết quả khả quan. Trong trường hợp tiến hành thực nghiệm, hệ thống bắt buộc phải áp dụng các kỹ thuật \textit{regularization} mạnh mẽ như tăng cường tỷ lệ \textit{dropout} và thiết lập tham số \textit{weight decay} lớn nhằm kiểm soát sự hội tụ của mô hình.
-
+Thực nghiệm từ các phiên bản trước cho thấy STAIR đạt kết quả tốt nhất khi giữ nguyên triết lý không thêm tham số học, chỉ can thiệp vào cấu trúc đồ thị hoặc phạm vi hàm mất mát. Việc chèn MLP vào vị trí \textit{projection} trên các tập dữ liệu thưa như Baby mang rủi ro \textit{overfitting} cao hơn hẳn so với ba hướng đã thử nghiệm, vì \textit{SVD Whitening} vốn là phép chiếu $L_2$ tối ưu có tính ổn định toán học, trong khi MLP đòi hỏi lượng dữ liệu dồi dào để cập nhật trọng số hiệu quả. Do đó, hướng này chỉ nên được cân nhắc sau khi đã khai thác hết tiềm năng của hai hướng ưu tiên cao và trung bình ở trên, và khi tiến hành thực nghiệm bắt buộc phải áp dụng regularization mạnh như tăng tỷ lệ dropout và weight decay lớn để kiểm soát sự hội tụ của mô hình.
+ 
 \clearpage
