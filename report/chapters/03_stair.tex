@@ -1,6 +1,56 @@
 \section{STAIR: Manipulating Collaborative and Multimodal Information}
 
+% ===== HÌNH TỔNG QUAN KIẾN TRÚC STAIR VÀ BỐN PHIÊN BẢN CẢI TIẾN =====
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.92, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.6cm, font=\scriptsize, align=center, fill=blue!8},
+    merge/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=7.2cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=3.2cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    smallmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.55cm, minimum width=3.0cm, font=\tiny\bfseries, align=center, fill=orange!15},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    modarr/.style={-{Stealth[length=2mm]}, thick, red!70!black, dashed},
+    lbl/.style={font=\tiny\itshape, text=gray},
+]
+% Inputs (X = -2.5 và X = +2.5)
+\node[newmod, minimum width=3.0cm] (v4) at (-2.5,0) {[v4 SGInit]\\Local + Cluster User Init};
+\node[block, minimum width=3.0cm] (item_emb) at (2.5,0) {SVD-Whitened\\Multimodal Features};
+\node[lbl, above=0.08cm of v4] {Khởi tạo User};
+\node[lbl, above=0.08cm of item_emb] {Khởi tạo Item};
+
+% Subspace Partitioning (X = 0)
+\node[merge] (subspace) at (0,-1.4)
+{Subspace Partitioning ($d=64$)\\$[0{:}32]$ Collaborative Subspace $\;\parallel\;$ $[32{:}64]$ Multimodal Subspace};
+\draw[arr] (v4.south) -- ([xshift=-2.5cm]subspace.north);
+\draw[arr] (item_emb.south) -- ([xshift=2.5cm]subspace.north);
+
+% FSC & GCL (Nhánh trái X = -2.5)
+\node[block, minimum width=3.0cm] (fsc) at (-2.5,-2.9) {Forward Stepwise\\Convolution (FSC)};
+\node[newmod, minimum width=3.4cm] (v1) at (-2.5,-4.3) {[v1 STAIR-GCL]\\Edge Dropout + InfoNCE\\(chỉ Collab. Subspace)};
+\draw[arr] ([xshift=-2.5cm]subspace.south) -- (fsc.north);
+\draw[modarr] (fsc.south) -- (v1.north);
+
+% BSC & Item Graph (Nhánh phải X = +2.5)
+\node[block, minimum width=3.0cm] (bsc) at (2.5,-2.9) {Backward Stepwise\\Convolution (BSC)};
+\node[smallmod, minimum width=3.4cm] (v2) at (2.5,-4.1) {[v2 DyFuse]\\Norm-based Reweight (thất bại)};
+\node[newmod, minimum width=3.4cm] (v3) at (2.5,-5.5) {[v3 ClipFuse-Consensus]\\kNN Disc. + Prior 5:1\\+ Consensus Boost ($\alpha{=}0.5$)};
+\draw[arr] ([xshift=2.5cm]subspace.south) -- (bsc.north);
+\draw[modarr] (bsc.south) -- (v2.north);
+\draw[modarr] (v2.south) -- (v3.north);
+
+% Final Embedding & Loss (X = 0)
+\node[merge] (final) at (0,-7.0)
+{Final Representation Alignment \& BPR Loss\\$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{BPR}} + \lambda_{\text{cl}}\mathcal{L}_{\text{cl}}$};
+\draw[arr] (v1.south) -- ([xshift=-2.5cm]final.north);
+\draw[arr] (v3.south) -- ([xshift=2.5cm]final.north);
+
+\end{tikzpicture}
+\caption[Sơ đồ tổng quan kiến trúc STAIR và bốn phiên bản cải tiến]{Sơ đồ tổng quan kiến trúc STAIR và vị trí can thiệp của bốn phiên bản cải tiến v1--v4. Các khối tô cam viền nét đứt là thành phần cải tiến, các khối xanh nhạt thuộc kiến trúc gốc.}
+\label{fig:stair_overview}
+\end{figure}
+
 \subsection{Kết quả thực nghiệm cải tiến 1: Stepwise Graph Contrastive Learning (STAIR-GCL)}
+
 
 \subsubsection{Động lực kỹ thuật và đặt vấn đề}
 
@@ -39,6 +89,41 @@ Hàm mất mát tổng hợp của toàn bộ mô hình được định nghĩa 
 \end{equation}
 
 Tham số $\lambda_{cl}=0.001$ được cấu hình để đóng vai trò làm hệ số cân bằng cho \textit{contrastive loss}.
+
+% ===== HÌNH MINH HỌA STAIR-GCL (v1) =====
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.95, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.4cm, font=\scriptsize, align=center, fill=blue!8},
+    subspace1/.style={rectangle, draw=blue!60, fill=blue!15, rounded corners=2pt, minimum height=0.6cm, minimum width=2.2cm, font=\tiny\bfseries},
+    subspace2/.style={rectangle, draw=gray!60, fill=gray!15, rounded corners=2pt, minimum height=0.6cm, minimum width=2.2cm, font=\tiny\bfseries, text=gray},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.7cm, minimum width=4.2cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    note/.style={font=\tiny\itshape, text=red!70!black},
+]
+\node[block] (graph) at (0,0) {User--Item Interaction Graph $A$};
+\node[block] (view1) at (-2.4,-1.2) {View $A' = \text{EdgeDrop}(A, p_{drop})$};
+\node[block] (view2) at (2.4,-1.2) {View $A'' = \text{EdgeDrop}(A, p_{drop})$};
+\draw[arr] (graph.south) -- ++(0,-0.3cm) -| (view1.north);
+\draw[arr] (graph.south) -- ++(0,-0.3cm) -| (view2.north);
+
+\node[subspace1] (c1) at (-3.5,-2.5) {Collab $[0{:}32]$};
+\node[subspace2] (m1) at (-1.3,-2.5) {Multi $[32{:}64]$};
+\node[subspace1] (c2) at (1.3,-2.5) {Collab $[0{:}32]$};
+\node[subspace2] (m2) at (3.5,-2.5) {Multi $[32{:}64]$};
+\draw[arr] (view1) -- (c1); \draw[arr] (view1) -- (m1);
+\draw[arr] (view2) -- (c2); \draw[arr] (view2) -- (m2);
+
+\node[newmod] (infoNCE) at (0,-3.8)
+{[v1 STAIR-GCL InfoNCE Loss]\\$\mathcal{L}_{\text{cl}}$ CHỈ tính trên 32 chiều Collaborative};
+\draw[arr] (c1.south) -- ++(0,-0.35cm) -| ([xshift=-1.2cm]infoNCE.north);
+\draw[arr] (c2.south) -- ++(0,-0.35cm) -| ([xshift=1.2cm]infoNCE.north);
+
+\node[note, right=0.2cm of m2] {32 chiều Multimodal\\bảo tồn hoàn toàn,\\chống oversmoothing};
+\end{tikzpicture}
+\caption{Cơ chế phân tách không gian và học đối chiếu từng bước (Stepwise Graph Contrastive Learning - STAIR-GCL).}
+\label{fig:stair_gcl_architecture}
+\end{figure}
 
 \subsubsection{Kết quả thực nghiệm và phân tích chi tiết}
 
@@ -289,6 +374,36 @@ Thực nghiệm STAIR-DyFuse mang lại hai đóng góp quan trọng cho quá tr
 \subsection{Kết quả thực nghiệm cải tiến 3: Prior-Preserving kNN Fusion với Cross-Modal Consensus Boosting (STAIR-ClipFuse-Consensus)}
  
 \subsubsection{Động lực kỹ thuật: khắc phục ba hạn chế của STAIR-DyFuse}
+
+% ===== HÌNH MINH HỌA DYFUSE (v2) VS CLIPFUSE-CONSENSUS (v3) =====
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.92, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.4cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.68cm, minimum width=4.2cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    old/.style={rectangle, draw=gray, rounded corners=2pt, minimum height=0.68cm, minimum width=4.0cm, font=\scriptsize, align=center, fill=gray!10, text=gray},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    oldarr/.style={-{Stealth[length=2mm]}, thick, gray, dashed},
+    note/.style={font=\tiny\itshape, text=red!70!black},
+]
+% Left: STAIR-v2 Failure
+\node[note] at (-3.2,1.1) {STAIR-v2 (DyFuse): MODALITY COLLAPSE};
+\node[old] (v2_norm) at (-3.2,0) {Raw Norm: Text=1.0 vs Vis=76.8\\$\rightarrow c_v=95.6\%, c_t=4.4\%$};
+\node[old] (v2_out) at (-3.2,-1.4) {Đồ thị Text gần như bị triệt tiêu\\Loss giảm nhanh nhưng Recall/NDCG tụt 13\%};
+\draw[oldarr] (v2_norm) -- (v2_out);
+
+% Right: STAIR-v3 Success
+\node[note] at (3.2,1.1) {STAIR-v3 (ClipFuse-Consensus): GIẢI PHÁP THÀNH CÔNG};
+\node[newmod] (v3_disc) at (3.2,0.1) {1. kNN Discriminability: $disc_m = 1 - \overline{sim}_m$\\+ Clip floor $\delta = 0.3$};
+\node[newmod] (v3_prior) at (3.2,-1.2) {2. Prior-Preserving Weighting ($k_t{:}k_v = 5{:}1$)\\Text $82.5\%$, Visual $17.5\%$};
+\node[newmod] (v3_boost) at (3.2,-2.5) {3. Consensus Boost: Cạnh trùng trong cả 2 kNN\\được nhân $(1+\alpha) = 1.5\times$};
+\draw[arr] (v3_disc) -- (v3_prior);
+\draw[arr] (v3_prior) -- (v3_boost);
+\end{tikzpicture}
+\caption{So sánh cơ chế giữa STAIR-DyFuse (v2 - sụt giảm do Raw Norm Collapse) và STAIR-ClipFuse-Consensus (v3 - vượt Baseline trên tập Sports).}
+\label{fig:stair_v2_vs_v3}
+\end{figure}
+
  
 Từ ba nguyên nhân đã xác định ở STAIR-DyFuse, phiên bản cải tiến thứ ba được thiết kế nhằm giải quyết trực tiếp từng vấn đề. Hạn chế đầu tiên nằm ở việc dùng norm thô của đặc trưng sau whitening làm tín hiệu tin cậy, dẫn đến sự áp đảo gần như tuyệt đối của phương thức hình ảnh do chênh lệch chính sách chuẩn hóa giữa hai phương thức. Hạn chế thứ hai là trọng số cạnh liên tục làm mất ổn định quá trình lan truyền trong BSC. Hạn chế thứ ba là việc bỏ qua tri thức nền của bài toán, cụ thể là tỷ lệ cấu trúc $k_t{:}k_v = 5{:}1$ mà tác giả STAIR đã lựa chọn dựa trên đặc tính dữ liệu Amazon, nơi văn bản sản phẩm thường sạch và mang tính phân biệt cao hơn hình ảnh sản phẩm.
  
@@ -471,6 +586,36 @@ Vì $\mathbf{u}_u^{cluster}$ là kết quả của phép làm mịn qua centroid
 \end{equation}
  
 Toàn bộ quy trình chỉ chạy một lần trước khi vào vòng lặp huấn luyện, không thêm tham số học, không ảnh hưởng tốc độ training, và user embedding vẫn tiếp tục được cập nhật bình thường qua gradient trong suốt quá trình huấn luyện sau đó.
+
+% ===== HÌNH MINH HỌA STAIR-SGInit (v4) =====
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.95, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.8cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=4.2cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    note/.style={font=\tiny\itshape, text=red!70!black},
+]
+\node[block] (item_f) at (0,0) {SVD-Whitened Item Features $\mathbf{f}_i$};
+
+\node[newmod] (local) at (-2.6,-1.3) {Local Branch (Sym-Norm)\\$\mathbf{u}^{local} = D_U^{-1/2} R D_I^{-1/2} \mathbf{F}$};
+\node[newmod] (global) at (2.6,-1.3) {Global Branch (K-Means $K=8$)\\$\mathbf{u}^{cluster} = D_U^{-1} R \mathbf{F}^{clust}$};
+\draw[arr] (item_f.south) -- ++(0,-0.35cm) -| (local.north);
+\draw[arr] (item_f.south) -- ++(0,-0.35cm) -| (global.north);
+
+\node[newmod, minimum width=5.6cm] (blend) at (0,-2.6) {Convex Blend: $\mathbf{u}^{init} = \lambda \mathbf{u}^{local} + (1-\lambda)\mathbf{u}^{cluster} \quad (\lambda=0.1)$};
+\draw[arr] (local.south) -- ++(0,-0.3cm) -| ([xshift=-1.5cm]blend.north);
+\draw[arr] (global.south) -- ++(0,-0.3cm) -| ([xshift=1.5cm]blend.north);
+
+\node[newmod, minimum width=5.6cm] (rescale) at (0,-3.8) {Norm Scale Alignment: $\mathbf{u}^{init} \leftarrow \mathbf{u}^{init} \times \frac{\overline{\|\mathbf{f}\|}_2}{\overline{\|\mathbf{u}^{init}\|}_2}$};
+\draw[arr] (blend) -- (rescale);
+
+\node[block, minimum width=4.2cm] (user_emb) at (0,-5.0) {\texttt{user\_id\_embedding.weight}};
+\draw[arr] (rescale) -- (user_emb);
+\end{tikzpicture}
+\caption{Quy trình khởi tạo biểu diễn người dùng Semantically Guaranteed User Initialization (STAIR-SGInit v4).}
+\label{fig:stair_sginit_architecture}
+\end{figure}
  
 \subsubsection{Kết quả thực nghiệm}
  
