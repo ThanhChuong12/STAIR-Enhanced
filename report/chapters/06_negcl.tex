@@ -1,155 +1,583 @@
+% ============================================================
+% CHƯƠNG 5 — NEGCL: Noise-Enhanced Graph Contrastive Learning
+% ============================================================
+% Yêu cầu packages:
+% \usepackage{tikz, longtable, booktabs, multirow, subfigure, enumitem}
+% \usetikzlibrary{positioning, arrows.meta, shapes.geometric, fit, calc, backgrounds}
+
 \section{NEGCL: Noise-Enhanced Graph Contrastive Learning}
 
+% ================================================================
+% 5.1 — ĐỀ XUẤT CÁC PHƯƠNG ÁN CẢI TIẾN
+% ================================================================
 \subsection{Đề xuất các phương án cải tiến kiến trúc NEGCL}
 
-Sau khi phân tích và tái tạo thành công mô hình NEGCL nguyên bản, nhóm đề xuất ba hướng cải tiến bao phủ toàn bộ luồng xử lý của hệ thống, gồm đầu vào dữ liệu, kiến trúc lõi và hàm mục tiêu đầu ra. Mỗi phương án được thực nghiệm độc lập để xác định rõ tác động của thành phần mới và lượng tham số tăng thêm so với baseline.
+Sau khi phân tích và tái tạo thành công mô hình NEGCL nguyên bản, nhóm đề xuất \textbf{sáu hướng cải tiến} bao phủ toàn bộ luồng xử lý của hệ thống, gồm đầu vào dữ liệu, kiến trúc lõi và hàm mục tiêu đầu ra. Mỗi phương án được thực nghiệm độc lập để xác định rõ tác động của thành phần mới và lượng tham số tăng thêm so với baseline. Ngoài ra, một thí nghiệm kết hợp hai phương án hiệu quả nhất cũng được tiến hành. Bảng~\ref{tab:negcl_overview} tóm tắt vị trí can thiệp của từng phương án.
 
-\subsubsection{Cải tiến 1: Adaptive Noise Generator}
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\caption{Tổng quan sáu phương án cải tiến NEGCL.}
+\label{tab:negcl_overview}
+\begin{tabularx}{\linewidth}{%
+    >{\centering\arraybackslash}p{1.0cm}
+    >{\raggedright\arraybackslash}p{3.6cm}
+    X
+    >{\centering\arraybackslash}p{2.3cm}}
+\toprule
+\textbf{Ký hiệu} & \textbf{Phương án} & \textbf{Vùng can thiệp} & \textbf{Thêm tham số} \\
+\midrule
+v1 & Adaptive Noise              & MGE (noise loop)                    & Không \\
+v2 & Cross-Modal Attention Gating & MGE $\to$ Fusion (trước cộng V+T) & $\sim$262.6K \\
+v3 & Cross-Layer Attention        & CGE (thay mean pooling)            & $\sim$131K \\
+v4 & Hard Negative Mining         & Hàm mục tiêu $\mathcal{L}_{\text{BPR}}$ & Không \\
+v5 & Graph Densification (KNN)   & \texttt{forward()} (sau MGE)       & Không \\
+v6 & DANS-FiLM-BM3 Fusion        & MGE (thay noise) + Loss            & $\sim$197K \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ===== HÌNH TỔNG QUAN KIẾN TRÚC =====
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.96, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.1cm, font=\scriptsize, align=center, fill=blue!8},
+    merge/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=4.4cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=2.1cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    smallmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.55cm, minimum width=1.8cm, font=\tiny\bfseries, align=center, fill=orange!15},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    modarr/.style={-{Stealth[length=2mm]}, thick, red!70!black, dashed},
+    lbl/.style={font=\tiny\itshape, text=gray},
+]
+% === Inputs ===
+\node[block] (id) at (0,0) {User/Item ID\\embeddings};
+\node[block] (feat) at (6.4,0) {Visual/Text\\features};
+\node[lbl, above=0.1cm of id] {(a) Interaction structure};
+\node[lbl, above=0.1cm of feat] {(b) Multimodal structure};
+
+% === Interaction branch: CGE + global structure ===
+\node[block] (lightgcn) at (-1.4,-1.35) {LightGCN\\($S$ lớp)};
+\node[block] (gtlayer) at (1.4,-1.35) {GTLayer\\global graph};
+\node[newmod] (v3) at (-1.4,-2.65) {[v3] Cross-Layer\\Attention};
+\node[block] (einter) at (-1.4,-3.9) {$\mathbf{E}_{\text{inter}}$};
+\node[block] (eglb) at (1.4,-3.9) {$\mathbf{E}_{\text{glb}}$};
+\node[merge] (estr) at (0,-5.25)
+{$\mathbf{E}_{\text{str}}=\mathbf{E}_{\text{inter}}+\alpha\,\operatorname{Norm}(\mathbf{E}_{\text{glb}})$};
+\draw[arr] (id) -- (lightgcn);
+\draw[arr] (id) -- (gtlayer);
+\draw[arr] (lightgcn) -- (v3);
+\draw[arr] (v3) -- (einter);
+\draw[arr] (gtlayer) -- (eglb);
+\draw[arr] (einter) -- (estr);
+\draw[arr] (eglb) -- (estr);
+
+% === MGE branch ===
+\node[newmod] (v6film) at (4.9,-1.25) {[v6] FiLM};
+\node[block] (mge) at (4.9,-2.65) {MGE($V$), MGE($T$)\\($K$ bước + noise)};
+\node[smallmod] (v1) at (2.7,-2.25) {[v1] $\varepsilon_v,\varepsilon_t$};
+\node[smallmod] (v6dans) at (2.7,-3.15) {[v6] DANS};
+\node[block] (ev) at (4.9,-3.9) {$\mathbf{E}^{v}_{\text{mcl}},\mathbf{E}^{t}_{\text{mcl}}$};
+\node[newmod] (v2) at (4.9,-5.15) {[v2] Cross-Modal\\Gating};
+\node[block] (emcl) at (4.9,-6.35) {$\mathbf{E}_{\text{mcl}}$};
+\node[smallmod] (v5) at (4.9,-7.4) {[v5] Graph Dense (KNN)};
+\draw[arr] (feat) -- (v6film);
+\draw[arr] (v6film) -- (mge);
+\draw[modarr] (v1) -- (mge);
+\draw[modarr] (v6dans) -- (mge);
+\draw[arr] (mge) -- (ev);
+\draw[arr] (ev) -- (v2);
+\draw[arr] (v2) -- (emcl);
+\draw[modarr] (emcl) -- (v5);
+
+% === Hypergraph branch, parallel to MGE ===
+\node[block, minimum width=2.8cm] (hyper) at (8.65,-4.15)
+{Hypergraph Learning\\$V/T$ hyperedges + $\mathbf{E}_{\text{inter}}^{item}$};
+\node[block] (eh) at (8.65,-5.45) {$\mathbf{E}^{v}_{H},\mathbf{E}^{t}_{H}$};
+\node[block, minimum width=2.8cm] (hcl) at (8.65,-6.65)
+{$\mathcal{L}_{\text{HCL}}(\mathbf{E}^{v}_{H},\mathbf{E}^{t}_{H})$};
+\draw[arr] (feat.east) -- ++(1.1cm,0) |- (hyper.north);
+\draw[arr] (hyper) -- (eh);
+\draw[arr] (eh) -- (hcl);
+
+% === Final fusion ===
+\node[merge, minimum width=7.2cm] (fusion) at (3.8,-9.0)
+{$\mathbf{E}^{*}=\mathbf{E}_{\text{str}}+\mathbf{E}_{\text{mcl}}+\beta\,\operatorname{Norm}(\mathbf{E}_{H})$};
+\draw[arr] (estr.south) -- ++(0,-0.35cm) -| ([xshift=-2.1cm]fusion.north);
+\draw[arr] (emcl.west) -- ++(-0.65cm,0) |- ([xshift=-0.65cm]fusion.north);
+\draw[modarr] (v5.south) -- ++(0,-0.25cm) -| ([xshift=0.6cm]fusion.north);
+\draw[arr] (eh.east) -- ++(0.55cm,0) |- ([xshift=2.45cm]fusion.north);
+
+% === Objective ===
+\node[block, minimum width=4.0cm] (loss) at (3.8,-10.35)
+{$\mathcal{L}_{\text{BPR}}+\lambda\mathcal{L}_{\text{HCL}}+\lambda_r\lVert\Theta\rVert_2^2$};
+\node[smallmod] (v6bm3) at (0.2,-10.35) {[v6] BM3 Loss};
+\node[smallmod] (v4) at (7.4,-10.35) {[v4] Hard Negative};
+\draw[arr] (fusion) -- (loss);
+\draw[modarr] (v6bm3) -- (loss);
+\draw[modarr] (v4) -- (loss);
+\end{tikzpicture}
+\caption{Sơ đồ rút gọn nhưng bảo toàn các luồng chính của NEGCL: nhánh cấu trúc tương tác, nhánh MGE, nhánh hypergraph song song, phép fusion cuối và hàm mục tiêu. Các module cải tiến được tô cam và viền nét đứt đỏ.}
+\label{fig:negcl_overview}
+\end{figure}
+
+
+% ----------------------------------------------------------
+% 5.1.1 — ADAPTIVE NOISE
+% ----------------------------------------------------------
+\subsubsection{Cải tiến 1: Adaptive Noise (NEGCL-v1)}
 
 \paragraph{Động lực kỹ thuật:}
-Kiến trúc NEGCL gốc bổ sung nhiễu Gaussian với biên độ tĩnh $\varepsilon$ đồng đều cho mọi vật phẩm trong không gian biểu diễn. Tuy nhiên, trên các tập dữ liệu có độ thưa xấp xỉ $99.9\%$, các vật phẩm thuộc nhóm đuôi dài chỉ có rất ít tương tác. Một mức nhiễu cố định có thể làm sai lệch mạnh đặc trưng ngữ nghĩa của các vật phẩm này thay vì tạo hiệu ứng tăng cường độ bền vững như kỳ vọng.
+Trong NEGCL gốc, tại mỗi bước MGE, mô hình sinh một vector ngẫu nhiên từ phân phối Uniform, chuẩn hóa vector này rồi cộng nhiễu theo hướng dấu của embedding với cùng biên độ $\varepsilon$ cho cả hai phương thức. Trước MGE, đặc trưng hình ảnh và văn bản đã được chiếu về cùng số chiều $d$, nhưng chúng vẫn có phân phối và mức nhạy nhiễu khác nhau do xuất phát từ hai bộ trích xuất đặc trưng khác nhau. Việc dùng chung một giá trị $\varepsilon$ vì vậy giả định rằng hai phương thức chịu nhiễu như nhau.
 
 \paragraph{Cơ sở toán học:}
-Phiên bản NEGCL-v1 bổ sung một mạng MLP nhỏ đóng vai trò là \textit{Adaptive Noise Generator}. Mạng nhận vector nhúng của node và dự đoán vector tỷ lệ nhiễu $\boldsymbol{\alpha}_{noise}\in(0,1)^d$ theo từng chiều đặc trưng:
-
+NEGCL-v1 thay thế hệ số nhiễu đồng nhất $\varepsilon$ bằng hai hệ số riêng biệt cho từng phương thức:
 \begin{equation}
-\boldsymbol{\alpha}_{noise}
-= \operatorname{Sigmoid}\!\left(
-\mathbf{W}_2\operatorname{ReLU}(\mathbf{W}_1\mathbf{e}_{node}+\mathbf{b}_1)+\mathbf{b}_2
-\right).
+\varepsilon_v = \varepsilon \times 1.5, \quad \varepsilon_t = \varepsilon \times 0.5
 \end{equation}
 
-Vector biểu diễn sau tăng cường được xác định bởi:
-
+Tại mỗi bước lan truyền $k$ trong vòng lặp MGE, vector biểu diễn được tăng cường bởi:
 \begin{equation}
-\widetilde{\mathbf{e}}_{node}
-= \mathbf{e}_{node}+\boldsymbol{\alpha}_{noise}\odot\boldsymbol{\xi},
-\qquad
-\boldsymbol{\xi}\sim\mathcal{N}(\mathbf{0},\varepsilon^2\mathbf{I}).
+\mathbf{e}^{(k)}_{m} \leftarrow \mathbf{e}^{(k)}_{m} + \operatorname{sign}\!\left(\mathbf{e}^{(k)}_{m}\right) \odot \frac{\boldsymbol{\xi}}{\left\|\boldsymbol{\xi}\right\|_2} \cdot \varepsilon_m, \quad \boldsymbol{\xi} \sim \mathrm{Uniform}(0,1)^{d}
 \end{equation}
+trong đó $m \in \{v,t\}$ là chỉ số phương thức. Cấu hình $\varepsilon_v > \varepsilon_t$ là một giả thuyết thực nghiệm về mức nhạy nhiễu khác nhau của hai biểu diễn sau projection; nó không được suy ra trực tiếp từ số chiều đặc trưng thô. Vì hai hệ số vẫn được đặt cố định theo modality, ``Adaptive Noise'' trong phiên bản này nên được hiểu là \textit{modality-specific noise scaling}, chưa phải một cơ chế thích ứng có tham số học.
 
-Cơ chế này cho phép mô hình tự điều chỉnh cường độ nhiễu theo trạng thái biểu diễn của từng node, qua đó hạn chế làm biến dạng các node có tín hiệu yếu.
+\par\medskip
+\noindent\textbf{Vị trí chèn trong kiến trúc:}\par
+\nopagebreak[4]
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=0.5cm and 0.6cm,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.8cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=2.8cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    old/.style={rectangle, draw=gray, rounded corners=2pt, minimum height=0.65cm, minimum width=2.8cm, font=\scriptsize, align=center, fill=gray!10, text=gray},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    note/.style={font=\tiny\itshape, text=red!70!black},
+]
+\node[block] (adj) {$\mathbf{e}^{(k)} = \mathbf{A} \cdot \mathbf{e}^{(k-1)}$};
+\node[old, below=0.4cm of adj, xshift=-2.2cm] (old_noise) {Gốc: $+\operatorname{sign} \cdot \hat{\xi} \cdot \varepsilon$\\(cùng $\varepsilon$ cho V và T)};
+\node[newmod, below=0.4cm of adj, xshift=2.2cm] (new_noise) {Mới: $+\operatorname{sign} \cdot \hat{\xi} \cdot \varepsilon_m$\\$\varepsilon_v{=}\varepsilon{\times}1.5,\;\varepsilon_t{=}\varepsilon{\times}0.5$};
+\node[block, below=0.75cm of old_noise, xshift=2.2cm, minimum width=4.8cm] (append)
+{\texttt{embeddings\_layers.append}($\mathbf{e}^{(k)}$)};
+\draw[arr, gray] (adj) -- (old_noise);
+\draw[arr] (adj) -- (new_noise);
+\draw[arr, gray, dashed] (old_noise) |- (append);
+\draw[arr] (new_noise) |- (append);
+\node[note, above=0.05cm of old_noise] {BỎ};
+\node[note, above=0.05cm of new_noise] {THAY THẾ};
+\begin{scope}[on background layer]
+\node[draw=blue!40, fill=blue!3, dashed, rounded corners=4pt, fit=(adj)(old_noise)(new_noise)(append), inner sep=6pt, label={[font=\scriptsize\bfseries, text=blue!60]above:Vòng lặp MGE ($k=1\ldots K$)}] {};
+\end{scope}
+\end{tikzpicture}
+\caption{Vị trí chèn module Adaptive Noise (v1). Thay $\varepsilon$ cố định bằng $\varepsilon_v, \varepsilon_t$ riêng cho từng nhánh phương thức.}
+\label{fig:negcl_v1}
+\end{figure}
 
 \paragraph{So sánh tham số:}
-NEGCL baseline không có tham số học cho quá trình sinh nhiễu. NEGCL-v1 sử dụng MLP $256\rightarrow128\rightarrow256$, làm tăng khoảng $65.9$K tham số, tương đương xấp xỉ $0.9\%$ so với mô hình gốc khoảng $6.8$M tham số.
+NEGCL-v1 \textbf{không thêm tham số học}. Chỉ thay đổi hệ số $\varepsilon$ tĩnh thành hai giá trị $\varepsilon_v, \varepsilon_t$. Phương án hoàn toàn \textit{parameter-free}.
 
-\subsubsection{Cải tiến 2: Cross-Modal Attention Gating}
+
+% ----------------------------------------------------------
+% 5.1.2 — CROSS-MODAL ATTENTION GATING
+% ----------------------------------------------------------
+\subsubsection{Cải tiến 2: Cross-Modal Attention Gating (NEGCL-v2)}
 
 \paragraph{Động lực kỹ thuật:}
-Trong NEGCL nguyên bản, đặc trưng hình ảnh và văn bản được kết hợp bằng phép cộng tuyến tính hoặc phép nối cố định. Cơ chế này chưa phản ánh thực tế rằng mức độ hữu ích của từng phương thức thay đổi theo sản phẩm: quần áo thường phụ thuộc nhiều vào hình ảnh, trong khi sách hoặc sản phẩm có mô tả kỹ thuật lại phụ thuộc nhiều hơn vào văn bản.
+Trong NEGCL nguyên bản, đặc trưng hình ảnh và văn bản được kết hợp bằng phép cộng tuyến tính cố định:
+\begin{equation}
+\mathbf{E}_{\text{mcl}} = \operatorname{Normalize}\!\left(\mathbf{E}^{v}_{\text{mcl}}\right) + \operatorname{Normalize}\!\left(\mathbf{E}^{t}_{\text{mcl}}\right)
+\label{eq:negcl_v2_baseline}
+\end{equation}
+Cơ chế này chưa phản ánh thực tế rằng mức độ hữu ích của từng phương thức thay đổi theo sản phẩm: quần áo thường phụ thuộc nhiều vào hình ảnh, trong khi sách hoặc sản phẩm có mô tả kỹ thuật lại phụ thuộc nhiều hơn vào văn bản.
 
 \paragraph{Cơ sở toán học:}
-NEGCL-v2 sử dụng cơ chế \textit{gated fusion} để học mức độ quan trọng của từng phương thức thông qua tương tác giữa ID embedding và đặc trưng đa phương thức:
-
+Trước tiên, hai biểu diễn đầu ra của MGE vẫn được chuẩn hóa như baseline:
+\begin{equation}
+\bar{\mathbf{e}}_v=\operatorname{Normalize}(\mathbf{E}^{v}_{\text{mcl}}),
+\qquad
+\bar{\mathbf{e}}_t=\operatorname{Normalize}(\mathbf{E}^{t}_{\text{mcl}}).
+\end{equation}
+NEGCL-v2 sau đó sử dụng cơ chế \textit{gated fusion} để học mức độ quan trọng của từng phương thức thông qua tương tác giữa ID embedding và các biểu diễn đã chuẩn hóa:
 \begin{align}
-\mathbf{g}_{visual}
-&= \operatorname{Sigmoid}\!\left(\mathbf{W}_v[\mathbf{e}_{id}\parallel\mathbf{e}_{visual}]+\mathbf{b}_v\right),\\
-\mathbf{g}_{text}
-&= \operatorname{Sigmoid}\!\left(\mathbf{W}_t[\mathbf{e}_{id}\parallel\mathbf{e}_{text}]+\mathbf{b}_t\right),\\
-\mathbf{e}_{fusion}
-&= \mathbf{g}_{visual}\odot\mathbf{e}_{visual}
-+\mathbf{g}_{text}\odot\mathbf{e}_{text}.
+\mathbf{g}_{v} &= \sigma\!\left(\mathbf{W}_v \left[\mathbf{e}_{id} \| \bar{\mathbf{e}}_v\right] + \mathbf{b}_v\right) \\
+\mathbf{g}_{t} &= \sigma\!\left(\mathbf{W}_t \left[\mathbf{e}_{id} \| \bar{\mathbf{e}}_t\right] + \mathbf{b}_t\right) \\
+\mathbf{E}_{\text{mcl}} &= \mathbf{g}_{v} \odot \bar{\mathbf{e}}_v + \mathbf{g}_{t} \odot \bar{\mathbf{e}}_t
 \end{align}
+trong đó $\sigma$ là hàm Sigmoid, $\|$ là phép nối và $\odot$ là phép nhân Hadamard. Hai cổng được tính riêng theo node, nhưng không thay đổi cấu trúc MGE hoặc nhánh hypergraph của NEGCL.
 
-Hai cổng chú ý được tính riêng cho từng vật phẩm, vì vậy mô hình có thể điều tiết động tỷ lệ đóng góp của hình ảnh và văn bản thay vì sử dụng một hệ số toàn cục.
+\par\medskip
+\noindent\textbf{Vị trí chèn trong kiến trúc:}\par
+\nopagebreak[4]
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.95, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.0cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=3.1cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    old/.style={rectangle, draw=gray, rounded corners=2pt, minimum height=0.65cm, minimum width=2.8cm, font=\scriptsize, align=center, fill=gray!10, text=gray},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    oldarr/.style={-{Stealth[length=2mm]}, thick, gray, dashed},
+    note/.style={font=\tiny\itshape, text=red!70!black},
+]
+\node[note] at (-3.25,1.35) {BASELINE: PHÉP CỘNG TĨNH};
+\node[block] (old_nv) at (-4.5,0.55) {$\bar{\mathbf e}_v$};
+\node[block] (old_nt) at (-2.0,0.55) {$\bar{\mathbf e}_t$};
+\node[old] (old_fuse) at (-3.25,-0.75) {$\mathbf E_{\text{mcl}}=\bar{\mathbf e}_v+\bar{\mathbf e}_t$};
+\draw[oldarr] (old_nv) -- (old_fuse);
+\draw[oldarr] (old_nt) -- (old_fuse);
+\node[note, below=0.08cm of old_fuse] {BỎ};
+
+\node[note] at (2.45,1.35) {NEGCL-v2: GATED FUSION};
+\node[block] (nv) at (0.5,0.55) {$\bar{\mathbf e}_v=\operatorname{Norm}(\mathbf E^v_{\text{mcl}})$};
+\node[block] (nt) at (3.35,0.55) {$\bar{\mathbf e}_t=\operatorname{Norm}(\mathbf E^t_{\text{mcl}})$};
+\node[block] (eid) at (6.0,0.55) {$\mathbf e_{id}$};
+\node[newmod] (gate) at (2.45,-0.75)
+{$g_v=\sigma(\mathbf W_v[\mathbf e_{id}\|\bar{\mathbf e}_v])$\\$g_t=\sigma(\mathbf W_t[\mathbf e_{id}\|\bar{\mathbf e}_t])$};
+\node[newmod] (fuse_new) at (2.45,-2.1)
+{$\mathbf E_{\text{mcl}}=g_v\odot\bar{\mathbf e}_v+g_t\odot\bar{\mathbf e}_t$};
+\draw[arr] (nv) -- ([xshift=-0.8cm]gate.north);
+\draw[arr] (nt) -- ([xshift=0cm]gate.north);
+\draw[arr] (eid) -- ([xshift=0.8cm]gate.north);
+\draw[arr] (gate) -- (fuse_new);
+\node[note, below=0.08cm of fuse_new] {THAY THẾ};
+\end{tikzpicture}
+\caption{Vị trí chèn module Cross-Modal Attention Gating (v2). Phép cộng tĩnh được thay bằng gated fusion điều kiện bởi ID embedding.}
+\label{fig:negcl_v2}
+\end{figure}
 
 \paragraph{So sánh tham số:}
-Phép gộp tĩnh của NEGCL baseline không làm phát sinh tham số học. NEGCL-v2 bổ sung hai ma trận trọng số $\mathbf{W}_v$ và $\mathbf{W}_t$ ánh xạ từ không gian $512$ chiều xuống $256$ chiều, làm tăng khoảng $262.6$K tham số.
+NEGCL-v2 bổ sung hai ma trận trọng số $\mathbf{W}_v$ và $\mathbf{W}_t$ ánh xạ từ không gian $2d$ chiều xuống $d$ chiều. Với $d=256$, hai tầng Linear có tổng cộng $2(2d^2+d)=262{,}656$ trọng số và bias, tương đương khoảng \textbf{262.6K tham số} ($\sim$3.9\% so với baseline $\sim$6.8M).
 
-\subsubsection{Cải tiến 3: Adaptive BPR Loss}
+
+% ----------------------------------------------------------
+% 5.1.3 — CROSS-LAYER ATTENTION
+% ----------------------------------------------------------
+\subsubsection{Cải tiến 3: Cross-Layer Attention (NEGCL-v3)}
 
 \paragraph{Động lực kỹ thuật:}
-Hàm BPR gốc tối ưu chênh lệch điểm giữa mẫu dương và mẫu âm nhưng chưa phân biệt rõ độ khó của từng mẫu âm. NEGCL-v3 điều chỉnh mức phạt theo khoảng cách điểm số nhằm tập trung nhiều hơn vào các \textit{hard negatives}, tức các vật phẩm âm có điểm dự đoán gần với vật phẩm dương.
-
-Với $\Delta_{uij}=\hat{y}_{ui}-\hat{y}_{uj}$, trọng số thích ứng của một bộ ba huấn luyện được xác định trực tiếp từ độ khó của mẫu:
-
+Module CGE trong NEGCL sử dụng LightGCN với $S$ lớp lan truyền, sau đó lấy trung bình:
 \begin{equation}
-w_{uij}=\operatorname{Sigmoid}(-\Delta_{uij}),
+\mathbf{E}_{\text{inter}} = \frac{1}{S+1} \sum_{s=0}^{S} \mathbf{E}^{(s)}
+\label{eq:negcl_v3_baseline}
+\end{equation}
+Phép trung bình coi mọi lớp GCN có đóng góp ngang nhau, trong khi các lớp sâu hơn có thể bị ảnh hưởng bởi hiện tượng \textit{over-smoothing}. NEGCL-v3 thay thế mean pooling bằng scaled dot-product attention trên trục layer.
+
+\paragraph{Cơ sở toán học:}
+Cho $\mathbf{H} \in \mathbb{R}^{(S+1) \times d}$ là stack của $S+1$ lớp embedding cho mỗi node. Để giữ đúng mức tăng khoảng 131K tham số trong cấu hình $d=d_k=256$, phiên bản này chỉ học hai phép chiếu query và key, còn value sử dụng trực tiếp $\mathbf H$:
+\begin{equation}
+\mathbf Q=\mathbf H\mathbf W_Q,
 \qquad
-\mathcal{L}_{ABPR}
-=-\sum_{(u,i,j)}w_{uij}\log\sigma(\Delta_{uij}).
+\mathbf K=\mathbf H\mathbf W_K,
+\qquad
+\widetilde{\mathbf H}=\operatorname{softmax}\!\left(\frac{\mathbf Q\mathbf K^\top}{\sqrt{d_k}}\right)\mathbf H.
+\end{equation}
+Trong đó $\mathbf W_Q,\mathbf W_K\in\mathbb R^{d\times d_k}$. Biểu diễn cuối được tổng hợp trên trục layer:
+\begin{equation}
+\mathbf{E}_{\text{inter}} = \frac{1}{S+1} \sum_{s=0}^{S} \widetilde{\mathbf H}^{(s)}.
 \end{equation}
 
-Khi điểm của mẫu âm tiến gần điểm của mẫu dương, $w_{uij}$ tăng và tạo lực phạt lớn hơn. Cơ chế này không sử dụng trọng số học mới nên NEGCL-v3 hoàn toàn \textit{parameter-free}.
+\par\medskip
+\noindent\textbf{Vị trí chèn trong kiến trúc:}\par
+\nopagebreak[4]
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.96, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.6cm, minimum width=1.4cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.7cm, minimum width=3.5cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    old/.style={rectangle, draw=gray, rounded corners=2pt, minimum height=0.65cm, minimum width=2.8cm, font=\scriptsize, align=center, fill=gray!10, text=gray},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    oldarr/.style={-{Stealth[length=2mm]}, thick, gray, dashed},
+    note/.style={font=\tiny\itshape, text=red!70!black},
+]
+\node[block] (e0) at (-3,0) {$\mathbf{E}^{(0)}$};
+\node[block] (e1) at (-1,0) {$\mathbf{E}^{(1)}$};
+\node[font=\scriptsize] (dots) at (1,0) {$\cdots$};
+\node[block] (es) at (3,0) {$\mathbf{E}^{(S)}$};
+\draw[arr] (e0) -- node[above, font=\tiny] {GCN} (e1);
+\draw[arr] (e1) -- (dots);
+\draw[arr] (dots) -- (es);
+\node[block, minimum width=6.4cm] (stack) at (0,-1.35)
+{Stack: $\mathbf{H}=[\mathbf{E}^{(0)};\mathbf{E}^{(1)};\ldots;\mathbf{E}^{(S)}]$};
+\draw[arr] (e0) -- ++(0,-0.3) -| ([xshift=-1.2cm]stack.north);
+\draw[arr] (es) -- ++(0,-0.3) -| ([xshift=1.2cm]stack.north);
+\node[old] (old_mean) at (-2.25,-2.75) {Gốc: $\frac{1}{S{+}1}\sum_s\mathbf E^{(s)}$};
+\node[newmod] (new_attn) at (2.25,-2.75)
+{Mới: $\widetilde{\mathbf H}=\operatorname{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right)\mathbf H$};
+\node[block, minimum width=2.2cm] (einter) at (0,-4.15) {$\mathbf{E}_{\text{inter}}$};
+\draw[oldarr] (stack) -- (old_mean);
+\draw[arr] (stack) -- (new_attn);
+\draw[oldarr] (old_mean) |- (einter);
+\draw[arr] (new_attn) |- (einter);
+\node[note, above=0.08cm of old_mean] {BỎ};
+\node[note, above=0.08cm of new_attn] {THAY THẾ};
+\end{tikzpicture}
+\caption{Vị trí chèn module Cross-Layer Attention (v3) trong CGE. Scaled dot-product attention trên trục layer thay thế mean pooling.}
+\label{fig:negcl_v3}
+\end{figure}
+
+\paragraph{So sánh tham số:}
+Bổ sung hai ma trận $\mathbf{W}_Q,\mathbf{W}_K$. Với $d=d_k=256$, phần trọng số có $2d^2=131{,}072$ phần tử, tương đương khoảng \textbf{131K tham số} ($\sim$1.9\% so với baseline).
+
+
+% ----------------------------------------------------------
+% 5.1.4 — HARD NEGATIVE MINING
+% ----------------------------------------------------------
+\subsubsection{Cải tiến 4: Semantic-aware Hard Negative Mining (NEGCL-v4)}
+
+\paragraph{Động lực kỹ thuật:}
+Hàm BPR gốc trong NEGCL xử lý mọi mẫu âm (negative sample) với trọng số ngang nhau, bất kể mức độ tương đồng ngữ nghĩa giữa mẫu âm và mẫu dương. Những mẫu âm ``khó'' --- vật phẩm có biểu diễn \textit{giống} với mẫu dương --- mới là chìa khóa giúp mô hình học được ranh giới phân biệt sắc nét hơn. NEGCL-v4 tận dụng cosine similarity giữa positive và negative embeddings để tự động gán trọng số phạt cao hơn cho các hard negatives.
+
+\paragraph{Cơ sở toán học:}
+Trọng số phạt cho mỗi bộ ba $(u, i, j)$:
+\begin{equation}
+s_{ij} = \frac{\mathbf{e}_i \cdot \mathbf{e}_j}{\left\|\mathbf{e}_i\right\| \cdot \left\|\mathbf{e}_j\right\|}, \qquad
+w_{ij} = 1 + 0.5 \cdot s_{ij}
+\end{equation}
+
+Hàm BPR cải tiến:
+\begin{equation}
+\mathcal{L}_{\text{HN-BPR}} = -\frac{1}{|B|}\sum_{(u,i,j) \in B} w_{ij} \cdot \log \sigma\!\left(\hat{y}_{ui} - \hat{y}_{uj}\right)
+\end{equation}
+
+Khi $s_{ij}$ cao (mẫu âm giống mẫu dương), $w_{ij} \approx 1.5$; khi $s_{ij}$ thấp, $w_{ij} \approx 0.5$. Hệ số $s_{ij}$ được \texttt{.detach()} khỏi computational graph để ngăn gradient exploding.
+
+\par\medskip
+\noindent\textbf{Vị trí chèn trong kiến trúc:}\par
+\nopagebreak[4]
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.96, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.0cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=2.6cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    old/.style={rectangle, draw=gray, rounded corners=2pt, minimum height=0.65cm, minimum width=2.4cm, font=\scriptsize, align=center, fill=gray!10, text=gray},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    note/.style={font=\tiny\itshape, text=red!70!black},
+]
+\node[note] at (-2.45,1.0) {NHÁNH XẾP HẠNG BPR};
+\node[block, minimum width=3.5cm] (triplet) at (-2.45,0)
+{Bộ ba $(\mathbf e_u,\mathbf e_i,\mathbf e_j)$};
+\node[block, minimum width=3.8cm] (scores) at (-2.45,-1.3)
+{$\Delta=\langle\mathbf e_u,\mathbf e_i\rangle-\langle\mathbf e_u,\mathbf e_j\rangle$};
+\node[note] at (2.45,1.0) {NHÁNH TRỌNG SỐ NGỮ NGHĨA};
+\node[block, minimum width=3.5cm] (pair) at (2.45,0)
+{Cặp vật phẩm $(\mathbf e_i,\mathbf e_j)$};
+\node[newmod, minimum width=3.5cm] (cosim) at (2.45,-1.3)
+{$s_{ij}=\cos(\mathbf e_i,\mathbf e_j)$\quad\texttt{.detach()}};
+\node[newmod] (weight) at (2.45,-2.5) {$w_{ij}=1+0.5s_{ij}$};
+\node[old] (old_loss) at (-2.45,-3.85) {Gốc: $-\operatorname{mean}(\log\sigma(\Delta))$};
+\node[newmod, minimum width=4.1cm] (loss) at (2.45,-3.85)
+{Mới: $-\operatorname{mean}\!\left(w_{ij}\log\sigma(\Delta)\right)$};
+\draw[arr] (triplet) -- (scores);
+\draw[arr] (pair) -- (cosim);
+\draw[arr] (cosim) -- (weight);
+\draw[gray, dashed, -{Stealth[length=2mm]}, thick] (scores) -- (old_loss);
+\draw[arr] (scores.east) -- ++(0.45cm,0) |- ([xshift=-0.8cm]loss.north);
+\draw[arr] (weight) -- ([xshift=0.8cm]loss.north);
+\node[note, above=0.06cm of old_loss] {BỎ};
+\node[note, below=0.06cm of loss] {THAY THẾ};
+\end{tikzpicture}
+\caption{Vị trí chèn module Hard Negative Mining (v4). Điểm BPR vẫn được tính từ bộ ba user--positive--negative; cosine similarity chỉ sinh trọng số $w_{ij}$ và được tách khỏi đồ thị gradient.}
+\label{fig:negcl_v4}
+\end{figure}
+
+\paragraph{So sánh tham số:}
+NEGCL-v4 \textbf{hoàn toàn parameter-free}.
+
+
+% ----------------------------------------------------------
+% 5.1.5 — GRAPH DENSIFICATION
+% ----------------------------------------------------------
+\subsubsection{Cải tiến 5: Graph Densification (NEGCL-v5)}
+
+\paragraph{Động lực kỹ thuật:}
+Các tập dữ liệu Amazon Baby, Sports, Clothing có \textbf{độ thưa} lên đến 99.88\%--99.98\%. Đồ thị tương tác user-item cực kỳ thưa khiến GCN thiếu thông tin cấu trúc. NEGCL-v5 bổ sung \textbf{đồ thị item-item KNN} từ đặc trưng đa phương thức nhằm ``làm dày'' cấu trúc đồ thị.
+
+\paragraph{Cơ sở toán học:}
+
+\textbf{Bước 1:} Xây dựng đồ thị KNN:
+\begin{equation}
+\mathbf{S}_{\text{mm}} = \frac{1}{2}\left(\frac{\mathbf{V}\mathbf{V}^\top}{\|\mathbf{V}\| \cdot \|\mathbf{V}\|^\top} + \frac{\mathbf{T}\mathbf{T}^\top}{\|\mathbf{T}\| \cdot \|\mathbf{T}\|^\top}\right), \quad
+\hat{\mathbf{A}}_{\text{KNN}} = \mathbf{D}^{-1/2}\, \mathbf{A}_{\text{KNN}}\, \mathbf{D}^{-1/2}
+\end{equation}
+
+\textbf{Bước 2:} Lan truyền item embeddings:
+\begin{equation}
+\mathbf{E}^{i}_{\text{dense}} = \hat{\mathbf{A}}_{\text{KNN}} \cdot \mathbf{E}^{i}_{\text{mcl}}, \quad
+\mathbf{E}^{i}_{\text{mcl}} \leftarrow \mathbf{E}^{i}_{\text{mcl}} + \lambda_{\text{dense}} \cdot \mathbf{E}^{i}_{\text{dense}}
+\end{equation}
+
+\textbf{Bước 3:} Cập nhật user embeddings gián tiếp:
+\begin{equation}
+\mathbf{E}^{u}_{\text{mcl}} \leftarrow \mathbf{E}^{u}_{\text{mcl}} + \lambda_{\text{dense}} \cdot \mathbf{D}_{u}^{-1}\mathbf{A}_{ui}\mathbf{E}^{i}_{\text{dense}}
+\end{equation}
+trong đó $\mathbf D_u$ là ma trận đường chéo chứa số tương tác của từng user, $\lambda_{\text{dense}} = 0.1$ và $K = 10$.
+
+\par\medskip
+\noindent\textbf{Vị trí chèn trong kiến trúc:}\par
+\nopagebreak[4]
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.96, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.6cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=3.0cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    note/.style={font=\tiny\itshape, text=red!70!black},
+    knn/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=2.2cm, font=\scriptsize\bfseries, align=center, fill=yellow!15},
+]
+\node[block] (mge) at (0,0) {MGE($V$), MGE($T$)};
+\node[block] (emcl) at (0,-1.1) {$\mathbf E_{\text{mcl}}$};
+\node[block] (split) at (0,-2.2) {Tách $\mathbf E^u_{\text{mcl}},\mathbf E^i_{\text{mcl}}$};
+\node[knn] (knn_graph) at (4.0,-2.2)
+{$\hat{\mathbf A}_{\text{KNN}}$ từ đặc trưng $V/T$\\(xây dựng trước huấn luyện)};
+\node[newmod, minimum width=5.7cm] (dense) at (0,-3.75)
+{[v5] $\mathbf E^i_{\text{dense}}=\hat{\mathbf A}_{\text{KNN}}\mathbf E^i_{\text{mcl}}$\\
+$\mathbf E^i_{\text{mcl}}\leftarrow\mathbf E^i_{\text{mcl}}+\lambda\mathbf E^i_{\text{dense}}$\\
+$\mathbf E^u_{\text{mcl}}\leftarrow\mathbf E^u_{\text{mcl}}+\lambda\mathbf D_u^{-1}\mathbf A_{ui}\mathbf E^i_{\text{dense}}$};
+\node[block, minimum width=4.4cm] (concat) at (0,-5.3)
+{Ghép lại $\mathbf E_{\text{mcl}}^{\text{dense}}$};
+\node[block, minimum width=5.2cm] (fusion) at (0,-6.45)
+{Fusion cuối: $\mathbf E^*=\mathbf E_{\text{str}}+\mathbf E_{\text{mcl}}^{\text{dense}}+\beta\operatorname{Norm}(\mathbf E_H)$};
+\draw[arr] (mge) -- (emcl);
+\draw[arr] (emcl) -- (split);
+\draw[arr] (split) -- (dense);
+\draw[arr, red!70!black, dashed] (knn_graph.west) -- ++(-0.55cm,0) |- ([xshift=1.7cm]dense.north);
+\draw[arr] (dense) -- (concat);
+\draw[arr] (concat) -- (fusion);
+\node[note, right=0.12cm of dense] {MỚI};
+\end{tikzpicture}
+\caption{Vị trí chèn module Graph Densification (v5). Module làm giàu nhánh $\mathbf E_{\text{mcl}}$ sau MGE và đưa biểu diễn mới vào phép fusion cuối; nhánh Hypergraph của NEGCL vẫn được giữ song song, không bị thay thế.}
+\label{fig:negcl_v5}
+\end{figure}
+
+\paragraph{So sánh tham số:}
+NEGCL-v5 \textbf{không thêm tham số học}. Chi phí chính là VRAM cho $\hat{\mathbf{A}}_{\text{KNN}}$.
+
+
+% ----------------------------------------------------------
+% 5.1.6 — DANS-FiLM-BM3
+% ----------------------------------------------------------
+\subsubsection{Cải tiến 6: DANS-FiLM-BM3 Fusion (NEGCL-v6)}
+
+\paragraph{Động lực kỹ thuật:}
+Phương án kết hợp: (1)~\textbf{DANS} (Degree-Aware Noise Scaling) sinh nhiễu tỷ lệ nghịch với bậc đỉnh; (2)~\textbf{FiLM} (Feature-wise Linear Modulation) điều biến đặc trưng đa phương thức theo ID embedding; và (3)~một hàm bootstrap \textbf{BM3-inspired} dùng dropout view và stop-gradient. Thành phần cuối chỉ kế thừa nguyên lý học không cần mẫu âm của BM3, không thay thế toàn bộ hàm mục tiêu NEGCL.
+
+\paragraph{Cơ sở toán học:}
+
+\textbf{DANS:}
+\begin{equation}
+\alpha_i = \varepsilon \cdot \left(\frac{d_{\max}}{d_i + 1}\right)^{0.5}
+\end{equation}
+
+\textbf{FiLM:}
+\begin{equation}
+\mathbf{e}_{\text{film}} = \gamma(\mathbf{e}_{id}) \odot \mathbf{e}_{\text{mm}} + \beta(\mathbf{e}_{id})
+\end{equation}
+
+\textbf{BM3-inspired Bootstrap Loss:}
+Từ biểu diễn đa phương thức $\mathbf z_i=\mathbf E_{\text{mcl},i}$, hai view được sinh bằng dropout độc lập; view thứ hai được tách khỏi đồ thị gradient:
+\begin{equation}
+\mathbf z_i^{(1)}=\operatorname{Dropout}_1(\mathbf z_i),
+\qquad
+\mathbf z_i^{(2)}=\operatorname{sg}\!\left(\operatorname{Dropout}_2(\mathbf z_i)\right),
+\qquad
+\mathcal L_{\text{boot}}=\frac{1}{N}\sum_{i=1}^{N}\left[1-\cos\!\left(\mathbf z_i^{(1)},\mathbf z_i^{(2)}\right)\right].
+\end{equation}
+Khác với InfoNCE, $\mathcal L_{\text{boot}}$ không có mẫu âm và không có mẫu số tổng trên toàn batch. Hàm mục tiêu của v6 là:
+\begin{equation}
+\mathcal L_{v6}=\mathcal L_{\text{BPR}}+\lambda\mathcal L_{\text{HCL}}+\lambda_b\mathcal L_{\text{boot}}+\lambda_r\lVert\Theta\rVert_2^2.
+\end{equation}
+
+\par\medskip
+\noindent\textbf{Vị trí chèn trong kiến trúc:}\par
+\nopagebreak[4]
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.96, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.4cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=2.4cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    note/.style={font=\tiny\itshape, text=red!70!black},
+]
+\node[block] (feat) at (0,0) {Đặc trưng $V/T$ đã chiếu};
+\node[newmod] (film) at (0,-1.15) {[FiLM] $\gamma(\mathbf e_{id})\odot\mathbf e_{mm}+\beta(\mathbf e_{id})$};
+\node[block] (mge) at (0,-2.35) {MGE($V$), MGE($T$)};
+\node[newmod] (dans) at (4.0,-2.35) {[DANS] $\alpha_i\propto1/\!\sqrt{d_i+1}$};
+\node[block] (emcl) at (0,-3.55) {$\mathbf E_{\text{mcl}}$};
+\node[block] (fusion) at (-2.25,-4.85) {Fusion cuối $\to\mathbf E^*$};
+\node[newmod, minimum width=4.4cm] (views) at (2.25,-4.85)
+{Hai dropout views\\$\mathbf z^{(1)},\;\operatorname{sg}(\mathbf z^{(2)})$};
+\node[newmod] (boot) at (2.25,-6.05) {$\mathcal L_{\text{boot}}=1-\cos(\mathbf z^{(1)},\mathbf z^{(2)})$};
+\node[block, minimum width=6.4cm] (loss) at (0,-7.35)
+{$\mathcal L_{v6}=\mathcal L_{\text{BPR}}+\lambda\mathcal L_{\text{HCL}}+\lambda_b\mathcal L_{\text{boot}}+\lambda_r\lVert\Theta\rVert_2^2$};
+\draw[arr] (feat) -- (film);
+\draw[arr] (film) -- (mge);
+\draw[arr, red!70!black, dashed] (dans.west) -- (mge.east);
+\draw[arr] (mge) -- (emcl);
+\draw[arr] (emcl.south) -- ++(0,-0.35cm) -| (fusion.north);
+\draw[arr, red!70!black, dashed] (emcl.south) -- ++(0,-0.35cm) -| (views.north);
+\draw[arr, red!70!black, dashed] (views) -- (boot);
+\draw[arr] (fusion.south) -- ++(0,-0.35cm) -| ([xshift=-1.7cm]loss.north);
+\draw[arr, red!70!black, dashed] (boot.south) -- ++(0,-0.35cm) -| ([xshift=1.7cm]loss.north);
+\node[note, left=0.1cm of film] {Trước MGE};
+\node[note, above=0.05cm of dans] {Trong MGE};
+\node[note, right=0.1cm of boot] {Thêm loss};
+\end{tikzpicture}
+\caption{Ba vị trí chèn của DANS-FiLM-BM3 (v6): FiLM điều biến đặc trưng trước MGE, DANS thay đổi biên độ nhiễu trong MGE và bootstrap loss không dùng mẫu âm được bổ sung vào hàm mục tiêu tổng.}
+\label{fig:negcl_v6}
+\end{figure}
+
+\paragraph{So sánh tham số:}
+Hai MLP FiLM cho nhánh visual và text sử dụng cấu trúc $256\rightarrow128\rightarrow512$ để đồng thời sinh $\gamma$ và $\beta$, tổng cộng khoảng \textbf{197.9K tham số} ($\sim$2.9\% so với baseline). DANS và bootstrap loss không bổ sung tham số học.
+
+
+% ================================================================
+% 5.2 — KẾT QUẢ THỰC NGHIỆM
+% ================================================================
 \subsection{Kết quả thực nghiệm và phân tích định lượng}
 
-Các Hình~\ref{fig:negcl_v1_training_stats}--\ref{fig:negcl_v3_training_stats} minh họa diễn biến huấn luyện của ba phiên bản cải tiến trên các tập dữ liệu Baby, Sports và Clothing. Sau đó, Bảng~\ref{tab:negcl_improvement_results} tổng hợp các chỉ số đánh giá để đối chiếu hiệu năng giữa NEGCL baseline và từng phiên bản cải tiến.
+\subsubsection{Xác nhận tái tạo baseline}
 
-\begin{figure}[H]
-    \centering
-    \begin{subfigure}{0.98\linewidth}
-        \centering
-        \includegraphics[width=\linewidth]{graphics/negcl/adaptive_noise_training_stats_baby.png}
-        \caption{Tập dữ liệu Baby.}
-    \end{subfigure}
+Trước khi đánh giá các phiên bản cải tiến, nhóm xác nhận tính chính xác của bản tái tạo NEGCL baseline bằng cách đối chiếu với kết quả do Shi và cộng sự công bố trong bài báo gốc~\cite{shi2025negcl}. Bảng~\ref{tab:negcl_paper_vs_baseline} cho thấy độ lệch lớn nhất là $\sim$2.7\%. Mức sai khác này tương đối nhỏ và cho thấy bản tái tạo bám sát kết quả công bố trên cả ba tập dữ liệu.
 
-    \vspace{4pt}
-    \begin{subfigure}{0.98\linewidth}
-        \centering
-        \includegraphics[width=\linewidth]{graphics/negcl/adaptive_noise_training_stats_sports.png}
-        \caption{Tập dữ liệu Sports.}
-    \end{subfigure}
+\begingroup
+\fontsize{8.5}{10}\selectfont
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{table}[H]
+\centering
+\caption{So sánh kết quả công bố trong bài báo NEGCL và kết quả tái tạo baseline của nhóm.}
+\label{tab:negcl_paper_vs_baseline}
+\begin{tabular}{l l *{4}{c} c}
+\toprule
+\rowcolor{gray!15}
+\textbf{Tập dữ liệu} & \textbf{Nguồn} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{Lệch tối đa} \\
+\midrule
+\multirow{2}{*}{Baby}
+ & Bài báo   & 0.0674 & 0.1033 & 0.0364 & 0.0456 & \multirow{2}{*}{1.65\%} \\
+ & Tái tạo   & 0.0673 & 0.1029 & 0.0358 & 0.0450 & \\
+\midrule
+\multirow{2}{*}{Sports}
+ & Bài báo   & 0.0757 & 0.1130 & 0.0414 & 0.0511 & \multirow{2}{*}{0.53\%} \\
+ & Tái tạo   & 0.0753 & 0.1136 & 0.0414 & 0.0512 & \\
+\midrule
+\multirow{2}{*}{Clothing}
+ & Bài báo   & 0.0613 & 0.0897 & 0.0336 & 0.0408 & \multirow{2}{*}{2.61\%} \\
+ & Tái tạo   & 0.0597 & 0.0882 & 0.0330 & 0.0403 & \\
+\bottomrule
+\end{tabular}
+\end{table}
+\endgroup
 
-    \vspace{4pt}
-    \begin{subfigure}{0.98\linewidth}
-        \centering
-        \includegraphics[width=\linewidth]{graphics/negcl/adaptive_noise_training_stats_clothing.png}
-        \caption{Tập dữ liệu Clothing.}
-    \end{subfigure}
-    \caption{Thống kê quá trình huấn luyện NEGCL-v1 với Adaptive Noise Generator trên ba tập dữ liệu. Mỗi biểu đồ thể hiện training loss, thời gian huấn luyện mỗi epoch và Recall@20 trên tập validation.}
-    \label{fig:negcl_v1_training_stats}
-\end{figure}
 
-\begin{figure}[H]
-    \centering
-    \begin{subfigure}{0.98\linewidth}
-        \centering
-        \includegraphics[width=\linewidth]{graphics/negcl/cross_modal_attention_training_stats_baby.png}
-        \caption{Tập dữ liệu Baby.}
-    \end{subfigure}
+\subsubsection{Đối sánh các phiên bản cải tiến}
 
-    \vspace{4pt}
-    \begin{subfigure}{0.98\linewidth}
-        \centering
-        \includegraphics[width=\linewidth]{graphics/negcl/cross_modal_attention_training_stats_sports.png}
-        \caption{Tập dữ liệu Sports.}
-    \end{subfigure}
-
-    \vspace{4pt}
-    \begin{subfigure}{0.98\linewidth}
-        \centering
-        \includegraphics[width=\linewidth]{graphics/negcl/cross_modal_attention_training_stats_clothing.png}
-        \caption{Tập dữ liệu Clothing.}
-    \end{subfigure}
-    \caption{Thống kê quá trình huấn luyện NEGCL-v2 với Cross-Modal Attention Gating trên ba tập dữ liệu. Mỗi biểu đồ thể hiện training loss, thời gian huấn luyện mỗi epoch và Recall@20 trên tập validation.}
-    \label{fig:negcl_v2_training_stats}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
-    \begin{subfigure}{0.98\linewidth}
-        \centering
-        \includegraphics[width=\linewidth]{graphics/negcl/adaptive_bpr_loss_training_stats_baby.png}
-        \caption{Tập dữ liệu Baby.}
-    \end{subfigure}
-
-    \vspace{4pt}
-    \begin{subfigure}{0.98\linewidth}
-        \centering
-        \includegraphics[width=\linewidth]{graphics/negcl/adaptive_bpr_loss_training_stats_sports.png}
-        \caption{Tập dữ liệu Sports.}
-    \end{subfigure}
-
-    \vspace{4pt}
-    \begin{subfigure}{0.98\linewidth}
-        \centering
-        \includegraphics[width=\linewidth]{graphics/negcl/adaptive_bpr_loss_training_stats_clothing.png}
-        \caption{Tập dữ liệu Clothing.}
-    \end{subfigure}
-    \caption{Thống kê quá trình huấn luyện NEGCL-v3 với Adaptive BPR Loss trên ba tập dữ liệu. Mỗi biểu đồ thể hiện training loss, thời gian huấn luyện mỗi epoch và Recall@20 trên tập validation.}
-    \label{fig:negcl_v3_training_stats}
-\end{figure}
+Bảng~\ref{tab:negcl_improvement_results} tổng hợp kết quả của sáu phiên bản cải tiến trên ba tập dữ liệu. Tất cả các phiên bản sử dụng cùng hyperparameter với baseline gốc.
 
 \begingroup
 \fontsize{8.5}{10}\selectfont
@@ -157,10 +585,10 @@ Các Hình~\ref{fig:negcl_v1_training_stats}--\ref{fig:negcl_v3_training_stats} 
 \renewcommand{\arraystretch}{1.15}
 \begin{longtable}{%
     >{\raggedright\arraybackslash}p{1.35cm}
-    >{\raggedright\arraybackslash}p{2.90cm}
-    *{4}{>{\centering\arraybackslash}p{1.25cm}}
-    >{\raggedright\arraybackslash}p{4.40cm}}
-\caption{Đối sánh hiệu năng giữa NEGCL baseline và các phiên bản cải tiến.}
+    >{\raggedright\arraybackslash}p{3.20cm}
+    *{4}{>{\centering\arraybackslash}p{1.20cm}}
+    >{\raggedright\arraybackslash}p{4.00cm}}
+\caption{Đối sánh hiệu năng giữa NEGCL baseline và sáu phiên bản cải tiến.}
 \label{tab:negcl_improvement_results}\\
 \toprule
 \rowcolor{gray!15}
@@ -179,68 +607,136 @@ Các Hình~\ref{fig:negcl_v1_training_stats}--\ref{fig:negcl_v3_training_stats} 
 \bottomrule
 \endlastfoot
 
-\multirow{4}{*}{Baby}
-& NEGCL Baseline & 0.0667 & 0.1018 & 0.0359 & 0.0450 & --\\
-& NEGCL-v1 (Adaptive Noise) & 0.0663 & \textbf{0.1028} & 0.0354 & 0.0448 & R@20 tăng 0.98\%\\
-& NEGCL-v2 (Cross-Modal Att.) & \textbf{0.0672} & 0.1027 & \textbf{0.0359} & \textbf{0.0450} & R@10 tăng 0.75\%; R@20 tăng 0.88\%\\
-& NEGCL-v3 (Adaptive BPR) & 0.0479 & 0.0728 & 0.0253 & 0.0317 & Giảm khoảng 28--29\% trên toàn bộ chỉ số\\
+% ===== BABY =====
+\multirow{7}{*}{Baby}
+& NEGCL Baseline               & 0.0673 & 0.1029 & 0.0358 & 0.0450 & --\\
+& v1 (Adaptive Noise)          & 0.0661 & 0.1029 & 0.0353 & 0.0448 & R@20 bằng baseline; R@10 $-1.8\%$, N@10 $-1.4\%$\\
+& v2 (Cross-Modal Att.)        & \textbf{0.0673} & 0.1033 & 0.0359 & 0.0451 & R@20 $+0.4\%$; N@10 $+0.3\%$\\
+& v3 (Cross-Layer Att.)        & 0.0670 & 0.1016 & 0.0360 & 0.0449 & N@10 $+0.6\%$; R@20 $-1.3\%$\\
+& v4 (Hard Negative)           & 0.0672 & 0.1017 & 0.0361 & 0.0450 & N@10 $+0.8\%$; R@20 $-1.2\%$\\
+& \textbf{v5 (Graph Dense)}    & 0.0671 & \textbf{0.1038} & 0.0356 & 0.0450 & \textbf{R@20 $+0.9\%$}; N@10 $-0.6\%$\\
+& v6 (DANS-FiLM-BM3)          & 0.0669 & 0.1015 & 0.0360 & 0.0449 & N@10 $+0.6\%$; R@20 $-1.4\%$\\
 \midrule
-\multirow{4}{*}{Sports}
-& NEGCL Baseline & 0.0760 & \textbf{0.1125} & 0.0413 & 0.0507 & --\\
-& NEGCL-v1 (Adaptive Noise) & \textbf{0.0766} & 0.1116 & \textbf{0.0425} & \textbf{0.0515} & N@10 tăng 2.91\%; N@20 tăng 1.58\%\\
-& NEGCL-v2 (Cross-Modal Att.) & 0.0747 & \textbf{0.1126} & 0.0407 & 0.0504 & R@20 tăng 0.09\%\\
-& NEGCL-v3 (Adaptive BPR) & 0.0558 & 0.0847 & 0.0295 & 0.0370 & Giảm khoảng 24--28\% trên toàn bộ chỉ số\\
+
+% ===== SPORTS =====
+\multirow{7}{*}{Sports}
+& NEGCL Baseline               & 0.0753 & \textbf{0.1136} & 0.0414 & 0.0512 & --\\
+& \textbf{v1 (Adaptive Noise)} & \textbf{0.0766} & 0.1116 & \textbf{0.0424} & \textbf{0.0514} & \textbf{R@10 $+1.7\%$, N@10 $+2.4\%$}; R@20 $-1.8\%$\\
+& v2 (Cross-Modal Att.)        & 0.0750 & 0.1112 & 0.0416 & 0.0509 & N@10 $+0.5\%$; R@20 $-2.1\%$\\
+& v3 (Cross-Layer Att.)        & 0.0761 & 0.1129 & 0.0413 & 0.0508 & R@10 $+1.1\%$; còn lại giảm $0.2$--$0.8\%$\\
+& v4 (Hard Negative)           & 0.0755 & 0.1116 & 0.0409 & 0.0501 & R@10 $+0.3\%$; N@20 $-2.1\%$\\
+& v5 (Graph Dense)             & 0.0760 & 0.1126 & 0.0418 & 0.0513 & R@10 $+0.9\%$, N@10 $+1.0\%$; R@20 $-0.9\%$\\
+& v6 (DANS-FiLM-BM3)          & 0.0759 & 0.1127 & 0.0412 & 0.0507 & R@10 $+0.8\%$; còn lại giảm $0.5$--$1.0\%$\\
 \midrule
-\multirow{4}{*}{Clothing}
-& NEGCL Baseline & 0.0602 & 0.0883 & 0.0331 & 0.0402 & --\\
-& NEGCL-v1 (Adaptive Noise) & \textbf{0.0609} & \textbf{0.0888} & \textbf{0.0334} & \textbf{0.0405} & Tăng đồng đều khoảng 0.5--1.1\%\\
-& NEGCL-v2 (Cross-Modal Att.) & 0.0604 & 0.0884 & 0.0332 & 0.0404 & Tăng đồng đều khoảng 0.1--0.5\%\\
-& NEGCL-v3 (Adaptive BPR) & 0.0524 & 0.0779 & 0.0283 & 0.0348 & Giảm khoảng 11--14\% trên toàn bộ chỉ số\\
+
+% ===== CLOTHING =====
+\multirow{7}{*}{Clothing}
+& NEGCL Baseline               & 0.0597 & 0.0882 & 0.0330 & 0.0403 & --\\
+& v1 (Adaptive Noise)          & 0.0611 & 0.0895 & 0.0336 & 0.0408 & Tăng đồng đều $1.2$--$2.4\%$\\
+& v2 (Cross-Modal Att.)        & 0.0603 & 0.0887 & 0.0332 & 0.0404 & Tăng đồng đều $0.2$--$1.0\%$\\
+& v3 (Cross-Layer Att.)        & 0.0598 & 0.0879 & 0.0329 & 0.0400 & R@10 $+0.2\%$; còn lại giảm $0.3$--$0.7\%$\\
+& v4 (Hard Negative)           & 0.0593 & 0.0879 & 0.0330 & 0.0403 & R@10 $-0.7\%$, R@20 $-0.3\%$; NDCG bằng baseline\\
+& \textbf{v5 (Graph Dense)}    & \textbf{0.0614} & \textbf{0.0903} & \textbf{0.0338} & \textbf{0.0412} & \textbf{Tăng đồng đều $2.2$--$2.8\%$}\\
+& v6 (DANS-FiLM-BM3)          & 0.0596 & 0.0876 & 0.0329 & 0.0401 & Giảm nhẹ $0.2$--$0.7\%$\\
 \end{longtable}
 \endgroup
 
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.98\linewidth]{graphics/negcl/negcl_versions_metrics.png}
-    \caption{Biểu đồ cột nhóm so sánh Recall@10, Recall@20, NDCG@10 và NDCG@20 giữa NEGCL baseline và ba phiên bản cải tiến trên ba tập dữ liệu.}
-    \label{fig:negcl_versions_metrics}
-\end{figure}
 
-\subsubsection{Phân tích sự thành công của NEGCL-v1 và NEGCL-v2}
+\subsubsection{Phân tích các phương án cải tiến}
 
-Kết quả thực nghiệm cho thấy việc kiểm soát luồng nhiễu và luồng thông tin đa phương thức mang lại cải thiện ổn định hơn so với can thiệp trực tiếp vào hàm mục tiêu.
+Kết quả thực nghiệm cho thấy \textbf{v5 (Graph Densification)} đạt hiệu quả tổng thể tốt nhất, trong khi v1 và v2 chỉ cải thiện trên một số tập dữ liệu hoặc chỉ số nhất định. Các phương án can thiệp vào hàm mục tiêu (v4) và kết hợp nhiều kỹ thuật cùng lúc (v6) chưa tạo được mức tăng nhất quán.
 
 \begin{itemize}[leftmargin=*,labelsep=6pt]
-    \item \textbf{NEGCL-v1 (Adaptive Noise):} Phiên bản này cải thiện đồng đều nhất trên Clothing, với các chỉ số tăng khoảng $0.5\%$--$1.1\%$, đồng thời đạt mức tăng NDCG@10 là $2.91\%$ trên Sports. Với chỉ khoảng $65.9$K tham số bổ sung, mạng sinh nhiễu thích ứng giúp hạn chế biến dạng ngữ nghĩa ở các node yếu và cải thiện biểu diễn cho nhóm sản phẩm đuôi dài.
-    \item \textbf{NEGCL-v2 (Cross-Modal Attention):} Phiên bản này đạt kết quả nổi bật trên Baby, trong đó Recall@10 tăng $0.75\%$ và Recall@20 tăng $0.88\%$, đồng thời duy trì cải thiện nhẹ trên Clothing. Kết quả cho thấy cơ chế cổng chú ý có khả năng cân bằng động đóng góp của hình ảnh và văn bản theo đặc thù từng sản phẩm.
+    \item \textbf{v5 (Graph Densification)} là phương án hiệu quả nhất tổng thể, đặc biệt mạnh trên Clothing với R@10 +2.8\%, R@20 +2.4\%, N@10 +2.4\%, N@20 +2.2\%. Trên Baby, R@20 tăng 0.9\%. Kết quả cho thấy việc ``làm dày'' đồ thị bằng KNN item-item giúp GCN truyền thông tin hiệu quả hơn trên dữ liệu thưa, đặc biệt trên Clothing --- tập dữ liệu thưa nhất (99.98\%).
+
+    \item \textbf{v1 (Adaptive Noise)} nổi bật trên Sports với R@10 tăng 1.7\% và N@10 tăng 2.4\%, nhưng R@20 giảm 1.8\%. Trên Clothing, cả bốn chỉ số tăng từ 1.2\% đến 2.4\%. Cơ chế nhiễu riêng biệt $\varepsilon_v > \varepsilon_t$ cho thấy hiệu quả phụ thuộc vào tập dữ liệu và độ sâu danh sách đánh giá. Phương án hoàn toàn parameter-free.
+
+    \item \textbf{v2 (Cross-Modal Attention)} cải thiện nhẹ trên Baby và tăng đồng đều 0.2\%--1.0\% trên Clothing, nhưng trên Sports chỉ N@10 tăng 0.5\% trong khi R@20 giảm 2.1\%. Vì vậy, cổng chú ý chưa mang lại cải thiện nhất quán giữa các tập dữ liệu, trong khi làm tăng khoảng 262.6K tham số.
+
+    \item \textbf{v3 (Cross-Layer Attention)} chỉ cải thiện rõ R@10 trên Sports (+1.1\%) và N@10 trên Baby (+0.6\%). Tuy nhiên, R@20 giảm 1.3\% trên Baby và các chỉ số còn lại chủ yếu giảm nhẹ, cho thấy attention theo tầng chưa ổn định hơn mean pooling của CGE.
+
+    \item \textbf{v4 (Hard Negative)} tăng N@10 0.8\% trên Baby nhưng làm R@20 giảm 1.2\%; trên Sports, N@20 giảm 2.1\%. Kết quả cho thấy trọng số phạt dựa trên cosine similarity tạo ra lợi ích cục bộ nhưng làm giảm chất lượng ở danh sách dài hơn.
+
+    \item \textbf{v6 (DANS-FiLM-BM3)} chỉ tăng một vài chỉ số riêng lẻ nhưng phần lớn metric giảm nhẹ, với mức giảm lớn nhất là 1.4\% ở R@20 trên Baby. Điều này cho thấy việc đồng thời can thiệp vào noise, feature modulation và loss chưa tạo được hiệu ứng cộng gộp ổn định.
 \end{itemize}
 
-Tuy nhiên, mức tăng của v1 và v2 chưa đồng đều trên mọi metric và mọi tập dữ liệu. Điều này cho thấy hiệu quả của hai cơ chế vẫn phụ thuộc vào phân phối tương tác, chất lượng đặc trưng và mức độ thưa của từng tập dữ liệu.
 
-\subsubsection{Biện luận về sự sụt giảm của NEGCL-v3}
+% ================================================================
+% 5.3 — THÍ NGHIỆM KẾT HỢP
+% ================================================================
+\subsection{Thí nghiệm kết hợp Graph Densification và Adaptive Noise}
 
-NEGCL-v3 ghi nhận mức giảm từ $11\%$ đến $29\%$ trên toàn bộ ba tập dữ liệu. Kết quả này cho thấy việc nhấn mạnh hard negatives trong môi trường đồ thị thưa có thể tạo ra hai rủi ro chính:
+Từ kết quả đơn lẻ, hai phương án hiệu quả nhất --- \textbf{v5 (Graph Dense)} và \textbf{v1 (Adaptive Noise)} --- can thiệp vào hai vùng khác nhau (noise trong MGE và graph propagation trong forward), nên khả năng xung đột được kỳ vọng ở mức thấp. Nhóm tiến hành thí nghiệm kết hợp D+A để kiểm tra liệu hai phương án có tạo ra hiệu quả cộng gộp hay không.
 
+\begingroup
+\fontsize{8.5}{10}\selectfont
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{table}[H]
+\centering
+\caption{Đánh giá phương án kết hợp Graph Densification (D) và Adaptive Noise (A).}
+\label{tab:negcl_ablation}
+\fontsize{8.5}{10}\selectfont
+\begin{tabularx}{\linewidth}{%
+    >{\raggedright\arraybackslash}p{1.20cm}
+    >{\raggedright\arraybackslash}p{2.20cm}
+    *{4}{>{\centering\arraybackslash}p{1.18cm}}
+    >{\raggedright\arraybackslash}X}
+\toprule
+\rowcolor{gray!15}
+\textbf{Tập dữ liệu} & \textbf{Mô hình} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{So sánh với Baseline} \\
+\midrule
+\multirow{4}{*}{Baby}
+ & Baseline    & 0.0673 & 0.1029 & 0.0358 & 0.0450 & -- \\
+ & v1 (đơn lẻ) & 0.0661 & 0.1029 & 0.0353 & 0.0448 & R@20 bằng; còn lại giảm $0.4$--$1.8\%$ \\
+ & v5 (đơn lẻ) & 0.0671 & \textbf{0.1038} & 0.0356 & 0.0450 & R@20 $+0.9\%$, N@20 bằng; R@10 $-0.3\%$, N@10 $-0.6\%$ \\
+ & \textbf{D+A}& 0.0672 & 0.1032 & 0.0359 & \textbf{0.0451} & R@10 $-0.1\%$; còn lại tăng $0.2$--$0.3\%$ \\
+\midrule
+\multirow{4}{*}{Sports}
+ & Baseline    & 0.0753 & \textbf{0.1136} & 0.0414 & 0.0512 & -- \\
+ & v1 (đơn lẻ) & \textbf{0.0766} & 0.1116 & \textbf{0.0424} & \textbf{0.0514} & R@10 $+1.7\%$, N@10 $+2.4\%$, N@20 $+0.4\%$; R@20 $-1.8\%$ \\
+ & v5 (đơn lẻ) & 0.0760 & 0.1126 & 0.0418 & 0.0513 & R@10 $+0.9\%$, N@10 $+1.0\%$, N@20 $+0.2\%$; R@20 $-0.9\%$ \\
+ & D+A         & 0.0750 & 0.1118 & 0.0411 & 0.0506 & Giảm toàn bộ $0.4$--$1.6\%$ \\
+\midrule
+\multirow{4}{*}{Clothing}
+ & Baseline    & 0.0597 & 0.0882 & 0.0330 & 0.0403 & -- \\
+ & v1 (đơn lẻ) & 0.0611 & 0.0895 & 0.0336 & 0.0408 & Tăng toàn bộ $1.2$--$2.4\%$ \\
+ & v5 (đơn lẻ) & 0.0614 & \textbf{0.0903} & \textbf{0.0338} & \textbf{0.0412} & \textbf{Tăng toàn bộ $2.2$--$2.8\%$} \\
+ & \textbf{D+A}& \textbf{0.0616} & 0.0890 & 0.0336 & 0.0406 & R@10 $+3.2\%$; còn lại tăng $0.7$--$1.8\%$ \\
+\bottomrule
+\end{tabularx}
+\end{table}
+\endgroup
+
+\paragraph{Phân tích:}
 \begin{itemize}[leftmargin=*,labelsep=6pt]
-    \item \textbf{Over-penalization:} Trên dữ liệu có độ thưa gần $99.9\%$, nhiều vật phẩm chưa được quan sát có thể là \textit{false negatives}, tức người dùng chưa tương tác nhưng vẫn có khả năng quan tâm. Việc gán trọng số lớn cho các mẫu này vô tình đẩy các vật phẩm tiềm năng ra xa người dùng và làm mất thông tin xếp hạng cục bộ.
-    \item \textbf{Mất cân bằng gradient:} NEGCL đã sử dụng InfoNCE để học đối chiếu. Khi BPR tiếp tục tăng lực phạt lên các mẫu âm khó, tín hiệu gradient từ hai thành phần loss có thể cạnh tranh nhau, làm quá trình hội tụ kém ổn định và suy giảm chất lượng biểu diễn cuối cùng.
+    \item \textbf{Clothing:} D+A đạt R@10 tốt nhất (0.0616, tăng 3.2\% so với baseline), vượt v5 đơn lẻ. Tuy nhiên R@20, N@10 và N@20 đều thấp hơn v5 đơn lẻ, cho thấy hai phương pháp chỉ cộng gộp hiệu quả ở R@10.
+    \item \textbf{Baby:} D+A tăng R@20 0.3\%, N@10 0.3\% và N@20 0.2\%, nhưng R@10 giảm 0.1\%. Phương án kết hợp vẫn không vượt v5 đơn lẻ trên R@20.
+    \item \textbf{Sports:} D+A làm cả bốn chỉ số giảm từ 0.4\% đến 1.6\% so với baseline và đều thấp hơn hai phương án đơn lẻ. Kết quả này cho thấy v1 và v5 chưa tạo được hiệu ứng bổ trợ trong cấu hình hyperparameter hiện tại; chưa đủ bằng chứng để kết luận nguyên nhân đến từ mật độ dữ liệu.
 \end{itemize}
 
-Kết quả của v3 chỉ ra rằng đối với GNN kết hợp contrastive learning trên đồ thị thưa, can thiệp vào cấu trúc biểu diễn như v1 và v2 có độ ổn định cao hơn so với điều chỉnh mạnh hàm mất mát xếp hạng.
+\textbf{Kết luận:} Hai phương án cải tiến \textbf{không tạo hiệu quả cộng gộp ổn định}. D+A chỉ đạt giá trị tốt nhất ở R@10 trên Clothing, nhưng không vượt v5 ở ba chỉ số còn lại và làm giảm toàn bộ metric trên Sports. Vì vậy, \textbf{v5 (Graph Densification) đơn lẻ} vẫn là lựa chọn tốt nhất tổng thể trong các cấu hình đã thử nghiệm.
 
+
+% ================================================================
+% 5.4 — HƯỚNG PHÁT TRIỂN
+% ================================================================
 \subsection{Đề xuất hướng phát triển tương lai}
 
-Dựa trên kết quả định lượng và các rủi ro ghi nhận từ ba phiên bản thực nghiệm, nhóm đề xuất các hướng phát triển tiếp theo như sau:
+Dựa trên kết quả định lượng và các xu hướng gần đây trong gợi ý đa phương thức, các hướng tiếp theo nên ưu tiên cải thiện v5 và xử lý những hạn chế đã quan sát ở v1, v4 và v6. Mỗi hướng được giới hạn ở mức can thiệp nhẹ để tránh làm mất cân bằng kiến trúc NEGCL.
 
 \begin{enumerate}[leftmargin=*,label=\textbf{Hướng \arabic*.}]
-    \item \textbf{Gated Modality-specific Noise:}
-    Phát triển từ NEGCL-v1 bằng cách dự đoán tỷ lệ nhiễu riêng cho hình ảnh và văn bản. Nếu hình ảnh của một sản phẩm rõ ràng nhưng mô tả văn bản bị thiếu hoặc nhiễu, mô hình có thể tăng cường nhiễu cho nhánh văn bản để cải thiện độ bền vững nhưng vẫn bảo toàn tín hiệu hình ảnh cốt lõi.
+    \item \textbf{Confidence-aware Graph Densification and Pruning --- khả thi cao:}
+    v5 cho kết quả tốt nhất, nhưng đồ thị KNN hiện giữ cạnh chỉ dựa trên độ tương đồng đa phương thức. Có thể bổ sung một hệ số tin cậy kết hợp độ tương đồng nội dung và mức nhất quán với tương tác cộng tác, sau đó loại bỏ các cạnh có độ tin cậy thấp trước khi lan truyền. Hướng này phù hợp với xu hướng đánh giá và khử nhiễu cấu trúc đồ thị trong mô hình gợi ý đa phương thức~\cite{qi2025even}. Việc chấm điểm có thể thực hiện ở giai đoạn tiền xử lý hoặc cập nhật sau một số epoch, không làm tăng đáng kể số tham số; chi phí chính vẫn là xây dựng sparse KNN.
 
-    \item \textbf{Semantic-aware False Negative Mining:}
-    Để khắc phục thất bại của NEGCL-v3, đồ thị ngữ nghĩa có thể được sử dụng như một bộ lọc trước khi tăng trọng số cho hard negatives. Những mẫu âm có độ tương đồng ngữ nghĩa cao với mẫu dương sẽ được xem là ứng viên false negative và được loại bỏ hoặc giảm lực phạt trong BPR loss, qua đó giúp quá trình tối ưu hội tụ an toàn hơn.
+    \item \textbf{Warm-up Degree--Modality Noise Router --- khả thi cao:}
+    Thay hai hệ số cố định của v1 bằng một cổng nhỏ dự đoán $\varepsilon_{i,v}$ và $\varepsilon_{i,t}$ từ bậc node, ID embedding và độ bất đồng giữa visual/text. Trong các epoch đầu, cổng được khóa để NEGCL học biểu diễn nền; sau đó hệ số nhiễu mới tăng dần nhằm tránh làm nhiễu quá sớm. Các cơ chế gated fusion nhẹ gần đây cho thấy việc điều tiết động từng phương thức có thể duy trì tính mô-đun và khả năng mở rộng~\cite{liu2025gated}. Nếu cổng chỉ xuất hai scalar cho mỗi node, lượng tham số bổ sung nhỏ hơn đáng kể so với v2.
 
-    \item \textbf{Lightweight Hypergraph Attention:}
-    NEGCL phụ thuộc đáng kể vào Hypergraph Contrastive Learning ở giai đoạn cuối, trong khi các hyperedge hiện được xem là có mức độ quan trọng tương đương. Một cơ chế hyperedge attention gọn nhẹ có thể giúp mô hình tập trung vào các liên kết bậc cao có ý nghĩa nhất mà không làm tăng mạnh số lượng tham số và tài nguyên huấn luyện.
+    \item \textbf{False-negative-aware Ranking and Contrastive Learning --- khả thi cao:}
+    Kết quả v4 cho thấy tăng trọng số mọi hard negative theo cosine similarity có thể làm giảm R@20 và N@20. Thay vào đó, các item có độ tương đồng ngữ nghĩa cao với mẫu dương nên được xem là ứng viên false negative và được giảm trọng số hoặc loại khỏi tập âm. Ngưỡng lọc có thể được xác định theo quantile trên đồ thị KNN và cập nhật định kỳ, tương tự hướng phát hiện false negative động~\cite{balmaseda2025glofnd}. Phương án này có thể tái sử dụng similarity đã tính cho v5 nên gần như không thêm VRAM hoặc tham số học.
+
+    \item \textbf{Sparse Dual-Hypergraph Refinement --- khả thi trung bình:}
+    Mở rộng nhánh hypergraph hiện tại bằng hai cấu trúc thưa: user--user để mô hình hóa sở thích chung và item--item để mô hình hóa quan hệ ngữ nghĩa đa phương thức. MMHCL cho thấy hai hypergraph bổ trợ có thể khai thác quan hệ bậc cao và giảm ảnh hưởng của dữ liệu thưa~\cite{guo2025mmhcl}. Để phù hợp với NEGCL, chỉ nên dùng một trọng số scalar cho mỗi hyperedge, chia sẻ tham số giữa hai phương thức và giới hạn số hàng xóm; không nên thêm một attention network đầy đủ vì chi phí và nguy cơ overfitting.
 \end{enumerate}
 
-\clearpage
+Trong bốn hướng trên, \textbf{Confidence-aware Graph Densification} nên được ưu tiên thực nghiệm trước vì kế thừa trực tiếp phương án v5 tốt nhất và có rủi ro triển khai thấp. \textbf{False-negative-aware learning} là lựa chọn thứ hai vì xử lý trực tiếp hạn chế của v4 mà không thay đổi backbone. Hai hướng còn lại nên được đánh giá riêng lẻ trước khi kết hợp để tránh lặp lại hiện tượng không cộng gộp của D+A và v6.

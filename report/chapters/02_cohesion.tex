@@ -1,119 +1,412 @@
+% ============================================================
+% CHƯƠNG 2 — COHESION: Composite Graph Convolutional Network
+% ============================================================
+% Yêu cầu packages:
+% \usepackage{tikz, longtable, booktabs, multirow, tabularx, enumitem}
+% \usetikzlibrary{positioning, arrows.meta, shapes.geometric, fit, calc, backgrounds}
+
 \section{COHESION: Composite Graph Convolutional Network with Dual-Stage Fusion}
 
+% ================================================================
+% 2.1 — ĐỀ XUẤT CÁC PHƯƠNG ÁN CẢI TIẾN
+% ================================================================
 \subsection{Đề xuất các phương án cải tiến kiến trúc COHESION}
 
-Dựa trên kiến trúc COHESION nguyên bản với cơ chế \textit{Dual-Stage Fusion}, nhóm nhận thấy hệ thống vẫn còn các điểm nghẽn tại ba giai đoạn: dung hợp sớm, dung hợp muộn và tối ưu hóa hàm mục tiêu. Vì vậy, ba phương án cải tiến được đề xuất theo hướng can thiệp nhẹ, hạn chế làm tăng số lượng tham số và duy trì chi phí huấn luyện gần với baseline.
+COHESION sử dụng \textit{Dual-Stage Fusion}: đặc trưng hành vi được dùng để tinh chỉnh đặc trưng hình ảnh và văn bản trước ba nhánh GCN dị thể; các biểu diễn phương thức sau đó được dung hợp và tiếp tục làm giàu qua đồ thị user--user và item--item~\cite{xu2025cohesion}. Dựa trên kiến trúc này, nhóm đề xuất bốn phương án can thiệp tại Early Fusion, Late Fusion, adaptive optimization và căn chỉnh biểu diễn đa phương thức. Các phương án được thực nghiệm độc lập nhằm xác định rõ hiệu quả và tránh hiện tượng nhiều module triệt tiêu lẫn nhau.
 
-\subsubsection{Cải tiến 1: Confidence-aware Early Fusion}
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\caption{Tổng quan bốn phương án cải tiến COHESION.}
+\label{tab:cohesion_overview}
+\begin{tabularx}{\linewidth}{%
+    >{\centering\arraybackslash}p{1.0cm}
+    >{\raggedright\arraybackslash}p{4.1cm}
+    X
+    >{\centering\arraybackslash}p{2.2cm}}
+\toprule
+\textbf{Ký hiệu} & \textbf{Phương án} & \textbf{Vùng can thiệp} & \textbf{Thêm tham số} \\
+\midrule
+C1 & Confidence-aware Early Fusion  & Tinh chỉnh ID--Content trước GCN & 129 \\
+C2 & Conditioned Late Fusion        & Dung hợp điểm theo cặp user--item & 4.2K \\
+C3 & Uncertainty-aware Adaptive BPR & Adaptive optimization và BPR loss & 12 \\
+C4 & Cross-Modal Contrastive Alignment & Thêm $\mathcal L_{\text{CL}}$ giữa nhánh V/T & Không \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ===== HÌNH TỔNG QUAN KIẾN TRÚC =====
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.92, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.1cm, font=\scriptsize, align=center, fill=blue!8},
+    merge/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=4.6cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=2.3cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    smallmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.55cm, minimum width=2.0cm, font=\tiny\bfseries, align=center, fill=orange!15},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    modarr/.style={-{Stealth[length=2mm]}, thick, red!70!black, dashed},
+    lbl/.style={font=\tiny\itshape, text=gray},
+]
+% Inputs
+\node[block] (id) at (-4.0,0) {Behavior/ID\\embedding};
+\node[block] (vis) at (0,0) {Visual\\feature};
+\node[block] (txt) at (4.0,0) {Textual\\feature};
+
+% Early fusion and three GCN branches
+\node[block] (idproj) at (-4.0,-1.25) {ID projection};
+\node[newmod] (c1v) at (0,-1.25) {[C1] ID-conditioned\\Visual Fusion};
+\node[newmod] (c1t) at (4.0,-1.25) {[C1] ID-conditioned\\Text Fusion};
+\draw[arr] (id) -- (idproj);
+\draw[arr] (vis) -- (c1v);
+\draw[arr] (txt) -- (c1t);
+
+\node[block] (igcn) at (-4.0,-2.65) {Behavior GCN};
+\node[block] (vgcn) at (0,-2.65) {Visual GCN};
+\node[block] (tgcn) at (4.0,-2.65) {Textual GCN};
+\draw[arr] (idproj) -- (igcn);
+\draw[arr] (c1v) -- (vgcn);
+\draw[arr] (c1t) -- (tgcn);
+
+\node[block] (irep) at (-4.0,-3.9) {$\bar{\mathbf E}_{id}$};
+\node[block] (vrep) at (0,-3.9) {$\bar{\mathbf E}_{vis}$};
+\node[block] (trep) at (4.0,-3.9) {$\bar{\mathbf E}_{txt}$};
+\draw[arr] (igcn) -- (irep);
+\draw[arr] (vgcn) -- (vrep);
+\draw[arr] (tgcn) -- (trep);
+
+% Baseline fusion and homogeneous graphs
+\node[merge] (basefusion) at (0,-5.2)
+{Baseline fusion/concatenation\\$[\bar{\mathbf E}_{id}\|\bar{\mathbf E}_{vis}\|\bar{\mathbf E}_{txt}]$};
+\draw[arr] (irep) -- (basefusion);
+\draw[arr] (vrep) -- (basefusion);
+\draw[arr] (trep) -- (basefusion);
+
+\node[merge] (homo) at (0,-6.5) {Homogeneous refinement\\User--User Graph + Item--Item Graph};
+\draw[arr] (basefusion) -- (homo);
+\node[block, minimum width=4.0cm] (scores) at (0,-7.75)
+{$\Delta\mathbf s=[\Delta s_{id},\Delta s_{vis},\Delta s_{txt}]$};
+\draw[arr] (homo) -- (scores);
+
+% Alternative interventions, evaluated independently
+\node[newmod, minimum width=3.8cm] (c2) at (-2.6,-9.0)
+{[C2] Pair-conditioned\\score fusion};
+\node[newmod, minimum width=3.8cm] (c3) at (2.2,-9.0)
+{[C3] Uncertainty-aware\\Adaptive BPR};
+\draw[arr] (scores.south) -- ++(0,-0.35cm) -| (c2.north);
+\draw[arr] (scores.south) -- ++(0,-0.35cm) -| (c3.north);
+\node[block, minimum width=5.3cm] (loss) at (0,-10.25)
+{$\mathcal L_{\text{BPR}}+\lambda_r\mathcal L_{\text{reg}}+\lambda_c\mathcal L_{\text{CL}}$};
+\draw[arr] (c2) -- (loss);
+\draw[arr] (c3) -- (loss);
+
+\node[smallmod, minimum width=2.6cm] (c4) at (6.0,-7.75)
+{[C4] V/T branch outputs\\$\to$ InfoNCE};
+\draw[modarr] (c4.south) -- ++(0,-2.0cm) -| (loss.east);
+
+\node[lbl, left=0.1cm of basefusion] {Late Fusion};
+\node[lbl, left=0.1cm of c2] {Các phương án độc lập};
+\end{tikzpicture}
+\caption{Sơ đồ rút gọn kiến trúc COHESION và vị trí của bốn phương án cải tiến. C2 và C3 là hai phương án độc lập được chèn sau bước homogeneous refinement; các module mới được tô cam và viền nét đứt đỏ.}
+\label{fig:cohesion_overview}
+\end{figure}
+
+
+% ----------------------------------------------------------
+% 2.1.1 — CONFIDENCE-AWARE EARLY FUSION
+% ----------------------------------------------------------
+\subsubsection{Cải tiến 1: Confidence-aware Early Fusion (C1)}
 
 \paragraph{Động lực kỹ thuật:}
-Ở giai đoạn Early Fusion, COHESION gốc kết hợp ID embedding với đặc trưng hình ảnh và văn bản bằng phép gộp tĩnh. Khi đặc trưng nội dung của một vật phẩm có chất lượng thấp, cơ chế này có thể truyền nhiễu trực tiếp vào biểu diễn cộng tác và làm suy giảm thông tin ID ban đầu.
+Early Fusion của COHESION gốc chiếu đặc trưng nội dung về cùng số chiều với ID embedding, sau đó kết hợp hai nguồn bằng trung bình bình phương theo từng chiều. Cơ chế tĩnh xem mọi item có chất lượng nội dung như nhau; do đó hình ảnh hoặc văn bản nhiễu vẫn được đưa trực tiếp vào biểu diễn khởi tạo của GCN.
 
 \paragraph{Cơ sở toán học:}
-Phiên bản cải tiến bổ sung một \textit{Confidence Gate} để ước lượng độ tin cậy của đặc trưng nội dung trước khi dung hợp với ID embedding:
-
+Với vector nối đã chiếu $[\mathbf e_{id}\|\mathbf e_{content}]\in\mathbb R^{128}$, Confidence Gate sinh một hệ số scalar:
 \begin{equation}
-c_{conf}=\operatorname{Sigmoid}\!\left(
-\mathbf{W}_{conf}[\mathbf{e}_{id}\parallel\mathbf{e}_{content}]+b_{conf}
-\right).
+c_{\text{conf}}=\sigma\!\left(\mathbf W_{\text{conf}}
+[\mathbf e_{id}\|\mathbf e_{content}]+b_{\text{conf}}\right).
 \end{equation}
-
-Dựa trên $c_{conf}\in(0,1)$, biểu diễn dung hợp sớm được xác định theo công thức bảo toàn năng lượng:
-
+Biểu diễn dung hợp được tính bởi:
 \begin{equation}
-\mathbf{e}_{early}
-=\sqrt{
-c_{conf}\mathbf{e}_{id}^{2}
-+(1-c_{conf})\mathbf{e}_{content}^{2}
-+\epsilon
-}.
+\mathbf e_{\text{early}}
+=\sqrt{c_{\text{conf}}\mathbf e_{id}^{2}
++(1-c_{\text{conf}})\mathbf e_{content}^{2}+\epsilon}.
 \end{equation}
+Phương án được áp dụng độc lập cho nhánh visual và textual. Cần lưu ý phép bình phương và căn bậc hai làm mất dấu của từng chiều đặc trưng; đây là một hạn chế có thể ảnh hưởng đến hình học biểu diễn.
 
-Cơ chế này ưu tiên ID embedding khi đặc trưng nội dung có độ tin cậy thấp và tăng đóng góp của nội dung khi hai nguồn biểu diễn có mức tương quan cao.
+\par\medskip
+\noindent\textbf{Vị trí chèn trong kiến trúc:}\par
+\nopagebreak[4]
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.96, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.2cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=3.5cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    old/.style={rectangle, draw=gray, rounded corners=2pt, minimum height=0.65cm, minimum width=3.3cm, font=\scriptsize, align=center, fill=gray!10, text=gray},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    oldarr/.style={-{Stealth[length=2mm]}, thick, gray, dashed},
+    note/.style={font=\tiny\itshape, text=red!70!black},
+]
+\node[note] at (-3.0,1.0) {BASELINE};
+\node[block] (oid) at (-4.0,0) {$\mathbf e_{id}$};
+\node[block] (oc) at (-2.0,0) {$\mathbf e_{content}$};
+\node[old] (oldf) at (-3.0,-1.3)
+{$\sqrt{(\mathbf e_{id}^{2}+\mathbf e_{content}^{2})/2+\epsilon}$};
+\draw[oldarr] (oid) -- (oldf);
+\draw[oldarr] (oc) -- (oldf);
+\node[note, below=0.05cm of oldf] {BỎ};
+
+\node[note] at (2.3,1.0) {COHESION-C1};
+\node[block] (nid) at (0.8,0) {$\mathbf e_{id}$};
+\node[block] (nc) at (3.0,0) {$\mathbf e_{content}$};
+\node[newmod] (gate) at (1.9,-1.3)
+{$c=\sigma(\mathbf W[\mathbf e_{id}\|\mathbf e_c]+b)$\\
+$\mathbf e=\sqrt{c\mathbf e_{id}^{2}+(1-c)\mathbf e_c^{2}+\epsilon}$};
+\node[block] (gcn) at (1.9,-2.65) {Modality-specific GCN};
+\draw[arr] (nid) -- (gate);
+\draw[arr] (nc) -- (gate);
+\draw[arr] (gate) -- (gcn);
+\node[note, right=0.08cm of gate] {THAY THẾ};
+\end{tikzpicture}
+\caption{Vị trí chèn Confidence-aware Early Fusion (C1). Hệ số trung bình cố định được thay bằng độ tin cậy học theo từng item và từng nhánh nội dung.}
+\label{fig:cohesion_c1}
+\end{figure}
 
 \paragraph{So sánh tham số:}
-COHESION baseline sử dụng phép gộp tĩnh nên không có tham số học tại vị trí này. Cải tiến 1 bổ sung tầng Linear $128\rightarrow1$, tương ứng $128$ trọng số và một bias, làm tăng tổng cộng $129$ tham số so với khoảng $3$ triệu tham số của mô hình gốc.
+Tầng Linear $128\rightarrow1$ có 128 trọng số và một bias, tương ứng \textbf{129 tham số}. Hai nhánh visual/text có thể dùng chung cổng như cấu hình thực nghiệm để giữ mức tăng này.
 
-\subsubsection{Cải tiến 2: Conditioned Late Fusion}
+
+% ----------------------------------------------------------
+% 2.1.2 — CONDITIONED LATE FUSION
+% ----------------------------------------------------------
+\subsubsection{Cải tiến 2: Conditioned Late Fusion (C2)}
 
 \paragraph{Động lực kỹ thuật:}
-Ở bước Late Fusion, COHESION điều chỉnh đóng góp của các phương thức dựa trên chênh lệch điểm giữa mẫu dương và mẫu âm. Tuy nhiên, tín hiệu này chưa mô hình hóa trực tiếp ý định người dùng, trong khi mỗi người dùng có thể ưu tiên hình ảnh, văn bản hoặc tín hiệu cộng tác ở mức độ khác nhau.
+Trong mô tả bài báo, Late Fusion sử dụng trọng số học được để cân bằng Behavior, Visual và Textual; trong mã nguồn công bố, ba biểu diễn được nối trước homogeneous refinement và adaptive optimization điều chỉnh trọng số theo chênh điểm của bộ ba huấn luyện. Cả hai cách đều chưa sinh trực tiếp bộ trọng số từ biểu diễn cặp user--item. C2 bổ sung router có điều kiện theo ngữ cảnh tương tác để tạo trọng số riêng cho từng cặp $(u,i)$~\cite{xu2025cohesion}.
 
 \paragraph{Cơ sở toán học:}
-Phương án đề xuất sử dụng một mạng attention có điều kiện theo cặp người dùng--vật phẩm. Biểu diễn tương tác chéo được tính bởi:
+Với biểu diễn cặp $[\mathbf e_u\|\mathbf e_i]\in\mathbb R^{128}$:
+\begin{align}
+\mathbf h_{ui}&=\operatorname{ReLU}\!\left(
+\mathbf W_1[\mathbf e_u\|\mathbf e_i]+\mathbf b_1\right),\\
+[\alpha_{id},\alpha_{vis},\alpha_{txt}]&=
+\operatorname{Softmax}\!\left(\mathbf W_2\mathbf h_{ui}+\mathbf b_2\right),\\
+\hat y_{ui}&=\alpha_{id}s_{id}+\alpha_{vis}s_{vis}+\alpha_{txt}s_{txt}.
+\end{align}
+Nhờ đó, người dùng thiên về hình ảnh hoặc văn bản có thể nhận tổ hợp điểm khác nhau ngay cả khi đang xét cùng một item.
 
-\begin{equation}
-\mathbf{h}_{cross}
-=\operatorname{ReLU}\!\left(
-\mathbf{W}_{att1}[\mathbf{u}\parallel\mathbf{v}]+\mathbf{b}_{att1}
-\right).
-\end{equation}
+\par\medskip
+\noindent\textbf{Vị trí chèn trong kiến trúc:}\par
+\nopagebreak[4]
 
-Ba trọng số dung hợp cho ID, hình ảnh và văn bản được chuẩn hóa bằng Softmax:
-
-\begin{equation}
-[\alpha_{id},\alpha_{vis},\alpha_{txt}]
-=\operatorname{Softmax}\!\left(
-\mathbf{W}_{att2}\mathbf{h}_{cross}+\mathbf{b}_{att2}
-\right).
-\end{equation}
-
-Nhờ đó, tỷ lệ đóng góp của từng phương thức được điều chỉnh theo ngữ cảnh cụ thể thay vì dùng một cơ chế chung cho mọi người dùng và vật phẩm.
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.96, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.0cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=3.8cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    old/.style={rectangle, draw=gray, rounded corners=2pt, minimum height=0.65cm, minimum width=3.2cm, font=\scriptsize, align=center, fill=gray!10, text=gray},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    oldarr/.style={-{Stealth[length=2mm]}, thick, gray, dashed},
+    note/.style={font=\tiny\itshape, text=red!70!black},
+]
+\node[block] (scores) at (0,0) {$[s_{id},s_{vis},s_{txt}]$};
+\node[old] (oldf) at (-3.0,-1.4) {Gốc: trọng số modality học toàn cục};
+\node[newmod] (newf) at (1.8,-1.4)
+{$\mathbf h=\operatorname{ReLU}(\mathbf W_1[\mathbf e_u\|\mathbf e_i])$\\
+$\boldsymbol\alpha=\operatorname{Softmax}(\mathbf W_2\mathbf h)$};
+\node[block] (pair) at (5.0,-1.4) {$(\mathbf e_u,\mathbf e_i)$};
+\node[block, minimum width=4.6cm] (final) at (1.8,-2.85)
+{$\hat y_{ui}=\alpha_{id}s_{id}+\alpha_{vis}s_{vis}+\alpha_{txt}s_{txt}$};
+\draw[oldarr] (scores) -- (oldf);
+\draw[arr] (scores) -- (newf);
+\draw[arr] (pair) -- (newf);
+\draw[arr] (newf) -- (final);
+\node[note, below=0.05cm of oldf] {BỎ};
+\node[note, below=0.05cm of final] {THAY THẾ};
+\end{tikzpicture}
+\caption{Vị trí chèn Conditioned Late Fusion (C2). Trọng số modality toàn cục được thay bằng trọng số theo cặp user--item.}
+\label{fig:cohesion_c2}
+\end{figure}
 
 \paragraph{So sánh tham số:}
-Mạng MLP $128\rightarrow32\rightarrow3$ làm tăng $4{,}227$ tham số, tương đương khoảng $4.2$K. Mức tăng này đủ để mô hình hóa ngữ cảnh nhưng vẫn nhỏ so với tổng số tham số của COHESION.
+MLP $128\rightarrow32\rightarrow3$ có $128\times32+32+32\times3+3=4{,}227$ tham số, tương đương khoảng \textbf{4.2K}.
 
-\subsubsection{Cải tiến 3: Uncertainty-aware Adaptive BPR Loss}
+
+% ----------------------------------------------------------
+% 2.1.3 — UNCERTAINTY-AWARE ADAPTIVE BPR
+% ----------------------------------------------------------
+\subsubsection{Cải tiến 3: Uncertainty-aware Adaptive BPR Loss (C3)}
 
 \paragraph{Động lực kỹ thuật:}
-Đặc trưng đa phương thức có thể chứa thông tin thiếu, sai lệch hoặc không đồng nhất. Nếu BPR loss phạt mạnh các mẫu có độ bất định cao, gradient dễ bị chi phối bởi tín hiệu nhiễu. Cải tiến 3 sử dụng độ bất định để giảm ảnh hưởng của những mẫu mà các nhánh phương thức đang đưa ra dự đoán thiếu nhất quán.
+Adaptive optimization của COHESION sử dụng độ chênh điểm dương--âm của từng modality để tăng mức tối ưu cho nhánh đang học yếu. Tuy nhiên, độ chênh điểm nhỏ cũng có thể xuất hiện do đặc trưng nhiễu hoặc dự đoán không chắc chắn. C3 bổ sung một lớp hiệu chỉnh nhằm giảm tác động của các modality có độ bất định cao.
 
 \paragraph{Cơ sở toán học:}
-Mạng \textit{Uncertainty Projection} nhận vector chênh lệch điểm số của ba phương thức và dự đoán độ bất định tương ứng:
+Đặt $\Delta\mathbf s=[\Delta s_{id},\Delta s_{vis},\Delta s_{txt}]$. Vector trọng số adaptive của baseline được ký hiệu là $\mathbf w_{base}$. C3 tính:
+\begin{align}
+\mathbf u&=\sigma\!\left(\mathbf W_u\Delta\mathbf s+\mathbf b_u\right),\\
+\widetilde{\mathbf w}&=\mathbf w_{base}\odot(\mathbf 1-\mathbf u),\\
+\mathcal L_{\text{UA-BPR}}&=-\frac{1}{|B|}
+\sum_{(u,i,j)\in B}\sum_{m\in\{id,v,t\}}
+\widetilde w_m\log\sigma(\Delta s_m).
+\end{align}
+Cơ chế vẫn giữ nguyên tín hiệu adaptive của COHESION nhưng giảm lực phạt khi các modality đưa ra dự đoán thiếu nhất quán.
 
-\begin{equation}
-\mathbf{u}_{score}
-=\operatorname{Sigmoid}\!\left(
-\mathbf{W}_{u}(\mathbf{s}_{pos}-\mathbf{s}_{neg})+\mathbf{b}_{u}
-\right).
-\end{equation}
+\par\medskip
+\noindent\textbf{Vị trí chèn trong kiến trúc:}\par
+\nopagebreak[4]
 
-Trọng số của từng phương thức được hiệu chỉnh theo độ bất định:
-
-\begin{equation}
-\widetilde{\boldsymbol{\alpha}}
-=\boldsymbol{\alpha}\odot(\mathbf{1}-\mathbf{u}_{score}).
-\end{equation}
-
-Các phương thức có độ bất định cao sẽ nhận trọng số nhỏ hơn, qua đó hạn chế nhiễu tác động trực tiếp đến gradient của hàm BPR.
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.96, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.7cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=3.4cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    old/.style={rectangle, draw=gray, rounded corners=2pt, minimum height=0.65cm, minimum width=3.2cm, font=\scriptsize, align=center, fill=gray!10, text=gray},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    oldarr/.style={-{Stealth[length=2mm]}, thick, gray, dashed},
+    note/.style={font=\tiny\itshape, text=red!70!black},
+]
+\node[block] (delta) at (0,0) {$\Delta\mathbf s=[\Delta s_{id},\Delta s_{vis},\Delta s_{txt}]$};
+\node[block] (wbase) at (-2.7,-1.3) {$\mathbf w_{base}$ từ adaptive optimization};
+\node[newmod] (unc) at (2.0,-1.3) {$\mathbf u=\sigma(\mathbf W_u\Delta\mathbf s+\mathbf b_u)$};
+\node[old] (oldloss) at (-2.7,-2.75) {Gốc: BPR với $\mathbf w_{base}$};
+\node[newmod] (newloss) at (2.0,-2.75)
+{$\widetilde{\mathbf w}=\mathbf w_{base}\odot(1-\mathbf u)$\\UA-BPR với $\widetilde{\mathbf w}$};
+\draw[arr] (delta) -- (wbase);
+\draw[arr] (delta) -- (unc);
+\draw[oldarr] (wbase) -- (oldloss);
+\draw[arr] (wbase) -- (newloss);
+\draw[arr] (unc) -- (newloss);
+\node[note, below=0.05cm of oldloss] {BỎ};
+\node[note, below=0.05cm of newloss] {THAY THẾ};
+\end{tikzpicture}
+\caption{Vị trí chèn Uncertainty-aware Adaptive BPR (C3). Trọng số adaptive gốc được hiệu chỉnh bằng vector bất định trước khi tính loss.}
+\label{fig:cohesion_c3}
+\end{figure}
 
 \paragraph{So sánh tham số:}
-Tầng Linear $3\rightarrow3$ chỉ bổ sung chín trọng số và ba bias, tương ứng $12$ tham số. Vì vậy, chi phí tính toán của Cải tiến 3 gần như không thay đổi so với baseline.
+Tầng Linear $3\rightarrow3$ có chín trọng số và ba bias, tương ứng \textbf{12 tham số}.
 
+
+% ----------------------------------------------------------
+% 2.1.4 — CROSS-MODAL CONTRASTIVE ALIGNMENT
+% ----------------------------------------------------------
+\subsubsection{Cải tiến 4: Cross-Modal Contrastive Alignment (C4)}
+
+\paragraph{Động lực kỹ thuật:}
+Nhánh visual và textual của COHESION không chia sẻ tham số. C4 thử bổ sung InfoNCE để kéo biểu diễn của cùng item lại gần nhau và tách khỏi các item khác trong batch.
+
+\paragraph{Cơ sở toán học:}
+Với batch item $B$ và temperature $\tau$:
+\begin{equation}
+\mathcal L_{\text{CL}}=-\frac{1}{|B|}\sum_{i\in B}
+\log\frac{\exp(\operatorname{sim}(\mathbf v_i,\mathbf t_i)/\tau)}
+{\sum_{j\in B}\exp(\operatorname{sim}(\mathbf v_i,\mathbf t_j)/\tau)}.
+\end{equation}
+Hàm mục tiêu tổng là:
+\begin{equation}
+\mathcal L=\mathcal L_{\text{BPR}}+
+\lambda_r\mathcal L_{\text{reg}}+\lambda_c\mathcal L_{\text{CL}}.
+\end{equation}
+C4 được thực nghiệm độc lập, không sử dụng C1--C3.
+
+\par\medskip
+\noindent\textbf{Vị trí chèn trong kiến trúc:}\par
+\nopagebreak[4]
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.96, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.5cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=4.2cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    note/.style={font=\tiny\itshape, text=red!70!black},
+]
+\node[block] (vrep) at (-2.3,0) {Visual GCN\\$\mathbf v_i$};
+\node[block] (trep) at (2.3,0) {Textual GCN\\$\mathbf t_i$};
+\node[newmod] (cl) at (0,-1.35)
+{[C4] In-batch InfoNCE\\positive: $(\mathbf v_i,\mathbf t_i)$; negatives: $(\mathbf v_i,\mathbf t_j)$};
+\node[block, minimum width=5.5cm] (loss) at (0,-2.7)
+{$\mathcal L=\mathcal L_{\text{BPR}}+\lambda_r\mathcal L_{\text{reg}}+\lambda_c\mathcal L_{\text{CL}}$};
+\draw[arr] (vrep) -- (cl);
+\draw[arr] (trep) -- (cl);
+\draw[arr] (cl) -- (loss);
+\node[note, right=0.1cm of cl] {THÊM LOSS};
+\end{tikzpicture}
+\caption{Vị trí chèn Cross-Modal Contrastive Alignment (C4). InfoNCE được tính từ hai biểu diễn modality sau GCN và bổ sung vào hàm mục tiêu.}
+\label{fig:cohesion_c4}
+\end{figure}
+
+\paragraph{So sánh tham số:}
+C4 không thêm projection head nên \textbf{không bổ sung tham số học}; chi phí tăng chủ yếu đến từ ma trận similarity trong batch.
+
+
+% ================================================================
+% 2.2 — KẾT QUẢ THỰC NGHIỆM
+% ================================================================
 \subsection{Kết quả thực nghiệm và phân tích định lượng}
 
-Bảng~\ref{tab:cohesion_improvement_results} tổng hợp kết quả hiện có giữa COHESION baseline và ba phương án cải tiến trên Baby, Sports và Clothing. Kết quả của Cải tiến 2 và Cải tiến 3 sẽ được cập nhật sau khi quá trình huấn luyện hoàn tất.
+\subsubsection{Xác nhận tái tạo baseline}
+
+Bảng~\ref{tab:cohesion_paper_vs_baseline} đối chiếu kết quả công bố của Xu và cộng sự~\cite{xu2025cohesion} với bản tái tạo. Độ lệch được tính theo $|x_{repro}-x_{paper}|/x_{paper}\times100\%$.
+
+\begingroup
+\fontsize{8.5}{10}\selectfont
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{table}[H]
+\centering
+\caption{So sánh kết quả công bố trong bài báo COHESION và kết quả tái tạo baseline.}
+\label{tab:cohesion_paper_vs_baseline}
+\fontsize{8.5}{10}\selectfont
+\begin{tabular}{l l *{4}{c} c}
+\toprule
+\rowcolor{gray!15}
+\textbf{Tập dữ liệu} & \textbf{Nguồn} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{Lệch tối đa} \\
+\midrule
+\multirow{2}{*}{Baby}
+ & Bài báo & 0.0680 & 0.1052 & 0.0354 & 0.0454 & \multirow{2}{*}{2.19\%} \\
+ & Tái tạo & 0.0674 & 0.1029 & 0.0356 & 0.0447 & \\
+\midrule
+\multirow{2}{*}{Sports}
+ & Bài báo & 0.0752 & 0.1137 & 0.0409 & 0.0503 & \multirow{2}{*}{2.93\%} \\
+ & Tái tạo & 0.0738 & 0.1107 & 0.0397 & 0.0492 & \\
+\midrule
+\multirow{2}{*}{Clothing}
+ & Bài báo & 0.0665 & 0.0983 & 0.0358 & 0.0438 & \multirow{2}{*}{11.80\%} \\
+ & Tái tạo & 0.0588 & 0.0867 & 0.0322 & 0.0392 & \\
+\bottomrule
+\end{tabular}
+\end{table}
+\endgroup
+
+Baby và Sports có độ lệch dưới 3\%, cho thấy bản tái tạo bám khá sát kết quả công bố. Clothing có độ lệch khoảng 10.1\%--11.8\% trên cả bốn metric; vì vậy, kết quả trên tập này cần được diễn giải thận trọng. Các phiên bản cải tiến vẫn được so sánh với cùng baseline tái tạo để bảo đảm điều kiện thực nghiệm nhất quán.
+
+
+\subsubsection{Đối sánh các phiên bản cải tiến}
+
+Bảng~\ref{tab:cohesion_improvement_results} tổng hợp kết quả bốn phiên bản cải tiến. Tỷ lệ trong cột cuối được tính so với baseline tái tạo của cùng tập dữ liệu.
 
 \begingroup
 \fontsize{8.5}{10}\selectfont
 \setlength{\tabcolsep}{3pt}
 \renewcommand{\arraystretch}{1.15}
 \begin{longtable}{%
-    >{\raggedright\arraybackslash}p{1.35cm}
-    >{\raggedright\arraybackslash}p{2.90cm}
-    *{4}{>{\centering\arraybackslash}p{1.25cm}}
-    >{\raggedright\arraybackslash}p{4.40cm}}
-\caption{Đối sánh hiệu năng giữa COHESION baseline và các phiên bản cải tiến.}
+    >{\raggedright\arraybackslash}p{1.30cm}
+    >{\raggedright\arraybackslash}p{3.10cm}
+    *{4}{>{\centering\arraybackslash}p{1.18cm}}
+    >{\raggedright\arraybackslash}p{4.10cm}}
+\caption{Đối sánh hiệu năng giữa COHESION baseline và bốn phiên bản cải tiến.}
 \label{tab:cohesion_improvement_results}\\
 \toprule
 \rowcolor{gray!15}
-\textbf{Tập dữ liệu} & \textbf{Mô hình} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{Đánh giá so với baseline}\\
+\textbf{Tập dữ liệu} & \textbf{Mô hình} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{So sánh với Baseline}\\
 \midrule
 \endfirsthead
 \multicolumn{7}{c}{\bfseries Bảng \thetable\ (tiếp theo)}\\
 \toprule
 \rowcolor{gray!15}
-\textbf{Tập dữ liệu} & \textbf{Mô hình} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{Đánh giá so với baseline}\\
+\textbf{Tập dữ liệu} & \textbf{Mô hình} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{So sánh với Baseline}\\
 \midrule
 \endhead
 \midrule
@@ -122,57 +415,78 @@ Bảng~\ref{tab:cohesion_improvement_results} tổng hợp kết quả hiện c�
 \bottomrule
 \endlastfoot
 
-\multirow{4}{*}{Baby}
-& COHESION Baseline & \textbf{0.0674} & \textbf{0.1029} & 0.0356 & 0.0447 & --\\
-& Cải tiến 1 (Early Fusion) & 0.0666 & 0.1019 & \textbf{0.0358} & \textbf{0.0449} & N@10 tăng 0.56\%\\
-& Cải tiến 2 (Late Fusion) & \multicolumn{4}{c}{\textit{Đang chạy}} & Chờ cập nhật\\
-& Cải tiến 3 (Adaptive BPR) & \multicolumn{4}{c}{\textit{Đang chạy}} & Chờ cập nhật\\
+\multirow{5}{*}{Baby}
+& COHESION Baseline          & \textbf{0.0674} & 0.1029 & 0.0356 & 0.0447 & --\\
+& C1 (Early Fusion)          & 0.0666 & 0.1019 & \textbf{0.0358} & 0.0449 & N@10 $+0.6\%$, N@20 $+0.4\%$; R@10 $-1.2\%$, R@20 $-1.0\%$\\
+& C2 (Late Fusion)           & 0.0657 & 0.1028 & 0.0353 & 0.0448 & N@20 $+0.2\%$; R@20 $-0.1\%$, N@10 $-0.8\%$, R@10 $-2.5\%$\\
+& \textbf{C3 (Adaptive BPR)} & 0.0657 & \textbf{0.1033} & 0.0354 & \textbf{0.0451} & \textbf{R@20 $+0.4\%$, N@20 $+0.9\%$}; N@10 $-0.6\%$, R@10 $-2.5\%$\\
+& C4 (Contrastive Align.)    & 0.0630 & 0.1018 & 0.0331 & 0.0430 & Giảm toàn bộ $1.1$--$7.0\%$\\
 \midrule
-\multirow{4}{*}{Sports}
-& COHESION Baseline & \textbf{0.0738} & \textbf{0.1107} & \textbf{0.0397} & \textbf{0.0492} & --\\
-& Cải tiến 1 (Early Fusion) & 0.0722 & 0.1101 & 0.0388 & 0.0485 & Giảm nhẹ khoảng 1--2\%\\
-& Cải tiến 2 (Late Fusion) & \multicolumn{4}{c}{\textit{Đang chạy}} & Chờ cập nhật\\
-& Cải tiến 3 (Adaptive BPR) & \multicolumn{4}{c}{\textit{Đang chạy}} & Chờ cập nhật\\
+\multirow{5}{*}{Sports}
+& COHESION Baseline          & \textbf{0.0738} & 0.1107 & 0.0397 & 0.0492 & --\\
+& C1 (Early Fusion)          & 0.0722 & 0.1101 & 0.0388 & 0.0485 & Giảm toàn bộ $0.5$--$2.3\%$; giảm mạnh nhất ở N@10\\
+& \textbf{C2 (Late Fusion)} & 0.0737 & \textbf{0.1111} & 0.0398 & \textbf{0.0495} & R@20 $+0.4\%$, N@10 $+0.3\%$, N@20 $+0.6\%$; R@10 $-0.1\%$\\
+& C3 (Adaptive BPR)          & \textbf{0.0738} & 0.1103 & \textbf{0.0401} & \textbf{0.0495} & R@10 bằng; N@10 $+1.0\%$, N@20 $+0.6\%$; R@20 $-0.4\%$\\
+& C4 (Contrastive Align.)    & 0.0711 & 0.1045 & 0.0384 & 0.0471 & Giảm toàn bộ $3.3$--$5.6\%$\\
 \midrule
-\multirow{4}{*}{Clothing}
-& COHESION Baseline & \textbf{0.0588} & \textbf{0.0867} & \textbf{0.0322} & \textbf{0.0392} & --\\
-& Cải tiến 1 (Early Fusion) & 0.0578 & 0.0866 & 0.0318 & 0.0391 & Giảm nhẹ khoảng 0.2--1.7\%\\
-& Cải tiến 2 (Late Fusion) & \multicolumn{4}{c}{\textit{Đang chạy}} & Chờ cập nhật\\
-& Cải tiến 3 (Adaptive BPR) & \multicolumn{4}{c}{\textit{Đang chạy}} & Chờ cập nhật\\
+\multirow{5}{*}{Clothing}
+& COHESION Baseline          & \textbf{0.0588} & \textbf{0.0867} & \textbf{0.0322} & \textbf{0.0392} & --\\
+& C1 (Early Fusion)          & 0.0578 & 0.0866 & 0.0318 & 0.0391 & Giảm toàn bộ $0.1$--$1.7\%$; giảm mạnh nhất ở R@10\\
+& C2 (Late Fusion)           & 0.0586 & 0.0862 & 0.0319 & 0.0389 & Giảm toàn bộ $0.3$--$0.9\%$; giảm mạnh nhất ở N@10\\
+& C3 (Adaptive BPR)          & \textbf{0.0588} & 0.0860 & \textbf{0.0322} & 0.0391 & R@10, N@10 bằng; R@20 $-0.8\%$, N@20 $-0.3\%$\\
+& C4 (Contrastive Align.)    & 0.0525 & 0.0792 & 0.0283 & 0.0351 & Giảm toàn bộ $8.7$--$12.1\%$\\
 \end{longtable}
 \endgroup
 
 \begin{figure}[H]
-    \centering
-    \includegraphics[width=0.98\linewidth]{graphics/cohesion/cohesion_improvement_metrics.png}
-    \caption{Biểu đồ cột nhóm so sánh Recall@10, Recall@20, NDCG@10 và NDCG@20 giữa COHESION baseline và Cải tiến 1 trên ba tập dữ liệu. Cải tiến 2 và Cải tiến 3 chưa được thể hiện do quá trình thực nghiệm đang tiếp tục.}
-    \label{fig:cohesion_improvement_metrics}
+\centering
+\includegraphics[width=0.98\linewidth]{graphics/cohesion/cohesion_improvement_metrics.png}
+\caption{So sánh Recall@10, Recall@20, NDCG@10 và NDCG@20 giữa COHESION baseline và bốn phiên bản cải tiến C1--C4 trên ba tập dữ liệu.}
+\label{fig:cohesion_improvement_metrics}
 \end{figure}
 
-\subsubsection{Biện luận về Cải tiến 1}
 
-Kết quả của Confidence-aware Early Fusion cho thấy Recall giảm nhẹ trên cả ba tập dữ liệu, trong khi NDCG@10 và NDCG@20 trên Baby tăng tương ứng từ $0.0356$ lên $0.0358$ và từ $0.0447$ lên $0.0449$. Sự thay đổi này có thể được giải thích bởi hai nguyên nhân chính:
+\subsubsection{Phân tích các phương án cải tiến}
+
+Không có phương án nào cải thiện đồng đều trên cả ba tập dữ liệu. C2 và C3 tạo ra một số mức tăng nhỏ; C1 chỉ tăng NDCG trên Baby; C4 làm giảm toàn bộ chỉ số.
 
 \begin{itemize}[leftmargin=*,labelsep=6pt]
-    \item \textbf{Gradient starvation do gating sớm:} Confidence Gate can thiệp trước khi đặc trưng được lan truyền qua GNN. Nếu cổng giảm quá mạnh đóng góp của hình ảnh hoặc văn bản trong giai đoạn đầu, các tầng biểu diễn phía trước nhận ít tín hiệu cập nhật và khó học được quan hệ đa phương thức ổn định.
-    \item \textbf{Feature misalignment:} ID embedding và content feature chưa được căn chỉnh hoàn toàn tại thời điểm Early Fusion. Việc ước lượng độ tin cậy trực tiếp từ hai không gian còn sai lệch có thể khiến cổng loại bỏ cả những tín hiệu hữu ích thay vì chỉ lọc nhiễu.
+    \item \textbf{C3 (Uncertainty-aware Adaptive BPR)} có tỷ lệ hiệu quả/chi phí tốt nhất với 12 tham số bổ sung. C3 tăng R@20 và N@20 trên Baby, tăng N@10 và N@20 trên Sports, nhưng làm R@10 trên Baby giảm 2.5\%. Trên Clothing, hai chỉ số bằng baseline và hai chỉ số giảm nhẹ. Vì vậy, C3 có lợi ích cục bộ nhưng chưa ổn định theo mọi cutoff.
+
+    \item \textbf{C2 (Conditioned Late Fusion)} tốt nhất trên Sports, nơi R@20, N@10 và N@20 tăng 0.3\%--0.6\%. Tuy nhiên, C2 giảm trên Clothing và làm R@10 trên Baby giảm 2.5\%. Router theo cặp user--item vì vậy cần regularization để tránh phụ thuộc quá mạnh vào tập dữ liệu.
+
+    \item \textbf{C1 (Confidence-aware Early Fusion)} chỉ tăng nhẹ NDCG trên Baby, còn Recall giảm trên cả ba tập dữ liệu. Nguyên nhân có thể là gate can thiệp quá sớm và phép bình phương--căn bậc hai làm mất dấu embedding. Đây là giả thuyết cần kiểm chứng thêm bằng phân bố giá trị gate và embedding.
+
+    \item \textbf{C4 (Cross-Modal Contrastive Alignment)} giảm toàn bộ chỉ số, mạnh nhất trên Clothing (8.7\%--12.1\%). Kết quả phù hợp với hai khả năng: V/T bị căn chỉnh quá mức nên mất thông tin riêng, hoặc các item tương tự bị xem nhầm là negative. Bảng kết quả chưa đủ để kết luận xảy ra representation collapse~\cite{ma2025rearm}.
 \end{itemize}
 
-Kết quả bước đầu cho thấy Confidence Gate có khả năng cải thiện thứ hạng các vật phẩm đầu danh sách trên Baby, nhưng cần cơ chế kích hoạt trễ hoặc căn chỉnh đặc trưng tốt hơn để tránh làm giảm độ bao phủ của Recall.
 
+% ================================================================
+% 2.3 — HƯỚNG PHÁT TRIỂN
+% ================================================================
 \subsection{Đề xuất hướng phát triển tương lai}
 
-Từ kết quả bước đầu và cấu trúc Dual-Stage Fusion của COHESION, nhóm đề xuất ba hướng phát triển tiếp theo:
+Các hướng tiếp theo nên ưu tiên mở rộng C3 và C2 vì hai phương án này đã tạo ra cải thiện thực nghiệm, đồng thời sửa trực tiếp hạn chế của C1. Các biến thể từ C4 chỉ nên thử nghiệm sau khi kiểm soát tốt trọng số contrastive loss và cách chọn negative sample.
 
 \begin{enumerate}[leftmargin=*,label=\textbf{Hướng \arabic*.}]
-    \item \textbf{Warm-up Gating Strategy:}
-    Trong các epoch đầu, mô hình giữ phép gộp tĩnh để các nhánh ID và Content học được biểu diễn cơ bản. Sau giai đoạn warm-up, mức tác động của Confidence Gate được tăng dần từ $0$ đến $1$, giúp hạn chế gradient starvation và tránh khóa đặc trưng quá sớm.
+    \item \textbf{Sign-preserving Warm-up Confidence Gate --- khả thi cao:}
+    Trong giai đoạn warm-up, giữ Early Fusion gốc; sau đó chuyển dần sang residual gate riêng cho từng nhánh
+    $\mathbf e_{early}^{m}=\mathbf e_{id}+c_m\mathbf e_m$, với $m\in\{vis,txt\}$.
+    Công thức này bảo toàn dấu, duy trì đường truyền trực tiếp của ID embedding và không trộn visual với text trước hai GCN riêng. Hai scalar gate được sinh bởi MLP nhỏ nên chi phí tăng không đáng kể.
 
-    \item \textbf{Modality-specific Dynamic Routing:}
-    Thay vì gộp hình ảnh và văn bản thành một khối Content duy nhất, mỗi phương thức sử dụng một router riêng. Mô hình có thể giảm đóng góp của hình ảnh khi dữ liệu hình ảnh bị lỗi nhưng vẫn giữ lại thông tin văn bản có chất lượng tốt, và ngược lại.
+    \item \textbf{Entropy-regularized Modality Routing --- khả thi cao:}
+    Phát triển C2 bằng router riêng cho visual và text, nhưng bổ sung entropy regularization hoặc giới hạn $\alpha_m\in[\alpha_{min},\alpha_{max}]$ để tránh một modality chiếm toàn bộ trọng số. Các mô hình gated multimodal graph gần đây cho thấy routing động có thể duy trì tính mô-đun và mở rộng sang modality mới~\cite{liu2025gated}. Hướng này phù hợp nhất với Sports, nơi C2 đã cải thiện ba metric.
 
-    \item \textbf{Cross-layer Attention Diffusion:}
-    Các biểu diễn từ nhiều lớp GCN được kết hợp bằng attention thay cho phép cộng cố định. Cơ chế này giúp cân bằng thông tin cá nhân hóa ở tầng nông với thông tin khái quát ở tầng sâu, đồng thời giảm nguy cơ over-smoothing.
+    \item \textbf{Calibrated Uncertainty with Moving Statistics --- khả thi cao:}
+    C3 hiện dự đoán uncertainty từ chênh điểm của từng batch. Có thể chuẩn hóa $\Delta s_m$ bằng trung bình và phương sai trượt theo modality trước khi đưa qua gate, giúp giảm phản ứng với nhiễu ngắn hạn mà không thay đổi backbone. Đây là hướng nên ưu tiên vì C3 đã cải thiện một số metric trên Baby và Sports với chỉ 12 tham số.
+
+    \item \textbf{Shared--Private Contrastive Decomposition --- khả thi trung bình:}
+    Thay InfoNCE trực tiếp của C4 bằng hai không gian: shared space học thông tin chung V/T và private space giữ thông tin riêng thông qua orthogonal constraint hoặc stop-gradient. REARM sử dụng meta-network và ràng buộc trực giao để bảo toàn cả modal-shared và modal-unique information~\cite{ma2025rearm}. Hướng này phù hợp với Dual-Stage Fusion hơn việc ép toàn bộ $\mathbf v_i$ và $\mathbf t_i$ trùng nhau.
+
+    \item \textbf{False-negative-aware Contrastive Sampling --- khả thi trung bình:}
+    Nếu tiếp tục sử dụng contrastive loss, các item có độ tương đồng nội dung hoặc đồng xuất hiện cao có thể được giảm trọng số âm hoặc loại khỏi mẫu số. Ý tưởng phát hiện false negative động~\cite{balmaseda2025glofnd} có thể được điều chỉnh bằng item--item graph sẵn có của COHESION, nhưng cần thêm bước chọn ngưỡng và kiểm tra chi phí lấy mẫu.
 \end{enumerate}
+
+Thứ tự thử nghiệm đề xuất là: \textbf{Calibrated Uncertainty}, \textbf{Entropy-regularized Routing}, rồi \textbf{Sign-preserving Warm-up Gate}. Hai hướng liên quan đến contrastive learning chỉ nên triển khai sau khi có thí nghiệm độ nhạy theo $\lambda_{CL}$ và phân tích tỷ lệ false negative, do C4 hiện gây suy giảm trên cả ba tập dữ liệu.
 
 \clearpage
