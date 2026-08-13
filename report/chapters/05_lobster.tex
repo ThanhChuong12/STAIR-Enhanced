@@ -1,0 +1,547 @@
+% ============================================================
+% CHƯƠNG 5 — LOBSTER: Bilateral Global Semantic Enhancement
+%            for Multimedia Recommendation
+% ============================================================
+% Yêu cầu packages:
+% \usepackage{tikz, longtable, booktabs, multirow, enumitem}
+% \usetikzlibrary{positioning, arrows.meta, shapes.geometric, fit, calc, backgrounds}
+
+\section{LOBSTER: Bilateral Global Semantic Enhancement for Multimedia Recommendation}
+
+% ================================================================
+% 5.1 — ĐỀ XUẤT CÁC PHƯƠNG ÁN CẢI TIẾN
+% ================================================================
+\subsection{Đề xuất các phương án cải tiến kiến trúc LOBSTER}
+
+Kiến trúc LOBSTER xử lý ba phương thức (ID, Visual, Text) qua ba mạng LayerGCN riêng biệt, ghép nối (\texttt{concat}) các biểu diễn đầu ra và áp dụng trọng số \textit{Cannikin Law} khi tính BPR loss~\cite{xu2026lobster}. Nhóm đề xuất năm phương án can thiệp độc lập tại biểu diễn phương thức, dung hợp đa phương thức, hàm mục tiêu, học tự giám sát và cấu trúc đồ thị. Bảng~\ref{tab:lobster_overview} tóm tắt các phương án.
+
+\begin{table}[h]
+\centering
+\caption{Tổng quan năm phương án cải tiến LOBSTER.}
+\label{tab:lobster_overview}
+\begin{tabular}{c l l c}
+\toprule
+\textbf{Ký hiệu} & \textbf{Phương án} & \textbf{Vùng can thiệp} & \textbf{Thêm tham số} \\
+\midrule
+L1 & Adaptive Noise Gate            & GCN Output (trước concat) & $\sim$4.2K \\
+L2 & Cross-Modal Attention Gating   & Fusion (thay concat)      & +579 \\
+L3 & Uncertainty-aware BPR          & Hàm mục tiêu $\mathcal{L}_{\text{BPR}}$ & 0 \\
+L4 & Self-Supervised Contrastive    & Thêm $\mathcal{L}_{\text{CL}}$ & 0 \\
+L5 & Graph Densification (KNN)      & Item embedding sau concat & 0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ===== HÌNH TỔNG QUAN KIẾN TRÚC =====
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.94, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.1cm, font=\scriptsize, align=center, fill=blue!8},
+    merge/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=4.8cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=2.8cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    modarr/.style={-{Stealth[length=2mm]}, thick, red!70!black, dashed},
+    lbl/.style={font=\tiny\itshape, text=gray},
+]
+% Baseline flow
+\node[block] (id_gcn) at (-3.4,0) {LayerGCN$_{id}$};
+\node[block] (v_gcn) at (0,0) {LayerGCN$_{vis}$};
+\node[block] (t_gcn) at (3.4,0) {LayerGCN$_{txt}$};
+\node[merge] (concat) at (0,-1.45)
+{Baseline: $\operatorname{concat}(\mathbf h_{id},\mathbf h_v,\mathbf h_t)$};
+\node[merge] (cannikin) at (0,-2.75)
+{Cannikin Law weights $\to$ positive/negative scores};
+\node[merge] (loss) at (0,-4.05)
+{$\mathcal L_{\mathrm{BPR}}+\lambda_r\mathcal L_{\mathrm{reg}}$};
+\draw[arr] (id_gcn) -- (concat);
+\draw[arr] (v_gcn) -- (concat);
+\draw[arr] (t_gcn) -- (concat);
+\draw[arr] (concat) -- (cannikin);
+\draw[arr] (cannikin) -- (loss);
+
+% Independent interventions
+\node[newmod] (l1) at (5.2,-1.0) {[L1] V/T Adaptive\\Noise Gate};
+\node[newmod] (l2) at (-5.2,-1.55) {[L2] Attention\\Fusion};
+\node[newmod] (l5) at (5.2,-2.55) {[L5] KNN Graph\\Densification};
+\node[newmod] (l4) at (-5.2,-4.05) {[L4] Contrastive\\Loss};
+\node[newmod] (l3) at (5.2,-4.05) {[L3] Uncertainty-aware\\BPR};
+\draw[modarr] (l1.west) -- (concat.east);
+\draw[modarr] (l2.east) -- (concat.west);
+\draw[modarr] (l5.west) -- (cannikin.east);
+\draw[modarr] (l4.east) -- (loss.west);
+\draw[modarr] (l3.west) -- (loss.east);
+\node[lbl, below=0.08cm of loss] {Các module L1--L5 được đánh giá độc lập, không mắc nối tiếp.};
+\end{tikzpicture}
+\caption{Luồng baseline của LOBSTER và vị trí can thiệp độc lập của năm phương án. L1 tác động lên đầu ra V/T trước concat; L2 thay phép concat; L5 bổ sung lan truyền KNN; L3 và L4 điều chỉnh hàm mục tiêu.}
+\label{fig:lobster_overview}
+\end{figure}
+
+
+% ----------------------------------------------------------
+% 5.1.1 — ADAPTIVE NOISE GATE
+% ----------------------------------------------------------
+\subsubsection{Cải tiến 1: Adaptive Noise Gate (L1)}
+
+\paragraph{Động lực kỹ thuật:}
+LOBSTER luân phiên cắt cạnh ngẫu nhiên và cắt cạnh theo độ quan trọng trước mỗi epoch, trong khi LayerGCN dùng cosine similarity với biểu diễn ban đầu để tinh chỉnh đầu ra từng tầng~\cite{xu2026lobster}. Hai cơ chế này tác động lên cấu trúc lan truyền nhưng không trực tiếp điều chỉnh mức perturbation trong không gian biểu diễn. L1 vì vậy bổ sung nhiễu có biên độ học theo từng node tại đầu ra hai nhánh Visual và Text.
+
+\paragraph{Cơ sở toán học:}
+Với biểu diễn $\mathbf{h}_i$ ở đầu ra GCN phương thức $m$, mạng Noise Gate tính hệ số nhiễu:
+\begin{equation}
+\epsilon_i^{(m)} = \sigma\!\left(\mathbf{W}_2^{(m)} \cdot \operatorname{ReLU}\!\left(\mathbf{W}_1^{(m)} \mathbf{h}_i + \mathbf{b}_1^{(m)}\right) + b_2^{(m)}\right)
+\end{equation}
+
+Biểu diễn được tăng cường:
+\begin{equation}
+\tilde{\mathbf{h}}_i^{(m)} = \mathbf{h}_i^{(m)} + \epsilon_i^{(m)} \cdot \boldsymbol{\eta}_i^{(m)},
+\quad \boldsymbol{\eta}_i^{(m)} \sim \mathcal{N}(\mathbf{0}, \mathbf{I}),
+\quad m\in\{v,t\}.
+\end{equation}
+
+Gate được tối ưu đồng thời với mục tiêu gợi ý nên có thể sinh mức nhiễu khác nhau theo biểu diễn của từng node. Tuy nhiên, cơ chế này không mặc nhiên bảo đảm node đuôi dài nhận nhiễu lớn hơn; muốn điều khiển theo độ thưa cần đưa thêm degree hoặc độ tin cậy vào đầu vào của gate.
+
+\par\medskip
+\noindent\textbf{Vị trí chèn trong kiến trúc:}\par
+\nopagebreak[4]
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.96, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.2cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=3.0cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    note/.style={font=\tiny\itshape, text=red!70!black},
+]
+\node[block] (gcn_v) at (-3.2,0) {LayerGCN$_v$ $\to$ $\mathbf{h}_v$};
+\node[block] (gcn_id) at (0,0) {LayerGCN$_{id}$ $\to$ $\mathbf{h}_{id}$};
+\node[block] (gcn_t) at (3.2,0) {LayerGCN$_t$ $\to$ $\mathbf{h}_t$};
+\node[newmod] (gate_v) at (-3.2,-1.45)
+{[L1] $\epsilon_v=\sigma(\operatorname{MLP}_v(\mathbf h_v))$\\
+$\tilde{\mathbf h}_v=\mathbf h_v+\epsilon_v\boldsymbol\eta_v$};
+\node[newmod] (gate_t) at (3.2,-1.45)
+{[L1] $\epsilon_t=\sigma(\operatorname{MLP}_t(\mathbf h_t))$\\
+$\tilde{\mathbf h}_t=\mathbf h_t+\epsilon_t\boldsymbol\eta_t$};
+\node[block, minimum width=5.6cm] (concat) at (0,-2.95)
+{$\operatorname{concat}(\mathbf h_{id},\tilde{\mathbf h}_v,\tilde{\mathbf h}_t)$};
+\draw[arr] (gcn_v) -- (gate_v);
+\draw[arr] (gcn_t) -- (gate_t);
+\draw[arr] (gate_v) -- (concat);
+\draw[arr] (gcn_id) -- (concat);
+\draw[arr] (gate_t) -- (concat);
+\node[note, below=0.08cm of gate_v] {MỚI};
+\node[note, below=0.08cm of gate_t] {MỚI};
+\end{tikzpicture}
+\caption{Vị trí chèn Adaptive Noise Gate (L1). Hai gate chỉ perturb nhánh Visual và Text; biểu diễn ID được giữ nguyên và đi trực tiếp vào phép concat.}
+\label{fig:lobster_l1}
+\end{figure}
+
+\paragraph{So sánh tham số:}
+Với hai MLP riêng $64\rightarrow32\rightarrow1$, số tham số bổ sung là
+$2\times(64\times32+32+32\times1+1)=\mathbf{4{,}226}$, tương đương khoảng \textbf{4.2K tham số}.
+
+
+% ----------------------------------------------------------
+% 5.1.2 — CROSS-MODAL ATTENTION GATING
+% ----------------------------------------------------------
+\subsubsection{Cải tiến 2: Cross-Modal Attention Gating (L2)}
+
+\paragraph{Động lực kỹ thuật:}
+LOBSTER gốc ghép nối ba biểu diễn phương thức bằng \texttt{torch.cat}. Phép nối bảo toàn toàn bộ đặc trưng nhưng không tạo một cơ chế tường minh để điều chỉnh mức đóng góp của từng modality theo từng node. Cải tiến 2 bổ sung attention gate trước phép concat, đồng thời giữ nguyên kích thước đầu ra $3d$ để tương thích với các bước tính điểm và Cannikin Law phía sau.
+
+\paragraph{Cơ sở toán học:}
+Với $\mathbf z=[\mathbf h_{id}\|\mathbf h_v\|\mathbf h_t]\in\mathbb R^{3d}$, trọng số attention được tính bởi một tầng tuyến tính:
+\begin{equation}
+[\alpha_{id},\alpha_{vis},\alpha_{txt}]
+=\operatorname{Softmax}\!\left(\mathbf W_g\mathbf z+\mathbf b_g\right).
+\end{equation}
+
+Thay vì cộng ba vector và làm giảm số chiều, L2 thực hiện gated-concat:
+\begin{equation}
+\mathbf h_{\text{fused}}
+=\left[\alpha_{id}\mathbf h_{id}\|\alpha_{vis}\mathbf h_v\|\alpha_{txt}\mathbf h_t\right]
+\in\mathbb R^{3d}.
+\end{equation}
+
+\par\medskip
+\noindent\textbf{Vị trí chèn trong kiến trúc:}\par
+\nopagebreak[4]
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.94, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.6cm, minimum width=1.45cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.7cm, minimum width=4.5cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    old/.style={rectangle, draw=gray, rounded corners=2pt, minimum height=0.7cm, minimum width=4.0cm, font=\scriptsize, align=center, fill=gray!10, text=gray},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    note/.style={font=\tiny\itshape, text=red!70!black},
+]
+% Baseline
+\node[note] at (-3.6,0.8) {BASELINE};
+\node[block] (oid) at (-5.0,0) {$\mathbf h_{id}$};
+\node[block] (ov) at (-3.6,0) {$\mathbf h_v$};
+\node[block] (ot) at (-2.2,0) {$\mathbf h_t$};
+\node[old] (oldcat) at (-3.6,-1.25)
+{$\operatorname{concat}(\mathbf h_{id},\mathbf h_v,\mathbf h_t)$};
+\draw[arr, gray] (oid) -- (oldcat);
+\draw[arr, gray] (ov) -- (oldcat);
+\draw[arr, gray] (ot) -- (oldcat);
+\node[note, below=0.06cm of oldcat] {BỎ};
+
+% L2
+\node[note] at (2.4,0.8) {LOBSTER-L2};
+\node[block] (nid) at (1.0,0) {$\mathbf h_{id}$};
+\node[block] (nv) at (2.4,0) {$\mathbf h_v$};
+\node[block] (nt) at (3.8,0) {$\mathbf h_t$};
+\node[newmod] (gate) at (2.4,-1.25)
+{$\boldsymbol\alpha=\operatorname{Softmax}(\mathbf W_g[\mathbf h_{id}\|\mathbf h_v\|\mathbf h_t]+\mathbf b_g)$};
+\node[block, minimum width=5.2cm] (gcat) at (2.4,-2.55)
+{$[\alpha_{id}\mathbf h_{id}\|\alpha_v\mathbf h_v\|\alpha_t\mathbf h_t]$};
+\node[block, minimum width=3.2cm] (cannikin) at (2.4,-3.75) {Cannikin Law};
+\draw[arr] (nid) -- (gate);
+\draw[arr] (nv) -- (gate);
+\draw[arr] (nt) -- (gate);
+\draw[arr] (gate) -- (gcat);
+\draw[arr] (gcat) -- (cannikin);
+\node[note, right=0.08cm of gate] {MỚI};
+\end{tikzpicture}
+\caption{Vị trí chèn Cross-Modal Attention Gating (L2). Gate học ba trọng số theo node, sau đó scale từng modality trước khi concat để giữ nguyên số chiều đầu ra.}
+\label{fig:lobster_l2}
+\end{figure}
+
+\paragraph{So sánh tham số:}
+Với $d=64$, tầng Linear $192\rightarrow3$ có
+$192\times3+3=\mathbf{579}$ tham số.
+
+
+% ----------------------------------------------------------
+% 5.1.3 — UNCERTAINTY-AWARE BPR
+% ----------------------------------------------------------
+\subsubsection{Cải tiến 3: Uncertainty-aware BPR Loss (L3)}
+
+\paragraph{Động lực kỹ thuật:}
+BPR loss gốc của LOBSTER dùng Cannikin Law để điều chỉnh trọng số giữa ba modality, nhưng các triplet trong batch vẫn được cộng với trọng số bằng nhau. L3 sử dụng độ lớn margin làm một \textit{uncertainty proxy} không tham số nhằm giảm ảnh hưởng của các triplet nằm gần biên quyết định.
+
+\paragraph{Cơ sở toán học:}
+Đặt $\Delta_{upn}=\hat y_{u,p}-\hat y_{u,n}$. Đại lượng bất định heuristic được tính bởi:
+\begin{equation}
+u_{upn}=\sigma\!\left(-|\Delta_{upn}|\right),
+\qquad 0<u_{upn}\leq0.5.
+\end{equation}
+
+BPR loss có trọng số:
+\begin{equation}
+\mathcal{L}_{\text{BPR}}^{\text{unc}}
+=-\sum_{(u,p,n)}(1-u_{upn})\log\sigma(\Delta_{upn}).
+\end{equation}
+
+Triplet có $|\Delta_{upn}|$ nhỏ nhận trọng số gần $0.5$, trong khi triplet có margin lớn nhận trọng số tiến về $1$. Đây chỉ là heuristic dựa trên margin, không phải độ bất định đã được hiệu chuẩn; việc giảm gradient ở các mẫu gần biên cũng có thể loại bỏ tín hiệu hard-sample hữu ích.
+
+\par\medskip
+\noindent\textbf{Vị trí chèn trong kiến trúc:}\par
+\nopagebreak[4]
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.96, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.4cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=3.2cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    old/.style={rectangle, draw=gray, rounded corners=2pt, minimum height=0.65cm, minimum width=3.0cm, font=\scriptsize, align=center, fill=gray!10, text=gray},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    note/.style={font=\tiny\itshape, text=red!70!black},
+]
+\node[block] (scores) at (0,0) {Cannikin scores $\hat y_{u,p},\hat y_{u,n}$};
+\node[block] (margin) at (0,-1.2) {$\Delta_{upn}=\hat y_{u,p}-\hat y_{u,n}$};
+\node[old] (oldbpr) at (-3.0,-2.55)
+{Baseline: $-\log\sigma(\Delta_{upn})$};
+\node[newmod] (unc) at (2.6,-2.55)
+{[L3] $u=\sigma(-|\Delta_{upn}|)$\\
+$-(1-u)\log\sigma(\Delta_{upn})$};
+\draw[arr] (scores) -- (margin);
+\draw[arr, gray] (margin) -- (oldbpr);
+\draw[arr] (margin) -- (unc);
+\node[note, below=0.06cm of oldbpr] {BỎ};
+\node[note, below=0.06cm of unc] {THAY THẾ};
+\end{tikzpicture}
+\caption{Vị trí chèn Uncertainty-aware BPR Loss (L3). Margin của điểm Cannikin được dùng để tạo trọng số triplet trước khi cộng BPR loss.}
+\label{fig:lobster_l3}
+\end{figure}
+
+\paragraph{So sánh tham số:}
+Cải tiến 3 hoàn toàn \textbf{parameter-free} --- chỉ thay đổi công thức tính loss.
+
+
+% ----------------------------------------------------------
+% 5.1.4 — SELF-SUPERVISED CONTRASTIVE LEARNING
+% ----------------------------------------------------------
+\subsubsection{Cải tiến 4: Self-Supervised Contrastive Learning (L4)}
+
+\paragraph{Động lực kỹ thuật:}
+LOBSTER đã luân phiên cắt cạnh ngẫu nhiên và cắt cạnh theo độ quan trọng giữa các epoch. L4 lấy hai mask được sinh độc lập trong cùng bước huấn luyện, chạy chung một encoder trên hai đồ thị và dùng InfoNCE để tăng tính nhất quán của biểu diễn trước nhiễu cấu trúc.
+
+\paragraph{Cơ sở toán học:}
+Hai views dùng cùng tham số mô hình nhưng hai adjacency mask khác nhau:
+\begin{align}
+\mathbf{E}^{(1)} &= \text{forward}(\text{adj}_{\text{view1}}) \\
+\mathbf{E}^{(2)} &= \text{forward}(\text{adj}_{\text{view2}})
+\end{align}
+
+InfoNCE loss:
+\begin{equation}
+\mathcal{L}_{\text{CL}} = -\frac{1}{|B|}\sum_{i \in B} \log \frac{\exp\!\left(\operatorname{sim}(\mathbf{e}_i^{(1)}, \mathbf{e}_i^{(2)}) / \tau\right)}{\sum_{j \in B} \exp\!\left(\operatorname{sim}(\mathbf{e}_i^{(1)}, \mathbf{e}_j^{(2)}) / \tau\right)}
+\end{equation}
+
+Hàm mục tiêu tổng:
+\begin{equation}
+\mathcal{L} = \mathcal{L}_{\text{BPR}} + \lambda_{\text{reg}} \mathcal{L}_{\text{reg}} + \lambda_{\text{CL}} \mathcal{L}_{\text{CL}}
+\end{equation}
+Trong cấu hình thực nghiệm, $\lambda_{\text{CL}}=0.01$ và $\tau=0.2$; đây là các siêu tham số cần được kiểm tra độ nhạy theo tập dữ liệu.
+
+\par\medskip
+\noindent\textbf{Vị trí chèn trong kiến trúc:}\par
+\nopagebreak[4]
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.96, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.4cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=3.4cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    note/.style={font=\tiny\itshape, text=red!70!black},
+]
+\node[block] (adj1) at (-2.5,0) {$\tilde A^{(1)}$ (mask 1)};
+\node[block] (adj2) at (2.5,0) {$\tilde A^{(2)}$ (mask 2)};
+\node[block] (e1) at (-2.5,-1.25) {$\mathbf E^{(1)}=f_\theta(\tilde A^{(1)})$};
+\node[block] (e2) at (2.5,-1.25) {$\mathbf E^{(2)}=f_\theta(\tilde A^{(2)})$};
+\node[newmod] (cl) at (0,-2.65) {[L4] InfoNCE $\mathcal L_{\mathrm{CL}}$};
+\node[block] (bpr) at (-3.0,-3.95) {$\mathcal L_{\mathrm{BPR}}+\lambda_r\mathcal L_{\mathrm{reg}}$};
+\node[block, minimum width=5.4cm] (total) at (0,-5.2)
+{$\mathcal L=\mathcal L_{\mathrm{BPR}}+\lambda_r\mathcal L_{\mathrm{reg}}+\lambda_{\mathrm{CL}}\mathcal L_{\mathrm{CL}}$};
+\draw[arr] (adj1) -- (e1);
+\draw[arr] (adj2) -- (e2);
+\draw[arr] (e1) -- (cl);
+\draw[arr] (e2) -- (cl);
+\draw[arr] (cl) -- (total);
+\draw[arr] (bpr) -- (total);
+\node[note, right=0.1cm of cl] {MỚI};
+\end{tikzpicture}
+\caption{Vị trí chèn Self-Supervised Contrastive Learning (L4). Hai mask độc lập dùng chung encoder; InfoNCE được cộng vào mục tiêu BPR và regularization.}
+\label{fig:lobster_l4}
+\end{figure}
+
+\paragraph{So sánh tham số:}
+Cải tiến 4 \textbf{parameter-free} --- chỉ bổ sung thành phần loss và forward pass thứ hai.
+
+
+% ----------------------------------------------------------
+% 5.1.5 — GRAPH DENSIFICATION
+% ----------------------------------------------------------
+\subsubsection{Cải tiến 5: Graph Densification (L5)}
+
+\paragraph{Động lực kỹ thuật:}
+Đồ thị tương tác user--item rất thưa nên các item ít tương tác nhận được ít tín hiệu cộng tác. L5 xây dựng một đồ thị phụ item--item KNN từ đặc trưng Visual và Text, sau đó dùng đồ thị này để làm mượt residual cho phần item embedding sau concat. Phương án không thay đổi adjacency user--item của ba LayerGCN.
+
+\paragraph{Cơ sở toán học:}
+Đồ thị KNN được xây dựng một lần tại giai đoạn khởi tạo:
+\begin{equation}
+\text{sim}_{ij} = \frac{1}{2}\left(\frac{\mathbf{v}_i^\top \mathbf{v}_j}{\|\mathbf{v}_i\|\|\mathbf{v}_j\|} + \frac{\mathbf{t}_i^\top \mathbf{t}_j}{\|\mathbf{t}_i\|\|\mathbf{t}_j\|}\right)
+\end{equation}
+
+Giữ lại top-$k$ hàng xóm ($k=10$) để tạo ma trận $B$, sau đó đối xứng hóa và chuẩn hóa:
+\begin{equation}
+A_{\text{KNN}}=\frac{B+B^\top}{2},
+\qquad
+\tilde{A}_{\text{KNN}}=D^{-1/2}A_{\text{KNN}}D^{-1/2}.
+\end{equation}
+
+Trong \texttt{forward()}, gọi $\mathbf U_{\text{concat}}$ và $\mathbf I_{\text{concat}}$ là đầu ra user/item sau khi concat ba modality. Chỉ item embedding được lan truyền trên KNN:
+\begin{equation}
+\mathbf{I}_{\text{dense}} = \tilde{A}_{\text{KNN}} \cdot \mathbf{I}_{\text{concat}}
+\end{equation}
+\begin{equation}
+\mathbf{I}_{\text{out}} = \mathbf{I}_{\text{concat}} + \lambda_{\text{dense}}\mathbf{I}_{\text{dense}},
+\qquad
+\mathbf U_{\text{out}}=\mathbf U_{\text{concat}}.
+\end{equation}
+Trong cấu hình thực nghiệm, $\lambda_{\text{dense}}=0.1$.
+
+\par\medskip
+\noindent\textbf{Vị trí chèn trong kiến trúc:}\par
+\nopagebreak[4]
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.96, transform shape,
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.4cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.65cm, minimum width=3.8cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    note/.style={font=\tiny\itshape, text=red!70!black},
+]
+\node[block, minimum width=5.4cm] (concat) at (0,0)
+{LOBSTER forward $\to(\mathbf U_{\text{concat}},\mathbf I_{\text{concat}})$};
+\node[block] (user) at (-3.0,-1.45) {$\mathbf U_{\text{out}}=\mathbf U_{\text{concat}}$};
+\node[block] (knn) at (3.2,-1.45) {$\tilde A_{\text{KNN}}$ item--item};
+\node[newmod] (dense) at (0,-2.8)
+{[L5] $\mathbf I_{\text{out}}=\mathbf I_{\text{concat}}$\\
+$+\,0.1\tilde A_{\text{KNN}}\mathbf I_{\text{concat}}$};
+\node[block, minimum width=4.6cm] (pred) at (0,-4.15)
+{Cannikin Law trên $\mathbf U_{\text{out}},\mathbf I_{\text{out}}$};
+\draw[arr] (concat) -- (user);
+\draw[arr] (concat) -- (dense);
+\draw[arr] (knn) -- (dense);
+\draw[arr] (user.west) -- ++(-0.55cm,0) |- (pred.west);
+\draw[arr] (dense) -- (pred);
+\node[note, right=0.08cm of dense] {MỚI};
+\end{tikzpicture}
+\caption{Vị trí chèn Graph Densification (L5). KNN chỉ làm mượt residual cho item embedding; user embedding giữ nguyên trước khi tính điểm Cannikin.}
+\label{fig:lobster_l5}
+\end{figure}
+
+\paragraph{So sánh tham số:}
+Cải tiến 5 \textbf{parameter-free} --- đồ thị KNN tính offline, chỉ thêm một phép nhân sparse matrix trong forward.
+
+
+% ================================================================
+% 5.2 — KẾT QUẢ THỰC NGHIỆM
+% ================================================================
+\subsection{Kết quả thực nghiệm và phân tích định lượng}
+
+\subsubsection{Xác nhận tái tạo baseline}
+
+Bảng~\ref{tab:lobster_paper_vs_baseline} đối chiếu kết quả công bố trong bài báo LOBSTER và kết quả tái tạo baseline của nhóm.
+
+\begingroup
+\fontsize{8.5}{10}\selectfont
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{table}[H]
+\centering
+\caption{So sánh kết quả công bố trong bài báo LOBSTER và kết quả tái tạo baseline của nhóm.}
+\label{tab:lobster_paper_vs_baseline}
+\begin{tabular}{l l *{4}{c} c}
+\toprule
+\rowcolor{gray!15}
+\textbf{Tập dữ liệu} & \textbf{Nguồn} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{Lệch tối đa} \\
+\midrule
+\multirow{2}{*}{Baby}
+ & Bài báo & 0.0563 & 0.0870 & 0.0296 & 0.0375 & \multirow{2}{*}{7.64\%} \\
+ & Tái tạo & 0.0520 & 0.0818 & 0.0280 & 0.0357 & \\
+\midrule
+\multirow{2}{*}{Sports}
+ & Bài báo & 0.0594 & 0.0913 & 0.0318 & 0.0400 & \multirow{2}{*}{5.35\%} \\
+ & Tái tạo & 0.0567 & 0.0874 & 0.0301 & 0.0380 & \\
+\midrule
+\multirow{2}{*}{Clothing}
+ & Bài báo & 0.0520 & 0.0761 & 0.0276 & 0.0339 & \multirow{2}{*}{18.08\%} \\
+ & Tái tạo & 0.0426 & 0.0635 & 0.0233 & 0.0286 & \\
+\bottomrule
+\end{tabular}
+\end{table}
+\endgroup
+
+Độ lệch tối đa lần lượt là 7.64\% trên Baby, 5.35\% trên Sports và 18.08\% trên Clothing. Sai khác lớn nhất xuất hiện tại R@10 của Clothing; vì vậy, kết quả tuyệt đối trên tập này cần được diễn giải thận trọng. Các phiên bản cải tiến vẫn được so sánh với cùng baseline tái tạo để giữ điều kiện thực nghiệm nhất quán.
+
+
+\subsubsection{Đối sánh các phiên bản cải tiến}
+
+Bảng~\ref{tab:lobster_improvement_results} tổng hợp kết quả năm phiên bản cải tiến trên ba tập dữ liệu.
+
+\begingroup
+\fontsize{8.5}{10}\selectfont
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{%
+    >{\raggedright\arraybackslash}p{1.35cm}
+    >{\raggedright\arraybackslash}p{3.20cm}
+    *{4}{>{\centering\arraybackslash}p{1.20cm}}
+    >{\raggedright\arraybackslash}p{4.00cm}}
+\caption{Đối sánh hiệu năng giữa LOBSTER baseline và năm phiên bản cải tiến.}
+\label{tab:lobster_improvement_results}\\
+\toprule
+\rowcolor{gray!15}
+\textbf{Tập dữ liệu} & \textbf{Mô hình} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{So sánh với Baseline}\\
+\midrule
+\endfirsthead
+\multicolumn{7}{c}{\bfseries Bảng \thetable\ (tiếp theo)}\\
+\toprule
+\rowcolor{gray!15}
+\textbf{Tập dữ liệu} & \textbf{Mô hình} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{So sánh với Baseline}\\
+\midrule
+\endhead
+\midrule
+\multicolumn{7}{r}{\textit{Tiếp tục ở trang sau...}}\\
+\endfoot
+\bottomrule
+\endlastfoot
+
+% ===== BABY =====
+\multirow{6}{*}{Baby}
+& LOBSTER Baseline              & 0.0520 & 0.0818 & 0.0280 & 0.0357 & --\\
+& L1 (Adaptive Noise)           & 0.0543 & \textbf{0.0856} & 0.0289 & 0.0369 & Tăng toàn bộ $3.2$--$4.6\%$; tốt nhất R@20\\
+& L5 (Graph Dense)              & \textbf{0.0551} & 0.0845 & \textbf{0.0295} & \textbf{0.0370} & Tăng toàn bộ $3.3$--$6.0\%$; tốt nhất ba metric\\
+& L4 (Contrastive)              & 0.0533 & 0.0830 & 0.0286 & 0.0362 & Tăng toàn bộ $1.4$--$2.5\%$\\
+& L2 (Cross-Modal Att)          & 0.0527 & 0.0836 & 0.0286 & 0.0365 & Tăng toàn bộ $1.3$--$2.2\%$\\
+& L3 (Uncertainty BPR)          & 0.0524 & 0.0819 & 0.0281 & 0.0358 & Tăng toàn bộ $0.1$--$0.8\%$\\
+\midrule
+
+% ===== SPORTS =====
+\multirow{6}{*}{Sports}
+& LOBSTER Baseline              & 0.0567 & 0.0874 & \textbf{0.0301} & 0.0380 & --\\
+& L2 (Cross-Modal Att)          & \textbf{0.0572} & \textbf{0.0891} & 0.0299 & \textbf{0.0381} & R@10 $+0.9\%$, R@20 $+1.9\%$, N@20 $+0.3\%$; N@10 $-0.7\%$\\
+& L3 (Uncertainty BPR)          & 0.0564 & 0.0863 & \textbf{0.0301} & 0.0379 & N@10 bằng; còn lại giảm $0.3$--$1.3\%$\\
+& L4 (Contrastive)              & 0.0560 & 0.0875 & 0.0299 & 0.0380 & R@20 $+0.1\%$, N@20 bằng; còn lại giảm $0.7$--$1.2\%$\\
+& L5 (Graph Dense)              & 0.0549 & 0.0866 & 0.0291 & 0.0373 & Giảm toàn bộ $0.9$--$3.3\%$\\
+& L1 (Adaptive Noise)           & 0.0531 & 0.0818 & 0.0287 & 0.0361 & Giảm toàn bộ $4.7$--$6.4\%$\\
+\midrule
+
+% ===== CLOTHING =====
+\multirow{6}{*}{Clothing}
+& LOBSTER Baseline              & 0.0426 & 0.0635 & \textbf{0.0233} & 0.0286 & --\\
+& L5 (Graph Dense)              & 0.0430 & 0.0644 & 0.0231 & 0.0285 & Recall tăng $0.9$--$1.4\%$; NDCG giảm $0.4$--$0.9\%$\\
+& \textbf{L4 (Contrastive)}     & \textbf{0.0433} & \textbf{0.0655} & \textbf{0.0233} & \textbf{0.0289} & R@10 $+1.6\%$, R@20 $+3.1\%$, N@20 $+1.0\%$; N@10 bằng\\
+& L2 (Cross-Modal Att)          & 0.0418 & 0.0635 & 0.0217 & 0.0272 & R@20 bằng; còn lại giảm $1.9$--$6.9\%$\\
+& L1 (Adaptive Noise)           & 0.0413 & 0.0633 & 0.0221 & 0.0277 & Giảm toàn bộ $0.3$--$5.2\%$\\
+& L3 (Uncertainty BPR)          & 0.0397 & 0.0599 & 0.0213 & 0.0264 & Giảm toàn bộ $5.7$--$8.6\%$\\
+\end{longtable}
+\endgroup
+
+
+\subsubsection{Phân tích các phương án cải tiến}
+
+Không có phương án nào cải thiện đồng đều mọi metric trên cả ba tập dữ liệu.
+
+\begin{itemize}[leftmargin=*,labelsep=6pt]
+    \item \textbf{L4 (Contrastive Learning)} ổn định nhất: tăng toàn bộ metric trên Baby, đạt kết quả tốt nhất trên Clothing và gần baseline trên Sports.
+    \item \textbf{L2 (Cross-Modal Attention)} tốt nhất trên Sports và tăng toàn bộ metric trên Baby, nhưng NDCG trên Clothing giảm $4.9$--$6.9\%$.
+    \item \textbf{L5 (Graph Densification)} mạnh nhất trên Baby, nhưng giảm toàn bộ metric trên Sports và làm NDCG trên Clothing giảm nhẹ.
+    \item \textbf{L1 (Adaptive Noise)} phụ thuộc mạnh vào dữ liệu: tăng $3.2$--$4.6\%$ trên Baby nhưng giảm trên Sports và Clothing.
+    \item \textbf{L3 (Uncertainty BPR)} chỉ tăng nhẹ trên Baby, không cải thiện Sports và giảm mạnh nhất trên Clothing; kết quả phù hợp với hạn chế của việc giảm trọng số các triplet gần biên.
+\end{itemize}
+
+
+% ================================================================
+% 5.3 — HƯỚNG PHÁT TRIỂN
+% ================================================================
+\subsection{Đề xuất hướng phát triển tương lai}
+
+Các hướng tiếp theo nên ưu tiên L4 và L2 vì hai phương án này tạo ra mức cải thiện tương đối ổn định. L1 và L5 chỉ nên được kích hoạt có điều kiện, còn L3 cần thay đổi cách xử lý mẫu gần biên. Mỗi hướng nên được đánh giá độc lập trước khi tiến hành thí nghiệm kết hợp.
+
+\begin{enumerate}[leftmargin=*,label=\textbf{Hướng \arabic*.}]
+    \item \textbf{Adaptive-view Contrastive Learning --- khả thi cao:}
+    Phát triển từ L4 bằng cách tăng dần $\lambda_{\mathrm{CL}}$ sau giai đoạn warm-up và điều chỉnh tỷ lệ cắt cạnh theo mật độ của từng tập dữ liệu. Các item có tương đồng nội dung hoặc đồng xuất hiện cao nên được giảm trọng số negative để hạn chế false negative~\cite{balmaseda2025glofnd}. Hướng này được ưu tiên vì L4 tăng toàn bộ metric trên Baby, tốt nhất trên Clothing và gần baseline trên Sports.
+
+    \item \textbf{Entropy-regularized Gated Concat --- khả thi cao:}
+    Bổ sung entropy regularization hoặc giới hạn $\alpha_m\in[\alpha_{\min},\alpha_{\max}]$ cho L2, đồng thời dùng residual
+    $\mathbf h_{\mathrm{out}}=\mathbf h_{\mathrm{concat}}+\gamma\mathbf h_{\mathrm{gated}}$.
+    Cơ chế này giữ đường truyền baseline khi gate chưa ổn định và hạn chế một modality chiếm toàn bộ trọng số. Gated multimodal learning gần đây cũng nhấn mạnh lợi ích của việc điều tiết modality theo chất lượng nội dung~\cite{liu2025gated}.
+
+    \item \textbf{Degree-aware Bounded Noise Gate --- khả thi cao:}
+    Phát triển L1 bằng cách đưa $\log(1+\deg(i))$, norm embedding hoặc độ tin cậy modality vào Noise Gate. Biên độ được chặn bởi $\epsilon_{\max}$ và chỉ tăng sau warm-up, giúp node thưa nhận regularization phù hợp mà không gây nhiễu quá mức trên Sports.
+
+    \item \textbf{Behavior-aware Selective KNN Residual --- khả thi trung bình:}
+    Thay hệ số $\lambda_{\mathrm{dense}}$ cố định của L5 bằng gate phụ thuộc degree và mức đồng thuận giữa visual, text và hành vi. Các cạnh KNN có độ tin cậy thấp được loại bỏ hoặc giảm trọng số trước khi lan truyền, phù hợp với hướng đánh giá và khử nhiễu cấu trúc đồ thị~\cite{qi2025even}. Điều này xử lý trực tiếp việc L5 tăng Recall nhưng làm giảm NDCG trên Clothing và giảm toàn bộ metric trên Sports.
+
+    \item \textbf{Hard-sample Curriculum BPR --- khả thi cao:}
+    Thay L3 bằng lịch học theo margin: giai đoạn đầu giữ BPR baseline, sau đó tăng dần trọng số cho các triplet gần biên thay vì giảm chúng cố định. Có thể kết hợp clipping để tránh một số hard negative chi phối gradient. Hướng này gần như không thêm tham số và sửa trực tiếp nguyên nhân khiến L3 suy giảm trên Clothing.
+\end{enumerate}
+
+Thứ tự thử nghiệm đề xuất là \textbf{Adaptive-view Contrastive Learning}, \textbf{Entropy-regularized Gated Concat}, rồi \textbf{Degree-aware Noise Gate}. Selective KNN và Hard-sample Curriculum nên được kiểm tra sau bằng ablation theo từng tập dữ liệu; chưa nên kết hợp L2 và L5 ngay vì hai phương án chưa cho mức tăng nhất quán trên cùng một tập.
