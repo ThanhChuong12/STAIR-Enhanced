@@ -1,0 +1,27 @@
+\section{Giới thiệu và mục tiêu khảo sát}
+
+\subsection{Bối cảnh}
+
+Hệ thống gợi ý giúp người dùng tìm được sản phẩm phù hợp từ một lượng lớn lựa chọn. Các phương pháp truyền thống chủ yếu dựa trên lịch sử tương tác giữa người dùng và sản phẩm. Tuy nhiên, dữ liệu tương tác trong thực tế thường rất thưa, đặc biệt đối với người dùng mới hoặc sản phẩm ít phổ biến. Điều này làm giảm khả năng học được sở thích và ảnh hưởng trực tiếp đến chất lượng gợi ý.
+
+Các mô hình gợi ý đa phương thức khắc phục hạn chế trên bằng cách khai thác thêm thông tin hình ảnh và văn bản của sản phẩm. Mặc dù mang lại nhiều tín hiệu hữu ích, việc kết hợp các phương thức cũng tạo ra những vấn đề mới như nhiễu đặc trưng, mất cân bằng giữa hình ảnh và văn bản, chi phí tính toán lớn và nguy cơ học quá khớp trên dữ liệu thưa. Vì vậy, cần khảo sát các mô hình tiêu biểu, tái lập kết quả và đánh giá khả năng cải tiến trong cùng một điều kiện thực nghiệm.
+
+\subsection{Mục tiêu và phạm vi}
+
+Báo cáo tập trung vào năm mô hình gợi ý đa phương thức gồm COHESION, STAIR, REARM, LOBSTER và NEGCL. Các mục tiêu chính bao gồm:
+
+\begin{itemize}[leftmargin=*,labelsep=6pt]
+    \item Phân tích đầu vào, kiến trúc, hàm mục tiêu và luồng xử lý của từng mô hình;
+    \item Tái lập kết quả trên các tập dữ liệu Amazon Baby, Sports và Clothing;
+    \item So sánh Recall@10, Recall@20, NDCG@10 và NDCG@20 với baseline gốc;
+    \item Theo dõi thời gian huấn luyện, GPU VRAM và CPU RAM trong môi trường Kaggle;
+    \item Đề xuất, triển khai và đánh giá các hướng cải tiến phù hợp với từng kiến trúc.
+\end{itemize}
+
+\subsection{Phương pháp thực hiện}
+
+Nhóm tiến hành khảo sát mã nguồn và tài liệu của từng mô hình, chuẩn hóa dữ liệu và cấu hình huấn luyện, sau đó chạy lại baseline trước khi can thiệp vào kiến trúc. Mỗi phương án cải tiến được thực nghiệm độc lập để xác định rõ tác động đến hiệu năng và số lượng tham số. Kết quả được trình bày bằng bảng và biểu đồ nhằm làm rõ cả những cải tiến thành công lẫn các trường hợp suy giảm.
+
+Qua quá trình này, báo cáo hướng đến việc lựa chọn được kiến trúc có khả năng tái lập tốt, sử dụng tài nguyên hợp lý và có tiềm năng phát triển thành mô hình cải tiến chính cho khóa luận.
+
+\clearpage
