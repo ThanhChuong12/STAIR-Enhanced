@@ -8,13 +8,13 @@ Residual Projector hoc phan correction phi tuyen.
           (frozen baseline)      (learned, ||Delta||=1)
 
 Cai tien ky thuat:
-  - whitening() duoc giu nguyen nhu STAIR goc
+  - whitening() duoc giu nguyen nhu STAIR goc (structural prior)
   - res_projector hoc phan deviation nho tren nen warm-start SVD
-  - Dual-Optimizer: AdamWSEvo cho User/Item embeddings, Adam rieng cho projector (lr=5e-3)
-  - AMP (autocast + GradScaler) de tiet kiem VRAM tren T4/P100 Kaggle
+  - Param groups: User/Item dung lr=1e-3 voi Smoother, res_projector dung lr=5e-3
+  - Optimizer: AdamWSEvo on dinh tuyet doi tren FreeRec pipeline
   - init_warm_start_weights() khoi tao trong so projector tu SVD
-  - Log lambda_res moi epoch de giam sat convergence cua projector
-  - sure_trainpipe(self, batch_size) duoc cai dat day du
+  - Log lambda_res sau moi epoch de giam sat convergence
+  - sure_trainpipe() cai dat day du cho BPR training
 """
 
 from typing import Dict, Tuple
@@ -22,7 +22,6 @@ from typing import Dict, Tuple
 import torch, os, math
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.cuda.amp import autocast, GradScaler
 import freerec
 
 from optimizers.AdamW import AdamWSEvo
@@ -98,7 +97,6 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
         )
 
         # Module v2a: Residual Projector (learnable correction)
-        # Text=384-D, Visual=4096-D (xac nhan tu main.py + YAML)
         self.res_projector = ResidualWhiteningProjector(
             d_text=384,
             d_visual=4096,
@@ -121,10 +119,26 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
                 nn.init.normal_(m.weight, std=1.e-4)
 
     def marked_params(self):
+        """
+        Param groups cho AdamWSEvo:
+          - User embeddings: standard lr, no smoother
+          - Item embeddings: standard lr, with Smoother on mAdj
+          - res_projector: custom lr (5e-3), no smoother
+        """
         return [
-            {'params': self.User.parameters(), 'smoother': None},
-            {'params': self.Item.parameters(), 'smoother': Smoother(self.mAdj, beta=cfg.beta3, L=cfg.num_layers, aggr='neumann')},
-            {'params': self.res_projector.parameters(), 'smoother': None},
+            {
+                'params': self.User.parameters(),
+                'smoother': None,
+            },
+            {
+                'params': self.Item.parameters(),
+                'smoother': Smoother(self.mAdj, beta=cfg.beta3, L=cfg.num_layers, aggr='neumann'),
+            },
+            {
+                'params': self.res_projector.parameters(),
+                'smoother': None,
+                'lr': cfg.lr_proj,
+            },
         ]
 
     def whitening(self, feats: torch.Tensor) -> torch.Tensor:
@@ -266,101 +280,41 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
 
 
 # ============================================================================
-# Coach: Dual-Optimizer + AMP + lambda_res logging
+# Coach: AdamWSEvo + Param Groups + lambda_res logging
 # ============================================================================
 class CoachForEnhancedSTAIR_v2a(freerec.launcher.Coach):
     """
-    Custom Coach cho v2a voi:
-      - Dual-Optimizer: AdamWSEvo cho embeddings, Adam rieng cho projector
-      - AMP: autocast + GradScaler de tiet kiem VRAM (T4/P100 Kaggle)
-      - Logging lambda_res sau moi epoch de theo doi gradient flow
+    Coach on dinh cho v2a:
+      - AdamWSEvo quan ly param groups voi per-group learning rate
+      - Logging lambda_res sau moi epoch de theo doi convergence
     """
 
     def set_optimizer(self):
-        # === Optimizer 1: AdamWSEvo cho User + Item embeddings ===
-        # Giu nguyen hyperparams cua baseline de BSC Smoother on dinh
         self.optimizer = AdamWSEvo(
-            [
-                {'params': self.model.User.parameters(), 'smoother': None},
-                {
-                    'params': self.model.Item.parameters(),
-                    'smoother': Smoother(
-                        self.model.mAdj, beta=cfg.beta3,
-                        L=cfg.num_layers, aggr='neumann'
-                    ),
-                },
-            ],
+            self.model.marked_params(),
             lr=self.cfg.lr,
             betas=(self.cfg.beta1, self.cfg.beta2),
             weight_decay=self.cfg.weight_decay,
         )
-
-        # === Optimizer 2: Adam doc lap cho ResidualWhiteningProjector ===
-        # lr cao hon 5x so voi embedding optimizer de projector hoc nhanh
-        # weight_decay nho (1e-4) de tranh regularize qua manh lambda_res
-        self.optimizer_proj = torch.optim.Adam(
-            self.model.res_projector.parameters(),
-            lr=self.cfg.lr_proj,        # default 5e-3 (5x embedding lr)
-            betas=(0.9, 0.999),
-            weight_decay=1e-4,
-            eps=1e-8,
-        )
-
-        # === GradScaler duy nhat cho ca 2 optimizer (AMP) ===
-        use_amp = torch.cuda.is_available()
-        self.use_amp = use_amp
-        self.scaler = GradScaler(enabled=use_amp)
-
-        print(f'[Optimizer] AdamWSEvo lr={self.cfg.lr}, wd={self.cfg.weight_decay}')
-        print(f'[Optimizer] Adam(proj)  lr={self.cfg.lr_proj}, wd=1e-4')
-        print(f'[Optimizer] AMP enabled: {use_amp}')
+        print(f'[Optimizer] AdamWSEvo initialized with marked_params (base lr={self.cfg.lr}, lr_proj={self.cfg.lr_proj})')
 
     def train_per_epoch(self, epoch: int):
-        """
-        Training loop mot epoch voi:
-          - torch.cuda.amp.autocast() cho moi forward pass
-          - GradScaler.step() cho ca 2 optimizer
-          - Log gia tri lambda_res trung binh va cuoi epoch
-        """
         self.model.res_projector.train()
-        lambda_vals = []
-
         for data in self.dataloader:
             data = self.dict_to_device(data)
+            loss = self.model(data)
 
-            # Zero gradients cho ca 2 optimizer truoc moi batch
             self.optimizer.zero_grad()
-            self.optimizer_proj.zero_grad()
-
-            # Forward pass voi AMP
-            with autocast(enabled=self.use_amp):
-                loss = self.model(data)
-
-            # Backward pass qua GradScaler
-            self.scaler.scale(loss).backward()
-
-            # Step ca 2 optimizer voi scaled gradients
-            self.scaler.step(self.optimizer)
-            self.scaler.step(self.optimizer_proj)
-            self.scaler.update()
-
-            # Ghi nhan lambda_res sau moi batch de theo doi xu huong
-            lambda_vals.append(self.model.res_projector.lambda_res.item())
+            loss.backward()
+            self.optimizer.step()
 
             self.monitor(
                 loss.item(), n=len(data[self.User]),
                 reduction='mean', mode='train', pool=['LOSS'],
             )
 
-        # Log lambda_res summary sau khi het epoch
-        if lambda_vals:
-            lam_mean = sum(lambda_vals) / len(lambda_vals)
-            lam_last = lambda_vals[-1]
-            print(
-                f'  [lambda_res @epoch {epoch:3d}]: '
-                f'mean={lam_mean:.6f}, last={lam_last:.6f}',
-                flush=True,
-            )
+        lam_val = self.model.res_projector.lambda_res.item()
+        print(f'  [lambda_res @epoch {epoch:3d}]: {lam_val:.6f}', flush=True)
 
 
 # ============================================================================
