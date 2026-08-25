@@ -209,7 +209,7 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
         R = torch.sparse_coo_tensor(
             edge_index_ui, edge_weight_ui,
             size=(self.User.count, self.Item.count)
-        ).to_sparse_csr()
+        ).to_sparse_csr().to(cfg.device)
         self.User.embeddings.weight.data.copy_(R @ self.E_svd)
 
         # Item ID embeddings khoi tao bang 0 (de tai epoch 0, itemEmbds = E_svd hoan toan)
