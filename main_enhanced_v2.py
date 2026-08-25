@@ -2,19 +2,22 @@
 main_enhanced_v2.py — STAIR-Enhanced v2a (ResOnly): Residual-Whitening Projector
 ================================================================================
 Chien luoc: Giu nguyen SVD Whitening (Structural Prior, frozen) + them nhanh
-Residual Projector hoc phan correction phi tuyen.
+Residual Projector hoc phan correction phi tuyen truc tiep trong computational graph.
 
-    e_i = whitening(x_i)  +  lambda_res * Delta_i
-          (frozen baseline)      (learned, ||Delta||=1)
+    e_i^{modal} = L2Norm(E_svd_i + lambda_res * Delta_i) * sqrt(N/D)
+    e_i         = e_i^{ID} + e_i^{modal}
 
-Cai tien ky thuat:
-  - whitening() duoc giu nguyen nhu STAIR goc (structural prior)
-  - res_projector hoc phan deviation nho tren nen warm-start SVD
-  - Param groups: User/Item dung lr=1e-3 voi Smoother, res_projector dung lr=5e-3
-  - Optimizer: AdamWSEvo on dinh tuyet doi tren FreeRec pipeline
-  - init_warm_start_weights() khoi tao trong so projector tu SVD
-  - Log lambda_res sau moi epoch de giam sat convergence
-  - sure_trainpipe() cai dat day du cho BPR training
+Dac diem ky thuat quan trong (Khac phuc triet de loi lambda_res bi ket):
+  1. res_projector va lambda_res duoc goi TRUC TIEP trong encode() o moi forward pass
+     -> BPR loss tinh gradient chuan xac cho lambda_res va cac layer MLP.
+  2. E_svd duoc luu lam frozen buffer (Structural Prior goc khong bi pha vo).
+  3. text_feat va visual_feat duoc luu lam buffer tren GPU/device.
+  4. Tai epoch 0, e_i^{ID} ~ 0 va Delta ~ 0 (nho warm-start SVD)
+     -> mo hinh bat dau CHINH XAC bang baseline SVD Whitening goc.
+  5. Trong qua trinh train, optimizer AdamWSEvo tu dong hoc:
+     - User/Item ID embeddings voi Smoother tren mAdj (lr=1e-3)
+     - res_projector va lambda_res voi learning rate doc lap (lr_proj=1e-3 / 2e-3)
+  6. Log chi tiet lambda_res, grad norm qua moi epoch de giam sat truc quan.
 """
 
 from typing import Dict, Tuple
@@ -26,12 +29,12 @@ import freerec
 
 from optimizers.AdamW import AdamWSEvo
 from optimizers.utils import Smoother
-from models.residual_projector_v2 import ResidualWhiteningProjector, composite_embeddings
+from models.residual_projector_v2 import ResidualWhiteningProjector
 
 freerec.declare(version='1.0.1')
 
 # ============================================================================
-# Config (dong nhat voi main.py; them --lr-proj va --lambda-init)
+# Config
 # ============================================================================
 cfg = freerec.parser.Parser()
 cfg.add_argument("--embedding-dim",  type=int,   default=64)
@@ -39,9 +42,9 @@ cfg.add_argument("--num-layers",     type=int,   default=3)
 cfg.add_argument("--mfiles",         type=str,   default="textual_modality.pkl,visual_modality.pkl")
 cfg.add_argument("--num-neighbors",  type=str,   default='5-1')
 cfg.add_argument("--gamma",          type=float, default=0.2)
-# V2-specific: learning rate cho residual projector
-cfg.add_argument("--lr-proj",        type=float, default=5e-3,
-                 help="Learning rate danh rieng cho ResidualWhiteningProjector (default: 5e-3)")
+# V2 Hyperparameters:
+cfg.add_argument("--lr-proj",        type=float, default=1e-3,
+                 help="Learning rate cho Residual Projector (default: 1e-3 de on dinh)")
 cfg.add_argument("--lambda-init",    type=float, default=0.1,
                  help="Gia tri khoi tao cua lambda_res (default: 0.1)")
 
@@ -70,18 +73,14 @@ cfg.beta3 = (
 
 
 # ============================================================================
-# Model: EnhancedSTAIR_v2a (Residual-Whitening Architecture)
+# Model: EnhancedSTAIR_v2a (Dynamic Residual-Whitening Architecture)
 # ============================================================================
 class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
     """
-    STAIR voi Residual Projector (v2a — ResOnly).
+    STAIR voi Dynamic Residual Projector (v2a — ResOnly).
 
-    FSC / BSC / BPR core KHONG THAY DOI tu bai bao goc.
-    SVD Whitening DUOC GIU NGUYEN lam Structural Prior.
-    ResidualWhiteningProjector chi them phan correction nho ben canh.
-
-    e_i  = whitening(x_i)  +  lambda_res * Delta_i
-    e_u  = R @ e_i    (giong STAIR goc)
+    SVD Whitening (E_svd) dong vai tro Structural Prior bat bien (frozen buffer).
+    Residual Projector tinh toan Delta_i va ket hop voi lambda_res trong computational graph.
     """
 
     def __init__(self, dataset: freerec.data.datasets.RecDataSet) -> None:
@@ -96,7 +95,7 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
             self.dataset.train().to_normalized_adj(normalization='sym')
         )
 
-        # Module v2a: Residual Projector (learnable correction)
+        # Module v2a: Residual Projector (co chua nn.Parameter lambda_res)
         self.res_projector = ResidualWhiteningProjector(
             d_text=384,
             d_visual=4096,
@@ -105,14 +104,14 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
         )
 
         self.reset_parameters()
-        self.prepare(dataset.path)      # goi whitening goc + warm-start + composite
+        self.prepare(dataset.path)
         self.criterion = freerec.criterions.BPRLoss(reduction='mean')
 
     def reset_parameters(self):
-        """Kaiming init cho moi linear layer; tiny normal cho embeddings."""
+        """Khoi tao nho cho Item ID embeddings, Kaiming cho projector."""
         for m in self.modules():
             if isinstance(m, nn.Linear):
-                nn.init.kaiming_normal_(m.weight)
+                nn.init.kaiming_normal_(m.weight, a=0.1, nonlinearity='leaky_relu')
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0.)
             elif isinstance(m, nn.Embedding):
@@ -121,9 +120,9 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
     def marked_params(self):
         """
         Param groups cho AdamWSEvo:
-          - User embeddings: standard lr, no smoother
-          - Item embeddings: standard lr, with Smoother on mAdj
-          - res_projector: custom lr (5e-3), no smoother
+          - User: standard lr, no smoother
+          - Item ID: standard lr, with Smoother on mAdj
+          - res_projector: custom lr (cfg.lr_proj), no smoother
         """
         return [
             {
@@ -142,19 +141,13 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
         ]
 
     def whitening(self, feats: torch.Tensor) -> torch.Tensor:
-        """
-        Ham whitening goc cua STAIR (copy y nguyen tu main.py, KHONG CHINH SUA).
-
-        Buoc: center -> SVD -> lay top-D singular vectors -> scale.
-        Ket qua: ma tran U_top * sqrt(N/D), moi hang co norm xap xi 1,
-        cac cot truc giao (decorrelated spectrum) phu hop cho BSC Smoother.
-        """
+        """SVD Whitening goc cua STAIR."""
         feats = feats - feats.mean(0, keepdim=True)
         feats, _, _ = torch.linalg.svd(feats, full_matrices=False)
         return feats[:, :cfg.embedding_dim] * math.sqrt(self.Item.count / cfg.embedding_dim)
 
     def get_knn_graph(self, features: torch.Tensor, k: int = 5):
-        """Tinh kNN graph tu cosine similarity (dong nhat voi main.py)."""
+        """Tinh kNN graph tu cosine similarity."""
         features = F.normalize(features, dim=-1)
         sim = features @ features.t()
         sim.fill_diagonal_(-10.)
@@ -163,15 +156,12 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
 
     def prepare(self, path: str):
         """
-        Ket hop SVD whitening (frozen) va residual correction (learnable).
-
-        Quy trinh:
-          1. Load raw features (text + visual)
-          2. Xay mAdj (kNN graph) — y het main.py
-          3. Tinh e_svd bang whitening() — y het main.py
-          4. Warm-start projector tu raw features
-          5. Tinh e_final = composite_embeddings(e_svd, Delta) — DIEM MOI
-          6. Gan e_final vao Item.embeddings va User.embeddings
+        Khoi tao cac buffer va warm-start projector:
+          1. Tinh mAdj (kNN graph)
+          2. Tinh E_svd (SVD whitening goc, luu buffer bat bien)
+          3. Warm-start projector W_t, W_v tu raw features
+          4. Luu text_feat, visual_feat tren device lam buffer cho forward pass
+          5. Khoi tao User embeddings qua R @ E_svd
         """
         from freerec.utils import import_pickle
 
@@ -179,10 +169,10 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
             import_pickle(os.path.join(path, mfile))
             for mfile in cfg.mfiles
         ]
-        text_feat   = mfeats_raw[0]   # (N, 384)  -- Sentence-BERT
-        visual_feat = mfeats_raw[1]   # (N, 4096) -- deep CNN
+        text_feat   = mfeats_raw[0].float()   # (N, 384)
+        visual_feat = mfeats_raw[1].float()   # (N, 4096)
 
-        # ---- Buoc 1: Xay mAdj (kNN graph) — dong nhat voi main.py ----
+        # ---- 1. Xay mAdj (kNN graph) ----
         edge_index = torch.cat(
             [self.get_knn_graph(feats, k) for feats, k in zip(mfeats_raw, cfg.num_neighbors)],
             dim=1
@@ -196,30 +186,22 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
         )
         self.register_buffer('mAdj', mAdj.to_sparse_csr())
 
-        # ---- Buoc 2: Tinh e_svd (Structural Prior, FROZEN) — giong main.py ----
-        e_svd_parts = [self.whitening(feat) * k
-                       for feat, k in zip(mfeats_raw, cfg.num_neighbors)]
-        e_svd = sum(e_svd_parts) / sum(cfg.num_neighbors)   # (N, 64)
-        print(f'[prepare] e_svd: shape={tuple(e_svd.shape)}, '
-              f'mean_norm={e_svd.norm(dim=-1).mean():.3f}')
+        # ---- 2. Tinh E_svd (Structural Prior bat bien) ----
+        e_svd_parts = [self.whitening(feat) * k for feat, k in zip(mfeats_raw, cfg.num_neighbors)]
+        E_svd = sum(e_svd_parts) / sum(cfg.num_neighbors)   # (N, 64)
+        self.register_buffer('E_svd', E_svd.to(cfg.device))
+        print(f'[prepare] E_svd: shape={tuple(self.E_svd.shape)}, mean_norm={self.E_svd.norm(dim=-1).mean():.3f}')
 
-        # ---- Buoc 3: Warm-start Projector tu raw features ----
+        # ---- 3. Warm-start Projector tu raw features ----
         print('[prepare] Running warm-start SVD for residual projector...')
         self.res_projector.init_warm_start_weights(text_feat, visual_feat)
+        self.res_projector.to(cfg.device)
 
-        # ---- Buoc 4: Tinh e_final = e_svd + lambda_res * Delta ----
-        with torch.no_grad():
-            e_final = composite_embeddings(
-                self.res_projector,
-                text_feat, visual_feat, e_svd,
-                n_items=self.Item.count,
-                embedding_dim=cfg.embedding_dim,
-            )   # (N, 64), mean_norm ~ sqrt(N/D)
-        print(f'[prepare] e_final: shape={tuple(e_final.shape)}, '
-              f'mean_norm={e_final.norm(dim=-1).mean():.3f}')
-        self.Item.embeddings.weight.data.copy_(e_final)
+        # ---- 4. Dang ky raw features len device de tinh dynamic forward pass ----
+        self.register_buffer('text_feat', text_feat.to(cfg.device))
+        self.register_buffer('visual_feat', visual_feat.to(cfg.device))
 
-        # ---- Buoc 5: User init theo R @ e_final (giong main.py voi mfeats) ----
+        # ---- 5. User init theo R @ E_svd (dong nhat voi STAIR goc) ----
         edge_index_ui = self.dataset.train().to_bigraph(edge_type='u2i')['u2i'].edge_index
         edge_index_ui, edge_weight_ui = freerec.graph.to_normalized(
             edge_index_ui, normalization='left'
@@ -228,7 +210,11 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
             edge_index_ui, edge_weight_ui,
             size=(self.User.count, self.Item.count)
         ).to_sparse_csr()
-        self.User.embeddings.weight.data.copy_(R @ e_final)
+        self.User.embeddings.weight.data.copy_(R @ self.E_svd)
+
+        # Item ID embeddings khoi tao bang 0 (de tai epoch 0, itemEmbds = E_svd hoan toan)
+        self.Item.embeddings.weight.data.zero_()
+        print(f'[prepare] User & Item embeddings initialized. Ready for dynamic residual training!')
 
     def sure_trainpipe(self, batch_size: int):
         return self.dataset.train().shuffled_pairs_source(
@@ -236,9 +222,33 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
             num_negatives=1
         ).batch_(batch_size).tensor_()
 
+    def get_modal_item_embeddings(self) -> torch.Tensor:
+        """
+        Tinh dac trung modal cua Item theo co che Dynamic Residual:
+          e_modal = L2Norm(E_svd + lambda_res * Delta) * sqrt(N/D)
+        Tat ca cac buoc deu nam trong computational graph cua PyTorch.
+        """
+        # Delta: (N, 64), L2-normalized
+        delta = self.res_projector(self.text_feat, self.visual_feat)
+
+        # Cong thuc Residual thuc su voi nn.Parameter lambda_res
+        e_comb = self.E_svd + self.res_projector.lambda_res * delta
+
+        # Scale giu dung magnitude cho BSC Smoother: sqrt(N / D)
+        scale = math.sqrt(self.Item.count / cfg.embedding_dim)
+        e_modal = F.normalize(e_comb, p=2, dim=-1, eps=1e-12) * scale
+        return e_modal
+
     def encode(self) -> Tuple[torch.Tensor, torch.Tensor]:
-        """FSC/BSC smoothing (y het main.py)."""
-        allEmbds  = torch.cat((self.User.embeddings.weight, self.Item.embeddings.weight), dim=0)
+        """
+        FSC/BSC smoothing:
+          - Item representation = ID embeddings (smoothed) + Dynamic Modal residual
+          - User representation = User embeddings (smoothed)
+        """
+        modal_items = self.get_modal_item_embeddings() # (N_I, 64)
+        total_items = self.Item.embeddings.weight + modal_items
+
+        allEmbds  = torch.cat((self.User.embeddings.weight, total_items), dim=0)
         features  = allEmbds
         smoothed  = allEmbds
         beta      = 1 - cfg.beta3
@@ -251,7 +261,7 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
         return userEmbds, itemEmbds
 
     def fit(self, data: Dict[freerec.data.fields.Field, torch.Tensor]):
-        """BPR loss (y het main.py)."""
+        """BPR loss voi gradient lan truyen ve ca User/Item embeddings va res_projector."""
         userEmbds, itemEmbds = self.encode()
         users, positives, negatives = data[self.User], data[self.Item], data[self.INeg]
         userEmbds = userEmbds[users]
@@ -280,13 +290,13 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
 
 
 # ============================================================================
-# Coach: AdamWSEvo + Param Groups + lambda_res logging
+# Coach: AdamWSEvo + Param Groups + lambda_res monitoring
 # ============================================================================
 class CoachForEnhancedSTAIR_v2a(freerec.launcher.Coach):
     """
-    Coach on dinh cho v2a:
-      - AdamWSEvo quan ly param groups voi per-group learning rate
-      - Logging lambda_res sau moi epoch de theo doi convergence
+    Coach cho v2a:
+      - AdamWSEvo quan ly User, Item ID (smoothed) va res_projector (unsmoothed)
+      - Theo doi su thay doi cua lambda_res va gradient norm sau moi epoch
     """
 
     def set_optimizer(self):
@@ -296,7 +306,7 @@ class CoachForEnhancedSTAIR_v2a(freerec.launcher.Coach):
             betas=(self.cfg.beta1, self.cfg.beta2),
             weight_decay=self.cfg.weight_decay,
         )
-        print(f'[Optimizer] AdamWSEvo initialized with marked_params (base lr={self.cfg.lr}, lr_proj={self.cfg.lr_proj})')
+        print(f'[Optimizer] AdamWSEvo ready (base lr={self.cfg.lr}, lr_proj={self.cfg.lr_proj})')
 
     def train_per_epoch(self, epoch: int):
         self.model.res_projector.train()
@@ -313,8 +323,11 @@ class CoachForEnhancedSTAIR_v2a(freerec.launcher.Coach):
                 reduction='mean', mode='train', pool=['LOSS'],
             )
 
+        # Log chi tiet lambda_res sau moi epoch de nguoi dung theo doi
         lam_val = self.model.res_projector.lambda_res.item()
-        print(f'  [lambda_res @epoch {epoch:3d}]: {lam_val:.6f}', flush=True)
+        grad_val = self.model.res_projector.lambda_res.grad
+        grad_str = f'{grad_val.item():.6e}' if grad_val is not None else 'None'
+        print(f'  [lambda_res @epoch {epoch:3d}]: value={lam_val:.6f} | grad={grad_str}', flush=True)
 
 
 # ============================================================================
