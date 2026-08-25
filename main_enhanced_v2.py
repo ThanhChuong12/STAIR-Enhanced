@@ -5,17 +5,16 @@ Chien luoc: Giu nguyen SVD Whitening (Structural Prior, frozen) + them nhanh
 Residual Projector hoc phan correction phi tuyen.
 
     e_i = whitening(x_i)  +  lambda_res * Delta_i
-          (frozen baseline)      (learned, |Delta|=1)
+          (frozen baseline)      (learned, ||Delta||=1)
 
-Khac biet chinh so voi main_enhanced_v1.py:
-  - whitening() duoc giu nguyen (khong xoa bo nhu v1)
-  - res_projector chi hoc phan sai so (deviation), khong thay the hoan toan
-  - Dual-Optimizer: AdamWSEvo cho User/Item, Adam rieng cho projector (lr=5e-3)
+Cai tien ky thuat:
+  - whitening() duoc giu nguyen nhu STAIR goc
+  - res_projector hoc phan deviation nho tren nen warm-start SVD
+  - Dual-Optimizer: AdamWSEvo cho User/Item embeddings, Adam rieng cho projector (lr=5e-3)
   - AMP (autocast + GradScaler) de tiet kiem VRAM tren T4/P100 Kaggle
-  - init_warm_start_weights() goi TRUOC epoch 0
+  - init_warm_start_weights() khoi tao trong so projector tu SVD
   - Log lambda_res moi epoch de giam sat convergence cua projector
-
-Khong chinh sua bat ky file nao cua bai bao goc (main.py).
+  - sure_trainpipe(self, batch_size) duoc cai dat day du
 """
 
 from typing import Dict, Tuple
@@ -33,7 +32,7 @@ from models.residual_projector_v2 import ResidualWhiteningProjector, composite_e
 freerec.declare(version='1.0.1')
 
 # ============================================================================
-# Config (dong nhat voi main.py; them --lr-proj cho projector)
+# Config (dong nhat voi main.py; them --lr-proj va --lambda-init)
 # ============================================================================
 cfg = freerec.parser.Parser()
 cfg.add_argument("--embedding-dim",  type=int,   default=64)
@@ -121,6 +120,13 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
             elif isinstance(m, nn.Embedding):
                 nn.init.normal_(m.weight, std=1.e-4)
 
+    def marked_params(self):
+        return [
+            {'params': self.User.parameters(), 'smoother': None},
+            {'params': self.Item.parameters(), 'smoother': Smoother(self.mAdj, beta=cfg.beta3, L=cfg.num_layers, aggr='neumann')},
+            {'params': self.res_projector.parameters(), 'smoother': None},
+        ]
+
     def whitening(self, feats: torch.Tensor) -> torch.Tensor:
         """
         Ham whitening goc cua STAIR (copy y nguyen tu main.py, KHONG CHINH SUA).
@@ -177,7 +183,6 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
         self.register_buffer('mAdj', mAdj.to_sparse_csr())
 
         # ---- Buoc 2: Tinh e_svd (Structural Prior, FROZEN) — giong main.py ----
-        #  e_svd = (whitening(text)*5 + whitening(visual)*1) / 6
         e_svd_parts = [self.whitening(feat) * k
                        for feat, k in zip(mfeats_raw, cfg.num_neighbors)]
         e_svd = sum(e_svd_parts) / sum(cfg.num_neighbors)   # (N, 64)
@@ -185,7 +190,6 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
               f'mean_norm={e_svd.norm(dim=-1).mean():.3f}')
 
         # ---- Buoc 3: Warm-start Projector tu raw features ----
-        # Phai goi truoc epoch 0 de Delta_i ~ 0 luc bat dau huan luyen
         print('[prepare] Running warm-start SVD for residual projector...')
         self.res_projector.init_warm_start_weights(text_feat, visual_feat)
 
@@ -211,6 +215,12 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
             size=(self.User.count, self.Item.count)
         ).to_sparse_csr()
         self.User.embeddings.weight.data.copy_(R @ e_final)
+
+    def sure_trainpipe(self, batch_size: int):
+        return self.dataset.train().shuffled_pairs_source(
+        ).gen_train_sampling_neg_(
+            num_negatives=1
+        ).batch_(batch_size).tensor_()
 
     def encode(self) -> Tuple[torch.Tensor, torch.Tensor]:
         """FSC/BSC smoothing (y het main.py)."""
@@ -297,11 +307,13 @@ class CoachForEnhancedSTAIR_v2a(freerec.launcher.Coach):
         )
 
         # === GradScaler duy nhat cho ca 2 optimizer (AMP) ===
-        self.scaler = GradScaler()
+        use_amp = torch.cuda.is_available()
+        self.use_amp = use_amp
+        self.scaler = GradScaler(enabled=use_amp)
 
         print(f'[Optimizer] AdamWSEvo lr={self.cfg.lr}, wd={self.cfg.weight_decay}')
         print(f'[Optimizer] Adam(proj)  lr={self.cfg.lr_proj}, wd=1e-4')
-        print(f'[Optimizer] AMP GradScaler: enabled')
+        print(f'[Optimizer] AMP enabled: {use_amp}')
 
     def train_per_epoch(self, epoch: int):
         """
@@ -320,11 +332,11 @@ class CoachForEnhancedSTAIR_v2a(freerec.launcher.Coach):
             self.optimizer.zero_grad()
             self.optimizer_proj.zero_grad()
 
-            # Forward pass voi AMP (float16 tren GPU)
-            with autocast():
+            # Forward pass voi AMP
+            with autocast(enabled=self.use_amp):
                 loss = self.model(data)
 
-            # Backward pass qua GradScaler (xu ly fp16 gradient scaling)
+            # Backward pass qua GradScaler
             self.scaler.scale(loss).backward()
 
             # Step ca 2 optimizer voi scaled gradients
