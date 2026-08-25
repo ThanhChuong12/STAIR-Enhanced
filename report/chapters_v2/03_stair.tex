@@ -87,4 +87,140 @@ Trên tập Electronics, kết quả tái lập cao hơn paper trên cả bốn 
 
 Kết quả tái lập trên cả ba tập dữ liệu đều đạt độ khớp cao với số liệu công bố trong paper gốc, với sai lệch tuyệt đối dưới 1\% trên toàn bộ mười hai chỉ số đánh giá. Mức chênh lệch nhỏ quan sát được trên tập Sports có nguyên nhân hợp lý là quá trình huấn luyện chưa hoàn toàn hội tụ trong giới hạn 500 epoch, không xuất phát từ sai sót trong cấu hình hay quy trình đánh giá. Kết quả này xác nhận pipeline tái lập đã hoạt động đúng theo mô tả của tác giả và đủ tin cậy để dùng làm nền tảng so sánh cho các phương án cải tiến được trình bày ở các phần tiếp theo của đợt 2.
 
+\subsection{Kết quả thực nghiệm cải tiến 1: De-redundant Gated Projector (STAIR-Enhanced v1)}
+
+\subsubsection{Động lực kỹ thuật và kiến trúc đề xuất}
+
+Trong kiến trúc STAIR gốc, đặc trưng đa phương thức được xử lý thông qua phép biến đổi SVD tuyến tính một lần duy nhất trước khi huấn luyện. Hạn chế của cơ chế này là làm biến dạng cấu trúc đa tạp phi tuyến của dữ liệu, không có khả năng tự thích ứng với tín hiệu phản hồi từ đồ thị tương tác, đồng thời bỏ qua sự trùng lặp thông tin giữa văn bản và hình ảnh.
+
+Để giải quyết vấn đề này, module De-redundant Gated Projector được đề xuất thay thế toàn bộ khối SVD tĩnh. Kiến trúc mới sử dụng mạng nơ-ron truyền thẳng kết hợp hàm kích hoạt phi tuyến nhằm bảo toàn không gian đa tạp. Điểm đột phá của phương pháp nằm ở việc duy trì một ma trận hiệp phương sai toàn cục thông qua kỹ thuật Exponential Moving Average. Dựa trên ma trận này, mô hình áp dụng phép chiếu Null-space để loại bỏ các thành phần mang phương sai chung lớn nhất, từ đó khử sự dư thừa liên phương thức. Cuối cùng, một mạng Gated được thiết lập để tự động tính toán trọng số kết hợp linh hoạt cho từng chiều đặc trưng của hai phương thức.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.9, transform shape,
+    block/.style={rectangle, draw=blue!60!black, rounded corners=3pt, minimum height=0.75cm, minimum width=2.8cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=3pt, minimum height=0.8cm, text width=3.9cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    widebox/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=3pt, minimum height=0.85cm, text width=7.4cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    arr/.style={-{Stealth[length=2.3mm, width=1.5mm]}, thick},
+    dasharr/.style={-{Stealth[length=2.3mm, width=1.5mm]}, thick, dashed, draw=red!70!black},
+    dot/.style={circle, fill=black!80, inner sep=1.2pt}
+]
+% Inputs (Top Level)
+\node[block] (text_in) at (-4.3, 0) {\textbf{Text Feature}\\(384-D)};
+\node[block] (vis_in) at (4.3, 0) {\textbf{Visual Feature}\\(4096-D)};
+
+% MLP Feature Projection
+\node[block] (mlp_t) at (-4.3, -1.35) {MLP + GELU $\rightarrow$ 64-D\\($h_t$)};
+\node[block] (mlp_v) at (4.3, -1.35) {MLP + GELU $\rightarrow$ 64-D\\($h_v$)};
+
+\draw[arr] (text_in.south) -- (mlp_t.north);
+\draw[arr] (vis_in.south) -- (mlp_v.north);
+
+% Central Novel Modules (EMA & Null-space)
+\node[newmod] (ema) at (0, -3.05) {EMA Covariance ($\Sigma_{EMA}$)\\[1pt]\normalfont\scriptsize Cập nhật thống kê toàn cục};
+\node[newmod] (nullspace) at (0, -4.55) {Null-space Projector ($P_\perp$)\\[1pt]\normalfont\scriptsize Khử dư thừa liên phương thức};
+
+% Projected Features
+\node[block] (proj_t) at (-4.3, -4.55) {Projected Text\\$h_t^{proj} = P_\perp h_t$};
+\node[block] (proj_v) at (4.3, -4.55) {Projected Visual\\$h_v^{proj} = P_\perp h_v$};
+
+% Main vertical flows
+\draw[arr] (mlp_t.south) -- (proj_t.north);
+\draw[arr] (mlp_v.south) -- (proj_v.north);
+
+% Feature Taps to EMA Covariance
+\coordinate (cross_t) at (-4.3, -2.25);
+\coordinate (cross_v) at (4.3, -2.25);
+
+\node[dot] at (cross_t) {};
+\node[dot] at (cross_v) {};
+
+\draw[arr] (cross_t) -| ([xshift=-1.2cm]ema.north);
+\draw[arr] (cross_v) -| ([xshift=1.2cm]ema.north);
+
+% EMA to Null-space
+\draw[arr] (ema.south) -- (nullspace.north);
+
+% Null-space projection operator applied to branches
+\draw[dasharr] (nullspace.west) -- node[above, font=\scriptsize\bfseries\color{red!70!black}, inner sep=2pt] {$P_\perp$} (proj_t.east);
+\draw[dasharr] (nullspace.east) -- node[above, font=\scriptsize\bfseries\color{red!70!black}, inner sep=2pt] {$P_\perp$} (proj_v.west);
+
+% Gated Fusion
+\node[widebox] (gate) at (0, -6.1) {Dimension-wise Gated Fusion\\[1pt]\normalfont\scriptsize $h_{fuse} = z \odot h_t^{proj} + (1 - z) \odot h_v^{proj}$};
+
+% Routing from Projected features to Gate
+\draw[arr] (proj_t.south) -- ++(0,-0.45) -| ([xshift=-2.6cm]gate.north);
+\draw[arr] (proj_v.south) -- ++(0,-0.45) -| ([xshift=2.6cm]gate.north);
+
+% Final Output
+\node[block, minimum width=5.2cm] (output) at (0, -7.55) {\textbf{L2 Normalize \& Scale $\rightarrow$ Item Embeddings ($e_i$)}};
+\draw[arr] (gate.south) -- (output.north);
+
+\end{tikzpicture}
+\caption{Sơ đồ luồng xử lý của module De-redundant Gated Projector thay thế cho phép chiếu SVD tĩnh.}
+\label{fig:enhanced_v1_architecture}
+\end{figure}
+
+\subsubsection{Kết quả thực nghiệm và phân tích hiệu năng}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\linewidth]{graphics/stair/learning_curves_enhanced_v1.png}
+    \caption[Biểu đồ quá trình huấn luyện của STAIR-Enhanced v1]{Biểu đồ quá trình huấn luyện của STAIR-Enhanced v1.\protect\\[2pt]
+    \textit{Ghi chú: Tiến trình Recall@20 và NDCG@20 qua 500 epoch. Cả ba tập dữ liệu đều đạt trạng thái hội tụ ổn định nhưng duy trì một khoảng cách cố định ở mức thấp hơn baseline, không có xu hướng tiệm cận để bắt kịp.}}
+    \label{fig:enhanced_v1_curves}
+\end{figure}
+
+Bảng~\ref{tab:stair_enhanced_v1_results} trình bày mức độ thay đổi hiệu năng của STAIR-Enhanced v1 so với baseline. Thay vì mang lại sự cải thiện như kỳ vọng, mô hình ghi nhận mức giảm đồng đều và rõ rệt trên toàn bộ các chỉ số đo lường.
+
+\renewcommand{\arraystretch}{1.15}
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{5pt}
+\begin{longtable}{%
+    >{\raggedright\arraybackslash}p{2.2cm}
+    >{\centering\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{2.0cm}}
+
+    \caption{Mức độ suy giảm hiệu năng của STAIR-Enhanced v1 so với baseline.}
+    \label{tab:stair_enhanced_v1_results} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Recall@10} & \textbf{Recall@20} & \textbf{NDCG@10} & \textbf{NDCG@20} \\
+    \hline
+    \endfirsthead
+    \multicolumn{5}{c}{{\bfseries Bảng \thetable\ (tiếp theo)}} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Recall@10} & \textbf{Recall@20} & \textbf{NDCG@10} & \textbf{NDCG@20} \\
+    \hline
+    \endhead
+    \midrule
+    \multicolumn{5}{r}{\textit{Tiếp tục ở trang sau...}} \\
+    \endfoot
+    \hline
+    \endlastfoot
+
+    Baby & $-8.46\%$ & $-9.60\%$ & $-6.41\%$ & $-7.71\%$ \\
+    \midrule
+    Sports & $-7.54\%$ & $-6.48\%$ & $-8.15\%$ & $-7.40\%$ \\
+    \midrule
+    Electronics & $-8.37\%$ & $-7.67\%$ & $-7.72\%$ & $-7.26\%$ \\
+    \hline
+\end{longtable}
+\endgroup
+
+\subsubsection{Phân tích nguyên nhân cốt lõi}
+
+Kết quả thực nghiệm cho thấy cả 12 chỉ số trên 3 tập dữ liệu đều giảm với biên độ rất đồng đều, dao động từ $-6.41\%$ đến $-9.60\%$. Dựa trên biểu đồ học, các đường cong thực nghiệm đều đạt trạng thái plateau rõ rệt sau khoảng 300 đến 350 epoch. Mức hội tụ này duy trì một khoảng cách cố định dưới đường baseline mà không có dấu hiệu tiệm cận bắt kịp. Điều này khẳng định sự sụt giảm không phải do nhiễu ngẫu nhiên, thiếu epoch hay hiện tượng overfitting cục bộ, mà là bằng chứng cho thấy mô hình đã chạm đến một capacity ceiling thấp hơn baseline. Đây là một kết quả âm tính thuần túy mang tính hệ thống, cung cấp cơ sở khoa học quan trọng để định vị ba nguyên nhân cốt lõi sau:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Đánh mất structural prior:} Phép biến đổi SVD trong mô hình gốc không đơn thuần là một bước khởi tạo đặc trưng, mà đóng vai trò thiết lập một không gian embedding chuẩn hóa và khử tương quan toán học chặt chẽ. Việc loại bỏ hoàn toàn cơ sở này để hệ thống học lại từ đầu thông qua projector phi tuyến đã phá vỡ các giả định thống kê nền tảng mà hai module tích chập đồ thị đang phụ thuộc vào.
+    \item \textbf{Xung đột siêu tham số:} Bộ siêu tham số hiện tại bao gồm tốc độ học và hệ số cân bằng được kế thừa trực tiếp từ baseline, vốn chỉ được tinh chỉnh tối ưu cho không gian embedding đã qua SVD. Mạng chiếu mới bị ràng buộc vào cấu hình không tương thích, dẫn đến hiện tượng kìm hãm tốc độ hội tụ thực tế của mô hình.
+    \item \textbf{Suy biến mạng cổng kết hợp:} Trong quá trình huấn luyện, mạng Gated rất dễ rơi vào trạng thái suy biến khi hội tụ thiên lệch hoàn toàn về một nhánh phương thức duy nhất. Việc này triệt tiêu hoàn toàn sự đa dạng của tín hiệu đa phương thức, làm mất đi giá trị cốt lõi của đồ thị tương tác.
+\end{itemize}
+
+Thất bại hệ thống của module De-redundant Gated Projector xác nhận một nguyên lý quan trọng: việc thay thế một phép chiếu thống kê tĩnh bằng một mạng học sâu phức tạp không phải lúc nào cũng mang lại độ linh hoạt cao hơn, đặc biệt khi sự thay đổi đó phá vỡ cấu trúc không gian nền tảng của hệ thống lan truyền đồ thị phía sau.
+
+
 \clearpage
