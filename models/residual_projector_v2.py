@@ -47,6 +47,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 
 
 class ResidualWhiteningProjector(nn.Module):
@@ -106,7 +107,8 @@ class ResidualWhiteningProjector(nn.Module):
         # [C] Learnable Scaling Parameter
         # lambda_res khoi tao = 0.1 de correction ban dau chi dong gop 10%
         # so voi E_svd. Khi can, optimizer tu hoc tang len neu correction co ich.
-        self.lambda_res = nn.Parameter(torch.tensor(lambda_init))
+        self.lambda_raw = nn.Parameter(torch.tensor(0.0, dtype=torch.float32))
+        self.max_lambda = 0.3
 
         # Khoi tao Kaiming cho Linear layers (fallback truoc khi warm-start)
         self._init_kaiming()
@@ -180,7 +182,7 @@ class ResidualWhiteningProjector(nn.Module):
 
         print(f'[Warm-start] text_proj.weight: {self.text_proj[0].weight.shape}, '
               f'vis_proj.weight: {self.vis_proj[0].weight.shape}')
-        print(f'[Warm-start] lambda_res initial = {self.lambda_res.item():.4f} (requires_grad={self.lambda_res.requires_grad})')
+        print(f'[Warm-start] lambda_raw initial = {self.lambda_raw.item():.4f} (requires_grad={self.lambda_raw.requires_grad})')
 
     def forward(
         self,
@@ -217,49 +219,17 @@ class ResidualWhiteningProjector(nn.Module):
 
 def composite_embeddings(
     projector: ResidualWhiteningProjector,
-    text_feat: torch.Tensor,    # (N, 384)
-    visual_feat: torch.Tensor,  # (N, 4096)
-    e_svd: torch.Tensor,        # (N, 64) -- ket qua tu STAIR.whitening()
+    text_feat: torch.Tensor,
+    visual_feat: torch.Tensor,
+    e_svd: torch.Tensor,
     n_items: int,
     embedding_dim: int = 64,
 ) -> torch.Tensor:
-    """
-    Tinh final item embedding theo cong thuc Residual:
-
-        e_i = e_svd_i + lambda_res * Delta_i
-
-    Sau do rescale de duy tri magnitude nhu whitening goc:
-        e_i <- e_i / ||e_i|| * sqrt(N/D)
-
-    Dung trong main_enhanced_v2.py (file moi), KHONG CHAM den main.py goc:
-
-        # Trong prepare() cua EnhancedSTAIR_v2:
-        text_feat, visual_feat = mfeats_raw
-        e_svd = self.whitening_stacked(mfeats_raw, cfg.num_neighbors)  # tu main.py
-        e_final = composite_embeddings(
-            self.projector, text_feat, visual_feat, e_svd, self.Item.count
-        )
-        self.Item.embeddings.weight.data.copy_(e_final)
-
-    Args:
-        projector   : ResidualWhiteningProjector da duoc warm-start.
-        text_feat   : (N, 384) raw text features.
-        visual_feat : (N, 4096) raw visual features.
-        e_svd       : (N, 64) frozen whitened embeddings tu STAIR goc.
-        n_items     : So luong item (N).
-        embedding_dim : D = 64.
-
-    Returns:
-        Tensor: (N, 64) -- e_final = e_svd + lambda_res * Delta, rescaled.
-    """
-    delta   = projector(text_feat, visual_feat)     # (N, 64), L2-norm=1
-
-    # Cong thuc residual: e_svd (frozen, structural prior) + correction nho
-    # lambda_res la nn.Parameter nen gradient chay qua day ve projector
-    e_final = e_svd + projector.lambda_res * delta   # (N, 64)
-
-    # Giu lai scale nhu whitening goc: sqrt(N/D) de BSC Smoother nhat quan
+    delta = projector(text_feat, visual_feat)
     scale = math.sqrt(n_items / embedding_dim)
+    delta_scaled = delta * scale
+    actual_lambda = projector.max_lambda * torch.sigmoid(projector.lambda_raw)
+    e_final = e_svd + actual_lambda * delta_scaled
     e_norm = e_final / (e_final.norm(dim=-1, keepdim=True).clamp(min=1e-12))
     return e_norm * scale                            # (N, 64)
 
@@ -297,14 +267,14 @@ if __name__ == '__main__':
             ).to(device)
 
             # === Test 1: lambda_res la Parameter va requires_grad=True ===
-            assert isinstance(proj.lambda_res, nn.Parameter), \
-                'lambda_res phai la nn.Parameter!'
-            assert proj.lambda_res.requires_grad, \
-                'lambda_res phai co requires_grad=True!'
-            assert abs(proj.lambda_res.item() - 0.1) < 1e-6, \
-                f'lambda_res khoi tao sai: {proj.lambda_res.item()}'
-            print(f'  [OK] lambda_res = {proj.lambda_res.item():.4f}, '
-                  f'requires_grad = {proj.lambda_res.requires_grad}')
+            assert isinstance(proj.lambda_raw, nn.Parameter), \
+                'lambda_raw phai la nn.Parameter!'
+            assert proj.lambda_raw.requires_grad, \
+                'lambda_raw phai co requires_grad=True!'
+            assert abs(proj.lambda_raw.item() - 0.0) < 1e-6, \
+                f'lambda_raw khoi tao sai: {proj.lambda_raw.item()}'
+            print(f'  [OK] lambda_raw = {proj.lambda_raw.item():.4f}, '
+                  f'requires_grad = {proj.lambda_raw.requires_grad}')
 
             # === Test 2: Warm-start SVD ===
             print('  Running warm-start SVD...')
@@ -341,12 +311,12 @@ if __name__ == '__main__':
             proj.train()
             e_svd_d2       = torch.randn(N, D_H).mul(math.sqrt(N / D_H)).to(device)
             delta2         = proj(text_feat_d, visual_feat_d)
-            loss           = (e_svd_d2 + proj.lambda_res * delta2).sum()
+            loss           = (e_svd_d2 + torch.sigmoid(proj.lambda_raw) * delta2).sum()
             loss.backward()
 
-            # Kiem tra gradient cua lambda_res
-            assert proj.lambda_res.grad is not None, 'lambda_res phai co gradient!'
-            assert not torch.isnan(proj.lambda_res.grad), 'gradient cua lambda_res bi NaN!'
+            # Kiem tra gradient cua lambda_raw
+            assert proj.lambda_raw.grad is not None, 'lambda_raw phai co gradient!'
+            assert not torch.isnan(proj.lambda_raw.grad), 'gradient cua lambda_raw bi NaN!'
 
             # Kiem tra tat ca Linear params co gradient hop le
             for name, p in proj.named_parameters():
@@ -354,21 +324,21 @@ if __name__ == '__main__':
                     assert p.grad is not None and not torch.isnan(p.grad).any(), \
                         f'Bad gradient: {name}'
 
-            print(f'  [OK] Backward: lambda_res.grad={proj.lambda_res.grad.item():.6f}, '
+            print(f'  [OK] Backward: lambda_res.grad={proj.lambda_raw.grad.item():.6f}, '
                   f'all params have valid gradients')
 
             # === Test 6: lambda_res thay doi qua optimizer buoc ===
             proj.zero_grad()
-            lambda_before = proj.lambda_res.item()
+            lambda_before = proj.lambda_raw.item()
             opt = torch.optim.SGD(proj.parameters(), lr=0.1)
             e_svd_d3 = torch.randn(N, D_H).to(device)
             delta3   = proj(text_feat_d, visual_feat_d)
-            (e_svd_d3 + proj.lambda_res * delta3).sum().backward()
+            (e_svd_d3 + torch.sigmoid(proj.lambda_raw) * delta3).sum().backward()
             opt.step()
-            lambda_after = proj.lambda_res.item()
+            lambda_after = proj.lambda_raw.item()
             assert abs(lambda_before - lambda_after) > 1e-8, \
-                'lambda_res khong duoc cap nhat boi optimizer!'
-            print(f'  [OK] lambda_res update: {lambda_before:.6f} -> {lambda_after:.6f}')
+                'lambda_raw khong duoc cap nhat boi optimizer!'
+            print(f'  [OK] lambda_raw update: {lambda_before:.6f} -> {lambda_after:.6f}')
 
             print()
         except Exception as e:

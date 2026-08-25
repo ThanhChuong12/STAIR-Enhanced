@@ -134,9 +134,22 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
                 'smoother': Smoother(self.mAdj, beta=cfg.beta3, L=cfg.num_layers, aggr='neumann'),
             },
             {
-                'params': self.res_projector.parameters(),
+                'params': self.res_projector.text_proj.parameters(),
                 'smoother': None,
                 'lr': cfg.lr_proj,
+                'weight_decay': 1e-4,
+            },
+            {
+                'params': self.res_projector.vis_proj.parameters(),
+                'smoother': None,
+                'lr': cfg.lr_proj,
+                'weight_decay': 1e-4,
+            },
+            {
+                'params': [self.res_projector.lambda_raw],
+                'smoother': None,
+                'lr': cfg.lr_proj * 0.5,
+                'weight_decay': 0.1,
             },
         ]
 
@@ -224,18 +237,24 @@ class EnhancedSTAIR_v2a(freerec.models.GenRecArch):
 
     def get_modal_item_embeddings(self) -> torch.Tensor:
         """
-        Tinh dac trung modal cua Item theo co che Dynamic Residual:
-          e_modal = L2Norm(E_svd + lambda_res * Delta) * sqrt(N/D)
-        Tat ca cac buoc deu nam trong computational graph cua PyTorch.
+        Tinh dac trung modal cua Item theo co che Dynamic Residual v2a_bounded:
+          - Magnitude Matching: Delta duoc scale cung do lon voi E_svd
+          - Bounded Sigmoid: lambda = max_lambda * sigmoid(lambda_raw)
         """
-        # Delta: (N, 64), L2-normalized
+        # Delta: (N, 64), L2-normalized = 1
         delta = self.res_projector(self.text_feat, self.visual_feat)
 
-        # Cong thuc Residual thuc su voi nn.Parameter lambda_res
-        e_comb = self.E_svd + self.res_projector.lambda_res * delta
-
-        # Scale giu dung magnitude cho BSC Smoother: sqrt(N / D)
+        # Ep scale cua Delta bang dung scale cua E_svd
         scale = math.sqrt(self.Item.count / cfg.embedding_dim)
+        delta_scaled = delta * scale
+
+        # Tinh lambda thuc te qua cong Sigmoid (max 0.3)
+        actual_lambda = self.res_projector.max_lambda * torch.sigmoid(self.res_projector.lambda_raw)
+
+        # Cong thuc Residual thuc su
+        e_comb = self.E_svd + actual_lambda * delta_scaled
+
+        # L2 Normalize lan cuoi va scale lai
         e_modal = F.normalize(e_comb, p=2, dim=-1, eps=1e-12) * scale
         return e_modal
 
@@ -316,6 +335,12 @@ class CoachForEnhancedSTAIR_v2a(freerec.launcher.Coach):
 
             self.optimizer.zero_grad()
             loss.backward()
+            
+            # Warm-up lambda_raw: dong bang trong 50 epoch dau
+            if epoch <= 50:
+                if self.model.res_projector.lambda_raw.grad is not None:
+                    self.model.res_projector.lambda_raw.grad.zero_()
+            
             self.optimizer.step()
 
             self.monitor(
@@ -323,11 +348,13 @@ class CoachForEnhancedSTAIR_v2a(freerec.launcher.Coach):
                 reduction='mean', mode='train', pool=['LOSS'],
             )
 
-        # Log chi tiet lambda_res sau moi epoch de nguoi dung theo doi
-        lam_val = self.model.res_projector.lambda_res.item()
-        grad_val = self.model.res_projector.lambda_res.grad
+        # Log chi tiet lambda_raw sau moi epoch de nguoi dung theo doi
+        import torch
+        actual_lambda = self.model.res_projector.max_lambda * torch.sigmoid(self.model.res_projector.lambda_raw).item()
+        lam_raw_val = self.model.res_projector.lambda_raw.item()
+        grad_val = self.model.res_projector.lambda_raw.grad
         grad_str = f'{grad_val.item():.6e}' if grad_val is not None else 'None'
-        print(f'  [lambda_res @epoch {epoch:3d}]: value={lam_val:.6f} | grad={grad_str}', flush=True)
+        print(f'  [lambda_res @epoch {epoch:3d}]: actual={actual_lambda:.6f} | raw={lam_raw_val:.6f} | grad={grad_str}', flush=True)
 
 
 # ============================================================================
