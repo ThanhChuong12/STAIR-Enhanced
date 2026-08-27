@@ -6,24 +6,13 @@ class Smoother:
         self, A: torch.Tensor, 
         beta, L: int, aggr: str
     ) -> None:
-        if hasattr(A, 'is_sparse_csr') and A.is_sparse_csr:
-            A = A.to_sparse_coo()
         self.Adj = A
         self.beta = beta
         self.L = L
         self.aggr = aggr
 
     def aggregate(self, features: torch.Tensor):
-        if self.Adj.is_sparse:
-            return torch.sparse.mm(self.Adj, features)
-        elif hasattr(self.Adj, 'is_sparse_csr') and self.Adj.is_sparse_csr:
-            try:
-                return self.Adj @ features
-            except Exception:
-                self.Adj = self.Adj.to_sparse_coo()
-                return torch.sparse.mm(self.Adj, features)
-        else:
-            return self.Adj @ features
+        return self.Adj @ features
 
     @torch.no_grad()
     def __call__(self, features: torch.Tensor):

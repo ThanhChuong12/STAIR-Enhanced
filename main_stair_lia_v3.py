@@ -86,14 +86,14 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         self.User.add_module('embeddings', nn.Embedding(self.User.count, cfg.embedding_dim))
         self.Item.add_module('embeddings', nn.Embedding(self.Item.count, cfg.embedding_dim))
 
-        # Đổi sang Sparse COO để đảm bảo tương thích mọi GPU CUDA
-        adj = self.dataset.train().to_normalized_adj(normalization='sym')
-        if hasattr(adj, 'is_sparse_csr') and adj.is_sparse_csr:
-            adj = adj.to_sparse_coo()
-        self.register_buffer('Adj', adj.coalesce())
+        # Khởi tạo Adj hệt như main.py (ko to_sparse_coo)
+        self.register_buffer(
+            'Adj',
+            self.dataset.train().to_normalized_adj(normalization='sym')
+        )
 
-        # Learnable alpha (init=0.5 -> sigmoid(0.0) = 0.5)
-        self.alpha_raw = nn.Parameter(torch.tensor(0.0))
+        # Tránh lỗi cudaError do scalar 0D: Khởi tạo là tensor 1D
+        self.alpha_raw = nn.Parameter(torch.zeros(1))
 
         self.reset_parameters()
         self.prepare(dataset.path)
@@ -133,10 +133,12 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         edge_index, edge_weight = freerec.graph.coalesce(edge_index, edge_weight, reduce='sum')
         edge_index, edge_weight = freerec.graph.to_undirected(edge_index, edge_weight, reduce='max')
         edge_index, edge_weight = freerec.graph.to_normalized(edge_index, edge_weight, normalization='sym')
+        
         mAdj = torch.sparse_coo_tensor(
             edge_index, edge_weight, size=(self.Item.count, self.Item.count)
-        ).coalesce()
-        self.register_buffer('mAdj', mAdj)
+        )
+        # Giữ y hệt main.py (to_sparse_csr)
+        self.register_buffer('mAdj', mAdj.to_sparse_csr())
         print(f"[LIA] Denoised kNN Graph ready: {edge_index.shape[1]} edges (k={k_total})")
 
     def whitening(self, feats: torch.Tensor) -> torch.Tensor:
@@ -197,7 +199,7 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         self.register_buffer('E_fused_t', E_fused_t.to(cfg.device))
         self.register_buffer('E_fused_v', E_fused_v.to(cfg.device))
 
-        # Khởi tạo User embeddings qua R @ E_modal_init trên CPU (giống hệt main.py để tránh lỗi SpMM kernel trên GPU)
+        # Khởi tạo User embeddings qua R @ E_modal_init trên CPU (giống hệt main.py)
         E_modal_init = (0.5 * E_fused_t + 0.5 * E_fused_v).cpu()
         edge_index_ui = self.dataset.train().to_bigraph(edge_type='u2i')['u2i'].edge_index
         edge_index_ui, edge_weight_ui = freerec.graph.to_normalized(
@@ -221,7 +223,7 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         ).batch_(batch_size).tensor_()
 
     def get_modal_item_embeddings(self) -> torch.Tensor:
-        alpha = torch.sigmoid(self.alpha_raw)
+        alpha = torch.sigmoid(self.alpha_raw[0])
         e_modal = alpha * self.E_fused_t + (1.0 - alpha) * self.E_fused_v
         return e_modal
 
@@ -235,16 +237,7 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         beta     = 1 - cfg.beta3
         norm_correction = 1 - beta ** (self.num_layers + 1)
         for _ in range(self.num_layers):
-            if self.Adj.is_sparse:
-                features = torch.sparse.mm(self.Adj, features) * beta
-            elif hasattr(self.Adj, 'is_sparse_csr') and self.Adj.is_sparse_csr:
-                try:
-                    features = (self.Adj @ features) * beta
-                except Exception:
-                    self.Adj = self.Adj.to_sparse_coo()
-                    features = torch.sparse.mm(self.Adj, features) * beta
-            else:
-                features = (self.Adj @ features) * beta
+            features = self.Adj @ features * beta
             smoothed = smoothed + features
         avgEmbds = smoothed.mul(1 - beta).div(norm_correction)
         userEmbds, itemEmbds = torch.split(avgEmbds, (self.User.count, self.Item.count))
@@ -307,7 +300,7 @@ class CoachForSTAIR_LIA_v3(freerec.launcher.Coach):
                 loss.item(), n=len(data[self.User]),
                 reduction='mean', mode='train', pool=['LOSS'],
             )
-        alpha_val = torch.sigmoid(self.model.alpha_raw).item()
+        alpha_val = torch.sigmoid(self.model.alpha_raw[0]).item()
         print(f"  [alpha @epoch {epoch:3d}]: {alpha_val:.4f} (text weight)", flush=True)
 
 
@@ -336,4 +329,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
