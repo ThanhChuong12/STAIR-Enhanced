@@ -86,10 +86,11 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         self.User.add_module('embeddings', nn.Embedding(self.User.count, cfg.embedding_dim))
         self.Item.add_module('embeddings', nn.Embedding(self.Item.count, cfg.embedding_dim))
 
-        self.register_buffer(
-            'Adj',
-            self.dataset.train().to_normalized_adj(normalization='sym')
-        )
+        # Đổi sang Sparse COO để đảm bảo tương thích mọi GPU CUDA
+        adj = self.dataset.train().to_normalized_adj(normalization='sym')
+        if hasattr(adj, 'is_sparse_csr') and adj.is_sparse_csr:
+            adj = adj.to_sparse_coo()
+        self.register_buffer('Adj', adj.coalesce())
 
         # Learnable alpha (init=0.5 -> sigmoid(0.0) = 0.5)
         self.alpha_raw = nn.Parameter(torch.tensor(0.0))
@@ -134,8 +135,8 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         edge_index, edge_weight = freerec.graph.to_normalized(edge_index, edge_weight, normalization='sym')
         mAdj = torch.sparse_coo_tensor(
             edge_index, edge_weight, size=(self.Item.count, self.Item.count)
-        )
-        self.register_buffer('mAdj', mAdj.to_sparse_csr())
+        ).coalesce()
+        self.register_buffer('mAdj', mAdj)
         print(f"[LIA] Denoised kNN Graph ready: {edge_index.shape[1]} edges (k={k_total})")
 
     def whitening(self, feats: torch.Tensor) -> torch.Tensor:
@@ -234,7 +235,16 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         beta     = 1 - cfg.beta3
         norm_correction = 1 - beta ** (self.num_layers + 1)
         for _ in range(self.num_layers):
-            features = self.Adj @ features * beta
+            if self.Adj.is_sparse:
+                features = torch.sparse.mm(self.Adj, features) * beta
+            elif hasattr(self.Adj, 'is_sparse_csr') and self.Adj.is_sparse_csr:
+                try:
+                    features = (self.Adj @ features) * beta
+                except Exception:
+                    self.Adj = self.Adj.to_sparse_coo()
+                    features = torch.sparse.mm(self.Adj, features) * beta
+            else:
+                features = (self.Adj @ features) * beta
             smoothed = smoothed + features
         avgEmbds = smoothed.mul(1 - beta).div(norm_correction)
         userEmbds, itemEmbds = torch.split(avgEmbds, (self.User.count, self.Item.count))
@@ -326,3 +336,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
