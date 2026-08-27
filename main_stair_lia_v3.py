@@ -51,6 +51,19 @@ cfg.set_defaults(
     which4best="NDCG@20",
 )
 cfg.compile()
+
+# Fallback to CPU if CUDA fails (per user request)
+if torch.cuda.is_available():
+    cfg.device = 'cuda'
+else:
+    cfg.device = 'cpu'
+
+try:
+    _ = torch.tensor([1.0], device=cfg.device)
+except Exception:
+    cfg.device = 'cpu'
+    print("Switched to CPU due to CUDA error")
+
 cfg.mfiles        = cfg.mfiles.split(',')
 cfg.num_neighbors = list(map(int, cfg.num_neighbors.split('-')))
 
@@ -86,14 +99,12 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         self.User.add_module('embeddings', nn.Embedding(self.User.count, cfg.embedding_dim))
         self.Item.add_module('embeddings', nn.Embedding(self.Item.count, cfg.embedding_dim))
 
-        # Khởi tạo Adj hệt như main.py (ko to_sparse_coo)
         self.register_buffer(
             'Adj',
-            self.dataset.train().to_normalized_adj(normalization='sym')
+            self.dataset.train().to_normalized_adj(normalization='sym').to(cfg.device)
         )
 
-        # Tránh lỗi cudaError do scalar 0D: Khởi tạo là tensor 1D trên device
-        self.alpha_raw = nn.Parameter(torch.zeros(1, device=cfg.device))
+        self.alpha_raw = nn.Parameter(torch.zeros(1))
 
         self.reset_parameters()
         self.prepare(dataset.path)
@@ -137,8 +148,7 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         mAdj = torch.sparse_coo_tensor(
             edge_index, edge_weight, size=(self.Item.count, self.Item.count)
         )
-        # Giữ y hệt main.py (to_sparse_csr)
-        self.register_buffer('mAdj', mAdj.to_sparse_csr())
+        self.register_buffer('mAdj', mAdj.to_sparse_csr().to(cfg.device))
         print(f"[LIA] Denoised kNN Graph ready: {edge_index.shape[1]} edges (k={k_total})")
 
     def whitening(self, feats: torch.Tensor) -> torch.Tensor:
@@ -223,7 +233,7 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         ).batch_(batch_size).tensor_()
 
     def get_modal_item_embeddings(self) -> torch.Tensor:
-        alpha = torch.sigmoid(self.alpha_raw)
+        alpha = torch.sigmoid(self.alpha_raw).to(self.E_fused_t.device)
         e_modal = alpha * self.E_fused_t + (1.0 - alpha) * self.E_fused_v
         return e_modal
 
