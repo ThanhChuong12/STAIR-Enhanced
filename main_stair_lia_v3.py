@@ -92,8 +92,8 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
             self.dataset.train().to_normalized_adj(normalization='sym')
         )
 
-        # Tránh lỗi cudaError do scalar 0D: Khởi tạo là tensor 1D
-        self.alpha_raw = nn.Parameter(torch.zeros(1))
+        # Tránh lỗi cudaError do scalar 0D: Khởi tạo là tensor 1D trên device
+        self.alpha_raw = nn.Parameter(torch.zeros(1, device=cfg.device))
 
         self.reset_parameters()
         self.prepare(dataset.path)
@@ -223,7 +223,7 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         ).batch_(batch_size).tensor_()
 
     def get_modal_item_embeddings(self) -> torch.Tensor:
-        alpha = torch.sigmoid(self.alpha_raw[0])
+        alpha = torch.sigmoid(self.alpha_raw)
         e_modal = alpha * self.E_fused_t + (1.0 - alpha) * self.E_fused_v
         return e_modal
 
@@ -300,7 +300,7 @@ class CoachForSTAIR_LIA_v3(freerec.launcher.Coach):
                 loss.item(), n=len(data[self.User]),
                 reduction='mean', mode='train', pool=['LOSS'],
             )
-        alpha_val = torch.sigmoid(self.model.alpha_raw[0]).item()
+        alpha_val = torch.sigmoid(self.model.alpha_raw).item()
         print(f"  [alpha @epoch {epoch:3d}]: {alpha_val:.4f} (text weight)", flush=True)
 
 
