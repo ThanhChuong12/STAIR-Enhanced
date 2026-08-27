@@ -3,22 +3,23 @@ preprocess_stair_lia.py
 =======================
 STAIR-LIA v3 — Offline Preprocessing Pipeline
 
-Phase 1 — PyTorch ZCA Whitening (from CFDTBD/Model-beauty/model-beauty.py TF->PyTorch):
+Phase 1 — PyTorch ZCA Whitening (Zero-phase Decorrelation):
     text (384-D) -> 64-D, visual (4096-D) -> 64-D
     Zero-phase: giữ nguyên hướng trục tọa độ, chỉ decorrelate + rescale.
+    Đã chuẩn hóa L2-norm = 1.0 (tránh Scale Explosion bão hòa Sigmoid BPR).
 
 Phase 2 — Offline Bidirectional Cross-Modal Attention ROI Extraction:
     Source: CLID-master/CLID/src/Cross_attention.py + models/CLID.py
     Virtual Token Segmentation (STAIRE2_v3.md):
         Text  384-D -> (6,  64) virtual tokens
         Visual 4096-D -> (64, 64) virtual patches
-    Trích xuất E_roi_t (64-D) và E_roi_v (64-D) offline.
+    Trích xuất E_roi_t (64-D) và E_roi_v (64-D) offline, L2-normalized.
 
 Phase 3 — Fusion (CLID fuweight):
-    E_fused = fuweight * E_global + (1-fuweight) * E_roi
+    E_fused = Normalize(fuweight * E_global + (1-fuweight) * E_roi)
 
 Export: E_global_t, E_global_v, E_roi_t, E_roi_v, E_fused_t, E_fused_v
-        -> .pt + .npy
+        -> .pt + .npy (Mean L2 Norm = 1.000)
 """
 
 import math, argparse, logging, time, os, pickle
@@ -54,7 +55,6 @@ class ZCAWhiteningProjector(nn.Module):
         self.eps   = eps
         self.register_buffer("zca_matrix", torch.zeros(d_in, d_in))
         self.register_buffer("mean_vec",   torch.zeros(d_in))
-        self.register_buffer("scale",      torch.tensor(1.0))
         self._fitted = False
 
     @torch.no_grad()
@@ -72,11 +72,9 @@ class ZCAWhiteningProjector(nn.Module):
 
         inv_sqrt = 1.0 / torch.sqrt(eigenvalues.clamp(min=0.0) + self.eps)
         zca_mat  = eigenvectors.mm(torch.diag(inv_sqrt)).mm(eigenvectors.t())
-        scale    = math.sqrt(N / self.d_out)
 
         self.mean_vec.copy_(mean)
         self.zca_matrix.copy_(zca_mat)
-        self.scale.copy_(torch.tensor(scale))
         self._fitted = True
         logger.info(
             f"  [ZCA fit] done {time.time()-t0:.1f}s | "
@@ -89,7 +87,9 @@ class ZCAWhiteningProjector(nn.Module):
             raise RuntimeError("Gọi fit() trước khi transform()!")
         X_c  = X.cpu().float() - self.mean_vec.cpu()
         X_w  = X_c.mm(self.zca_matrix.cpu())
-        E    = X_w[:, -self.d_out:] * self.scale.cpu()
+        # Lấy d_out chiều và chuẩn hóa L2 về 1.0
+        E    = X_w[:, -self.d_out:]
+        E    = F.normalize(E, p=2, dim=-1)
         return E
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
@@ -119,6 +119,7 @@ class BidirectionalCrossModalAttention(nn.Module):
         self.d_k   = d_k
         assert d_t % d_sub == 0, f"d_t={d_t} phải chia hết cho d_sub={d_sub}"
         assert d_v % d_sub == 0, f"d_v={d_v} phải chia hết cho d_sub={d_sub}"
+
         self.N_t = d_t // d_sub
         self.N_v = d_v // d_sub
         self._scale = math.sqrt(d_k)
@@ -158,6 +159,7 @@ class BidirectionalCrossModalAttention(nn.Module):
         )
         ctx_v   = torch.bmm(attn_v, V_v)
         E_roi_v = self.ln_v(X_t + ctx_v).mean(dim=1)
+        E_roi_v = F.normalize(E_roi_v, p=2, dim=-1)
 
         # Visual-guided Text ROI
         Q_v = self.W_q_v(X_v)
@@ -168,6 +170,7 @@ class BidirectionalCrossModalAttention(nn.Module):
         )
         ctx_t   = torch.bmm(attn_t, V_t)
         E_roi_t = self.ln_t(X_v + ctx_t).mean(dim=1)
+        E_roi_t = F.normalize(E_roi_t, p=2, dim=-1)
 
         return E_roi_t, E_roi_v
 
@@ -275,9 +278,9 @@ def process_dataset(
     E_roi_t = torch.cat(roi_t_list)
     E_roi_v = torch.cat(roi_v_list)
 
-    logger.info(f"[Phase 3] Fusion: {fuweight}*Global + {1-fuweight}*ROI ...")
-    E_fused_t = fuweight * E_global_t + (1 - fuweight) * E_roi_t
-    E_fused_v = fuweight * E_global_v + (1 - fuweight) * E_roi_v
+    logger.info(f"[Phase 3] Fusion: {fuweight}*Global + {1-fuweight}*ROI (Normalized)...")
+    E_fused_t = F.normalize(fuweight * E_global_t + (1 - fuweight) * E_roi_t, p=2, dim=-1)
+    E_fused_v = F.normalize(fuweight * E_global_v + (1 - fuweight) * E_roi_v, p=2, dim=-1)
 
     logger.info("[Phase 4] Saving tensors...")
     results = {
@@ -291,7 +294,7 @@ def process_dataset(
     for name, tensor in results.items():
         pt_path = out / f"{name}.pt"
         torch.save(tensor, pt_path)
-        logger.info(f"  Saved {pt_path}  {tuple(tensor.shape)}")
+        logger.info(f"  Saved {pt_path}  {tuple(tensor.shape)} (mean_norm={tensor.norm(dim=-1).mean():.3f})")
 
     np.save(out / "E_fused_t.npy", E_fused_t.numpy())
     np.save(out / "E_fused_v.npy", E_fused_v.numpy())

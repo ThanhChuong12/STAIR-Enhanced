@@ -52,7 +52,7 @@ cfg.set_defaults(
 )
 cfg.compile()
 
-# Fallback to CPU if CUDA fails (per user request)
+# Fallback to CPU if CUDA fails
 if torch.cuda.is_available():
     cfg.device = 'cuda'
 else:
@@ -181,11 +181,18 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
             print(f"[LIA] Loading precomputed E_fused from: {found_dir}")
             E_fused_t = torch.load(os.path.join(found_dir, "E_fused_t.pt"), map_location='cpu').float()
             E_fused_v = torch.load(os.path.join(found_dir, "E_fused_v.pt"), map_location='cpu').float()
+            
+            # === [SCALE FIX]: Chuẩn hóa L2-norm = 1.0 đồng bộ với hệ quy chiếu STAIR baseline ===
+            E_fused_t = F.normalize(E_fused_t, p=2, dim=-1)
+            E_fused_v = F.normalize(E_fused_v, p=2, dim=-1)
+
             roi_t_p = os.path.join(found_dir, "E_roi_t.pt")
             roi_v_p = os.path.join(found_dir, "E_roi_v.pt")
             if os.path.exists(roi_t_p) and os.path.exists(roi_v_p):
-                self.register_buffer('E_roi_t', torch.load(roi_t_p, map_location='cpu').float().to(cfg.device))
-                self.register_buffer('E_roi_v', torch.load(roi_v_p, map_location='cpu').float().to(cfg.device))
+                E_roi_t = F.normalize(torch.load(roi_t_p, map_location='cpu').float(), p=2, dim=-1)
+                E_roi_v = F.normalize(torch.load(roi_v_p, map_location='cpu').float(), p=2, dim=-1)
+                self.register_buffer('E_roi_t', E_roi_t.to(cfg.device))
+                self.register_buffer('E_roi_v', E_roi_v.to(cfg.device))
             else:
                 self.E_roi_t = None
                 self.E_roi_v = None
@@ -194,23 +201,23 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
             mfeats_raw = [
                 import_pickle(os.path.join(path, mfile)) for mfile in cfg.mfiles
             ]
-            E_fused_t = self.whitening(mfeats_raw[0].float())
-            E_fused_v = self.whitening(mfeats_raw[1].float())
+            E_fused_t = F.normalize(self.whitening(mfeats_raw[0].float()), p=2, dim=-1)
+            E_fused_v = F.normalize(self.whitening(mfeats_raw[1].float()), p=2, dim=-1)
             self.E_roi_t = None
             self.E_roi_v = None
 
         print(f"[LIA] E_fused_t: {tuple(E_fused_t.shape)}, mean_norm={E_fused_t.norm(dim=-1).mean():.3f}")
         print(f"[LIA] E_fused_v: {tuple(E_fused_v.shape)}, mean_norm={E_fused_v.norm(dim=-1).mean():.3f}")
 
-        # Xây Denoised kNN Graph trên CPU
-        E_for_graph = 0.5 * E_fused_t + 0.5 * E_fused_v
+        # 1. Xây Denoised kNN Graph trên CPU với vector đã chuẩn hóa L2
+        E_for_graph = F.normalize(0.5 * E_fused_t + 0.5 * E_fused_v, p=2, dim=-1)
         self.build_denoised_knn_graph(E_for_graph, cfg.num_neighbors)
 
         self.register_buffer('E_fused_t', E_fused_t.to(cfg.device))
         self.register_buffer('E_fused_v', E_fused_v.to(cfg.device))
 
-        # Khởi tạo User embeddings qua R @ E_modal_init trên CPU (giống hệt main.py)
-        E_modal_init = (0.5 * E_fused_t + 0.5 * E_fused_v).cpu()
+        # 2. Khởi tạo User embeddings qua R @ E_modal_init trên CPU
+        E_modal_init = F.normalize(0.5 * E_fused_t + 0.5 * E_fused_v, p=2, dim=-1).cpu()
         edge_index_ui = self.dataset.train().to_bigraph(edge_type='u2i')['u2i'].edge_index
         edge_index_ui, edge_weight_ui = freerec.graph.to_normalized(
             edge_index_ui, normalization='left'
@@ -235,7 +242,7 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
     def get_modal_item_embeddings(self) -> torch.Tensor:
         alpha = torch.sigmoid(self.alpha_raw).to(self.E_fused_t.device)
         e_modal = alpha * self.E_fused_t + (1.0 - alpha) * self.E_fused_v
-        return e_modal
+        return F.normalize(e_modal, p=2, dim=-1)
 
     def encode(self) -> Tuple[torch.Tensor, torch.Tensor]:
         modal_items = self.get_modal_item_embeddings()
