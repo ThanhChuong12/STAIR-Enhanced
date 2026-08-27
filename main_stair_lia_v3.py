@@ -213,6 +213,12 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         self.Item.embeddings.weight.data.zero_()
         print("[LIA] Setup completed successfully!")
 
+    def sure_trainpipe(self, batch_size: int):
+        return self.dataset.train().shuffled_pairs_source(
+        ).gen_train_sampling_neg_(
+            num_negatives=1
+        ).batch_(batch_size).tensor_()
+
     def get_modal_item_embeddings(self) -> torch.Tensor:
         alpha = torch.sigmoid(self.alpha_raw)
         e_modal = alpha * self.E_fused_t + (1.0 - alpha) * self.E_fused_v
