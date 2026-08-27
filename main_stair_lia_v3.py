@@ -14,7 +14,8 @@ import freerec
 from optimizers.AdamW import AdamWSEvo
 from optimizers.utils import Smoother
 
-freerec.declare(version='1.0.1')
+# Khop phien ban freerec==0.8.5 trong moi truong Kaggle
+freerec.declare(version='0.8.5')
 
 # ============================================================================
 # Config
@@ -91,7 +92,6 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         )
 
         # Learnable alpha (init=0.5 -> sigmoid(0.0) = 0.5)
-        # alpha_raw = logit(init) = 0.0
         self.alpha_raw = nn.Parameter(torch.tensor(0.0))
 
         self.reset_parameters()
@@ -146,7 +146,6 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
     def prepare(self, path: str):
         from freerec.utils import import_pickle
 
-        # Danh sach cac duong dan tiem nang chua E_fused_t.pt
         candidate_dirs = [
             os.path.join(path, cfg.lia_precomputed_dir, cfg.dataset),
             os.path.join(path, "preprocessed_lia", cfg.dataset),

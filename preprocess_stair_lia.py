@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# Phase 1: ZCA Whitening
+# Phase 1: ZCA Whitening (CPU-safe & Eigendecomposition)
 # ============================================================================
 class ZCAWhiteningProjector(nn.Module):
     """
@@ -61,9 +61,11 @@ class ZCAWhiteningProjector(nn.Module):
     def fit(self, X: torch.Tensor) -> None:
         logger.info(f"  [ZCA fit] shape={tuple(X.shape)}")
         t0 = time.time()
-        mean = X.mean(dim=0)
-        X_c  = X - mean
-        N    = X.shape[0]
+        # Tính toán trên CPU để tránh mọi lỗi CUDA kernel mismatch
+        X_cpu = X.cpu().float()
+        mean = X_cpu.mean(dim=0)
+        X_c  = X_cpu - mean
+        N    = X_cpu.shape[0]
 
         cov  = X_c.t().mm(X_c) / (N - 1)
         eigenvalues, eigenvectors = torch.linalg.eigh(cov)
@@ -85,9 +87,9 @@ class ZCAWhiteningProjector(nn.Module):
     def transform(self, X: torch.Tensor) -> torch.Tensor:
         if not self._fitted:
             raise RuntimeError("Gọi fit() trước khi transform()!")
-        X_c  = X - self.mean_vec
-        X_w  = X_c.mm(self.zca_matrix)
-        E    = X_w[:, -self.d_out:] * self.scale
+        X_c  = X.cpu().float() - self.mean_vec.cpu()
+        X_w  = X_c.mm(self.zca_matrix.cpu())
+        E    = X_w[:, -self.d_out:] * self.scale.cpu()
         return E
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
@@ -173,12 +175,12 @@ class BidirectionalCrossModalAttention(nn.Module):
 # ============================================================================
 # Utilities
 # ============================================================================
-def load_raw_features(path: str, device: torch.device) -> torch.Tensor:
-    """Load features tu .pt / .npy / .npz / .pkl (tuong thich moi format)."""
+def load_raw_features(path: str) -> torch.Tensor:
+    """Load features từ .pt / .npy / .npz / .pkl lên CPU."""
     logger.info(f"  Loading: {path}")
     p = Path(path)
     if not p.exists():
-        raise FileNotFoundError(f"Khong tim thay: {path}")
+        raise FileNotFoundError(f"Không tìm thấy: {path}")
     ext = p.suffix.lower()
     if ext == ".pt":
         feat = torch.load(path, map_location="cpu")
@@ -197,8 +199,8 @@ def load_raw_features(path: str, device: torch.device) -> torch.Tensor:
         else:
             feat = torch.tensor(d)
     else:
-        raise ValueError(f"Dinh dang chua ho tro: {ext}")
-    feat = feat.float().to(device)
+        raise ValueError(f"Định dạng chưa hỗ trợ: {ext}")
+    feat = feat.float().cpu()
     logger.info(f"  -> shape={tuple(feat.shape)}")
     return feat
 
@@ -232,7 +234,6 @@ def process_dataset(
     zca_eps:          float = 1e-5,
     fuweight:         float = 0.6,
     batch_size:       int   = 1024,
-    device:           torch.device = torch.device("cpu"),
 ) -> Dict[str, torch.Tensor]:
     logger.info(f"\n{'='*60}")
     logger.info(f"Dataset: {dataset_name}")
@@ -242,13 +243,13 @@ def process_dataset(
     out.mkdir(parents=True, exist_ok=True)
 
     logger.info("[Phase 0] Loading raw features...")
-    text_raw   = load_raw_features(text_feat_path,   device)
-    visual_raw = load_raw_features(visual_feat_path, device)
+    text_raw   = load_raw_features(text_feat_path)
+    visual_raw = load_raw_features(visual_feat_path)
     N = text_raw.size(0)
     assert visual_raw.size(0) == N, f"Mismatch item count: text={N} vs vis={visual_raw.size(0)}"
     logger.info(f"  N_items={N}")
 
-    logger.info("[Phase 1] ZCA Whitening...")
+    logger.info("[Phase 1] ZCA Whitening (Zero-phase)...")
     zca_t = ZCAWhiteningProjector(d_in=text_raw.size(1),   d_out=d_sub, eps=zca_eps)
     zca_t.fit(text_raw)
     E_global_t = zca_t.transform(text_raw).cpu()
@@ -261,7 +262,7 @@ def process_dataset(
     attn = BidirectionalCrossModalAttention(
         d_t=text_raw.size(1), d_v=visual_raw.size(1),
         d_sub=d_sub, d_k=d_k,
-    ).to(device).eval()
+    ).eval()
 
     roi_t_list, roi_v_list = [], []
     with torch.no_grad():
@@ -309,20 +310,17 @@ def parse_args():
     p.add_argument("--zca_eps",      type=float, default=1e-5)
     p.add_argument("--fuweight",     type=float, default=0.6)
     p.add_argument("--batch_size",   type=int,   default=1024)
-    p.add_argument("--device",       default="cuda" if torch.cuda.is_available() else "cpu")
+    p.add_argument("--device",       default="cpu")
     p.add_argument("--sanity_check", action="store_true")
     return p.parse_args()
 
 
 def main():
-    args   = parse_args()
-    device = torch.device(args.device)
-
+    args = parse_args()
     logger.info("=" * 60)
-    logger.info("STAIR-LIA Offline Preprocessing")
+    logger.info("STAIR-LIA Offline Preprocessing Pipeline")
     logger.info("=" * 60)
     logger.info(f"Dataset  : {args.dataset}")
-    logger.info(f"Device   : {device}")
 
     t0 = time.time()
     results = process_dataset(
@@ -335,7 +333,6 @@ def main():
         zca_eps          = args.zca_eps,
         fuweight         = args.fuweight,
         batch_size       = args.batch_size,
-        device           = device,
     )
 
     if args.sanity_check:
