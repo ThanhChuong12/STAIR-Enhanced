@@ -14,7 +14,7 @@ import freerec
 from optimizers.AdamW import AdamWSEvo
 from optimizers.utils import Smoother
 
-# Khop phien ban freerec==0.8.5 trong moi truong Kaggle
+# Khớp phiên bản freerec==0.8.5 trong môi trường Kaggle
 freerec.declare(version='0.8.5')
 
 # ============================================================================
@@ -29,9 +29,9 @@ cfg.add_argument("--gamma",          type=float, default=0.2)
 
 # LIA-specific
 cfg.add_argument("--lia-precomputed-dir", type=str, default="preprocessed_lia",
-                 help="Thu muc chua E_fused_t.pt / E_fused_v.pt")
+                 help="Thư mục chứa E_fused_t.pt / E_fused_v.pt")
 cfg.add_argument("--lia-alpha",      type=float, default=0.5,
-                 help="Weight khoi tao cho text vs visual trong modal fusion")
+                 help="Weight khởi tạo cho text vs visual trong modal fusion")
 cfg.add_argument("--lia-roi-cl",     type=float, default=0.0,
                  help="Weight cho ROI Contrastive loss (0.0 = disable, 0.01 = enable)")
 cfg.add_argument("--lia-temperature",type=float, default=0.07,
@@ -127,7 +127,7 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
     def build_denoised_knn_graph(self, E_fused: torch.Tensor, num_neighbors_list) -> None:
         print("[LIA] Building Denoised kNN Graph on clean E_fused...")
         k_total = sum(num_neighbors_list)
-        edge_index = self.get_knn_graph(E_fused, k=k_total)
+        edge_index = self.get_knn_graph(E_fused.cpu(), k=k_total)
         edge_weight = torch.ones_like(edge_index[0], dtype=torch.float)
         edge_index, edge_weight = freerec.graph.coalesce(edge_index, edge_weight, reduce='sum')
         edge_index, edge_weight = freerec.graph.to_undirected(edge_index, edge_weight, reduce='max')
@@ -139,6 +139,7 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         print(f"[LIA] Denoised kNN Graph ready: {edge_index.shape[1]} edges (k={k_total})")
 
     def whitening(self, feats: torch.Tensor) -> torch.Tensor:
+        feats = feats.cpu().float()
         feats = feats - feats.mean(0, keepdim=True)
         feats, _, _ = torch.linalg.svd(feats, full_matrices=False)
         return feats[:, :cfg.embedding_dim] * math.sqrt(self.Item.count / cfg.embedding_dim)
@@ -188,15 +189,15 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         print(f"[LIA] E_fused_t: {tuple(E_fused_t.shape)}, mean_norm={E_fused_t.norm(dim=-1).mean():.3f}")
         print(f"[LIA] E_fused_v: {tuple(E_fused_v.shape)}, mean_norm={E_fused_v.norm(dim=-1).mean():.3f}")
 
-        # Xay Denoised kNN Graph
+        # Xây Denoised kNN Graph trên CPU
         E_for_graph = 0.5 * E_fused_t + 0.5 * E_fused_v
         self.build_denoised_knn_graph(E_for_graph, cfg.num_neighbors)
 
         self.register_buffer('E_fused_t', E_fused_t.to(cfg.device))
         self.register_buffer('E_fused_v', E_fused_v.to(cfg.device))
 
-        # Khoi tao User embeddings
-        E_modal_init = 0.5 * E_fused_t + 0.5 * E_fused_v
+        # Khởi tạo User embeddings qua R @ E_modal_init trên CPU (giống hệt main.py để tránh lỗi SpMM kernel trên GPU)
+        E_modal_init = (0.5 * E_fused_t + 0.5 * E_fused_v).cpu()
         edge_index_ui = self.dataset.train().to_bigraph(edge_type='u2i')['u2i'].edge_index
         edge_index_ui, edge_weight_ui = freerec.graph.to_normalized(
             edge_index_ui, normalization='left'
@@ -204,8 +205,10 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         R = torch.sparse_coo_tensor(
             edge_index_ui, edge_weight_ui,
             size=(self.User.count, self.Item.count)
-        ).to_sparse_csr().to(cfg.device)
-        self.User.embeddings.weight.data.copy_(R @ E_modal_init.to(cfg.device))
+        ).to_sparse_csr()
+        
+        user_init = (R @ E_modal_init).float()
+        self.User.embeddings.weight.data.copy_(user_init)
 
         self.Item.embeddings.weight.data.zero_()
         print("[LIA] Setup completed successfully!")
