@@ -1,15 +1,9 @@
 """
 main_stair_lia_v3.py -- STAIR-LIA v3 (Local Interest Aligned)
 =============================================================
-Kien truc: SVD/ZCA Whitening + Offline Bidirectional ROI Attention (CLID-style)
-           + Lightweight Fusion + Denoised kNN Graph on E_fused
-           + BPR Loss (+ optional ROI InfoNCE)
-
-Chien luoc (Plan.md):
-  Phase 1: ZCA Whitening (preprocess_stair_lia.py da chay offline)
-  Phase 2: Offline ROI Extraction (preprocess_stair_lia.py da chay offline)
-  Phase 3: Load E_fused tu disk, xay dung Denoised kNN Graph tren E_fused,
-           Khoi tao MI cho STAIR, train voi BPR + optional roi_cl loss.
+Kiến trúc: ZCA Whitening + Offline Bidirectional ROI Attention (CLID)
+           + Lightweight Fusion (alpha-gating) + Denoised kNN Graph trên E_fused
+           + BPR Loss (+ optional ROI InfoNCE contrastive loss)
 """
 from typing import Dict, Tuple
 import torch, os, math
@@ -34,11 +28,11 @@ cfg.add_argument("--gamma",          type=float, default=0.2)
 
 # LIA-specific
 cfg.add_argument("--lia-precomputed-dir", type=str, default="preprocessed_lia",
-                 help="Thu muc chua E_fused_t.pt / E_fused_v.pt (ket qua preprocess_stair_lia.py)")
+                 help="Thu muc chua E_fused_t.pt / E_fused_v.pt")
 cfg.add_argument("--lia-alpha",      type=float, default=0.5,
-                 help="Weight for text vs visual in modal fusion: E_modal = alpha*t + (1-alpha)*v")
+                 help="Weight khoi tao cho text vs visual trong modal fusion")
 cfg.add_argument("--lia-roi-cl",     type=float, default=0.0,
-                 help="Weight cho ROI Contrastive loss (0.0 = disable, 0.01 = enable nhe)")
+                 help="Weight cho ROI Contrastive loss (0.0 = disable, 0.01 = enable)")
 cfg.add_argument("--lia-temperature",type=float, default=0.07,
                  help="Temperature cho InfoNCE ROI contrastive loss")
 
@@ -59,53 +53,29 @@ cfg.compile()
 cfg.mfiles        = cfg.mfiles.split(',')
 cfg.num_neighbors = list(map(int, cfg.num_neighbors.split('-')))
 
-# BSC Smoother spectral decay (dong nhat voi STAIR goc)
+# BSC Smoother spectral decay
 cfg.beta3 = (
     0.1 + 0.9 * (torch.arange(cfg.embedding_dim) / cfg.embedding_dim).pow(cfg.gamma)
 ).to(cfg.device)
 
 
-# ============================================================================
-# ROI Contrastive Loss (InfoNCE) -- optional
-# ============================================================================
 def roi_contrastive_loss(
     roi_t: torch.Tensor,
     roi_v: torch.Tensor,
     temperature: float = 0.07,
 ) -> torch.Tensor:
-    """
-    InfoNCE Cross-Modal Contrastive Loss tren batch.
-    Matching CLID.py multi_loss():
-        logits = roi_v @ roi_t^T / temperature
-        loss   = CE(logits, diag) + CE(logits^T, diag)
-    Args:
-        roi_t: (B, D) - normalized text ROI embeddings
-        roi_v: (B, D) - normalized visual ROI embeddings
-    Returns:
-        scalar loss
-    """
     roi_t = F.normalize(roi_t, p=2, dim=-1)
     roi_v = F.normalize(roi_v, p=2, dim=-1)
-    logits = roi_v @ roi_t.t() / temperature       # (B, B)
+    logits = roi_v @ roi_t.t() / temperature
     labels = torch.arange(logits.size(0), device=logits.device)
     loss_v2t = F.cross_entropy(logits,   labels)
     loss_t2v = F.cross_entropy(logits.t(), labels)
     return (loss_v2t + loss_t2v) / 2.0
 
 
-# ============================================================================
-# Model: STAIR-LIA v3
-# ============================================================================
 class STAIR_LIA_v3(freerec.models.GenRecArch):
     """
     STAIR-LIA v3 (Local Interest Aligned).
-
-    Khac voi v2a:
-      1. KHONG co ResidualProjector trainable -> KHONG co gradient xung dot voi BPR.
-      2. Dung E_fused = load tu disk (da qua ZCA + Offline ROI Attention).
-      3. Denoised kNN Graph duoc tinh tren E_fused (sach nhieu hon raw features).
-      4. E_modal = alpha * E_fused_t + (1-alpha) * E_fused_v  (Lightweight Fusion).
-      5. Optional: ROI Contrastive loss voi weight rat nho (0.01).
     """
 
     def __init__(self, dataset: freerec.data.datasets.RecDataSet) -> None:
@@ -120,8 +90,9 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
             self.dataset.train().to_normalized_adj(normalization='sym')
         )
 
-        # alpha: learnable scalar de balance text/visual (init = cfg.lia_alpha)
-        self.alpha = nn.Parameter(torch.tensor(cfg.lia_alpha))
+        # Learnable alpha (init=0.5 -> sigmoid(0.0) = 0.5)
+        # alpha_raw = logit(init) = 0.0
+        self.alpha_raw = nn.Parameter(torch.tensor(0.0))
 
         self.reset_parameters()
         self.prepare(dataset.path)
@@ -143,14 +114,10 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
                 'params': self.Item.parameters(),
                 'smoother': Smoother(self.mAdj, beta=cfg.beta3, L=cfg.num_layers, aggr='neumann'),
             },
-            {'params': [self.alpha], 'smoother': None, 'weight_decay': 0.0},
+            {'params': [self.alpha_raw], 'smoother': None, 'lr': cfg.lr * 0.1, 'weight_decay': 0.0},
         ]
 
-    # ----------------------------------------------------------------
-    # kNN Graph helpers
-    # ----------------------------------------------------------------
     def get_knn_graph(self, features: torch.Tensor, k: int = 5):
-        """Tinh kNN graph tu cosine similarity."""
         features = F.normalize(features, dim=-1)
         sim = features @ features.t()
         sim.fill_diagonal_(-10.)
@@ -158,13 +125,7 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         return edge_index
 
     def build_denoised_knn_graph(self, E_fused: torch.Tensor, num_neighbors_list) -> None:
-        """
-        Xay dung Denoised kNN Graph tren E_fused (vector sach nhieu).
-        Thay the toan bo kNN graph goc cua STAIR (duoc xay tren raw 4096-D/384-D).
-        """
-        print("[LIA] Building Denoised kNN Graph on E_fused...")
-        # Dung cung E_fused cho ca text va visual (da fuse roi)
-        # k = sum(num_neighbors_list) = 6 (5+1)
+        print("[LIA] Building Denoised kNN Graph on clean E_fused...")
         k_total = sum(num_neighbors_list)
         edge_index = self.get_knn_graph(E_fused, k=k_total)
         edge_weight = torch.ones_like(edge_index[0], dtype=torch.float)
@@ -175,79 +136,68 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
             edge_index, edge_weight, size=(self.Item.count, self.Item.count)
         )
         self.register_buffer('mAdj', mAdj.to_sparse_csr())
-        print(f"[LIA] Denoised kNN Graph built: {edge_index.shape[1]} edges, k={k_total}")
+        print(f"[LIA] Denoised kNN Graph ready: {edge_index.shape[1]} edges (k={k_total})")
 
-    # ----------------------------------------------------------------
-    # Prepare: load precomputed LIA features
-    # ----------------------------------------------------------------
     def whitening(self, feats: torch.Tensor) -> torch.Tensor:
-        """SVD Whitening fallback (dung khi khong co precomputed features)."""
         feats = feats - feats.mean(0, keepdim=True)
         feats, _, _ = torch.linalg.svd(feats, full_matrices=False)
         return feats[:, :cfg.embedding_dim] * math.sqrt(self.Item.count / cfg.embedding_dim)
 
     def prepare(self, path: str):
-        """
-        Load E_fused tu disk (precomputed boi preprocess_stair_lia.py),
-        xay dung Denoised kNN Graph, khoi tao MI.
-
-        Neu khong tim thay E_fused (chua chay preprocessing), fallback ve SVD whitening.
-        """
         from freerec.utils import import_pickle
 
-        # --- Thu load precomputed LIA features ---
-        lia_dir = os.path.join(path, cfg.lia_precomputed_dir, cfg.dataset)
-        fused_t_path = os.path.join(lia_dir, "E_fused_t.pt")
-        fused_v_path = os.path.join(lia_dir, "E_fused_v.pt")
+        # Danh sach cac duong dan tiem nang chua E_fused_t.pt
+        candidate_dirs = [
+            os.path.join(path, cfg.lia_precomputed_dir, cfg.dataset),
+            os.path.join(path, "preprocessed_lia", cfg.dataset),
+            os.path.join(path, cfg.dataset),
+            os.path.join(path),
+            os.path.join("/kaggle/working/preprocessed_lia", cfg.dataset),
+            os.path.join("/kaggle/data/preprocessed_lia", cfg.dataset),
+            os.path.join("/kaggle/data", cfg.dataset, "preprocessed_lia", cfg.dataset),
+            os.path.join("/kaggle/working/STAIR-Enhanced/data", cfg.dataset, "preprocessed_lia", cfg.dataset),
+        ]
 
-        if os.path.exists(fused_t_path) and os.path.exists(fused_v_path):
-            print(f"[LIA] Loading precomputed E_fused from: {lia_dir}")
-            E_fused_t = torch.load(fused_t_path, map_location='cpu').float()  # (N, 64)
-            E_fused_v = torch.load(fused_v_path, map_location='cpu').float()  # (N, 64)
-            # Fallback: co the load roi (roi da fuse vao E_fused roi)
-            roi_t_path = os.path.join(lia_dir, "E_roi_t.pt")
-            roi_v_path = os.path.join(lia_dir, "E_roi_v.pt")
-            if os.path.exists(roi_t_path):
-                E_roi_t = torch.load(roi_t_path, map_location='cpu').float()
-                E_roi_v = torch.load(roi_v_path, map_location='cpu').float()
-                self.register_buffer('E_roi_t', E_roi_t.to(cfg.device))
-                self.register_buffer('E_roi_v', E_roi_v.to(cfg.device))
-                print(f"[LIA] E_roi loaded: t={tuple(E_roi_t.shape)}, v={tuple(E_roi_v.shape)}")
+        found_dir = None
+        for d in candidate_dirs:
+            if os.path.exists(os.path.join(d, "E_fused_t.pt")) and os.path.exists(os.path.join(d, "E_fused_v.pt")):
+                found_dir = d
+                break
+
+        if found_dir:
+            print(f"[LIA] Loading precomputed E_fused from: {found_dir}")
+            E_fused_t = torch.load(os.path.join(found_dir, "E_fused_t.pt"), map_location='cpu').float()
+            E_fused_v = torch.load(os.path.join(found_dir, "E_fused_v.pt"), map_location='cpu').float()
+            roi_t_p = os.path.join(found_dir, "E_roi_t.pt")
+            roi_v_p = os.path.join(found_dir, "E_roi_v.pt")
+            if os.path.exists(roi_t_p) and os.path.exists(roi_v_p):
+                self.register_buffer('E_roi_t', torch.load(roi_t_p, map_location='cpu').float().to(cfg.device))
+                self.register_buffer('E_roi_v', torch.load(roi_v_p, map_location='cpu').float().to(cfg.device))
             else:
                 self.E_roi_t = None
                 self.E_roi_v = None
-            use_lia = True
         else:
-            # Fallback: dung SVD Whitening nhu STAIR goc
-            print(f"[LIA] WARNING: Precomputed features not found at {lia_dir}")
-            print("[LIA] Fallback to SVD Whitening (original STAIR)...")
+            print(f"[LIA] Precomputed files not found in candidate paths. Fallback to SVD Whitening...")
             mfeats_raw = [
                 import_pickle(os.path.join(path, mfile)) for mfile in cfg.mfiles
             ]
-            text_feat   = mfeats_raw[0].float()
-            visual_feat = mfeats_raw[1].float()
-            E_fused_t = self.whitening(text_feat)
-            E_fused_v = self.whitening(visual_feat)
+            E_fused_t = self.whitening(mfeats_raw[0].float())
+            E_fused_v = self.whitening(mfeats_raw[1].float())
             self.E_roi_t = None
             self.E_roi_v = None
-            use_lia = False
 
         print(f"[LIA] E_fused_t: {tuple(E_fused_t.shape)}, mean_norm={E_fused_t.norm(dim=-1).mean():.3f}")
         print(f"[LIA] E_fused_v: {tuple(E_fused_v.shape)}, mean_norm={E_fused_v.norm(dim=-1).mean():.3f}")
 
-        # --- Xay dung Denoised kNN Graph tren E_fused ---
-        # E_modal_for_graph: weighted combination cho graph construction
+        # Xay Denoised kNN Graph
         E_for_graph = 0.5 * E_fused_t + 0.5 * E_fused_v
         self.build_denoised_knn_graph(E_for_graph, cfg.num_neighbors)
 
-        # --- Luu E_fused lam frozen buffer ---
         self.register_buffer('E_fused_t', E_fused_t.to(cfg.device))
         self.register_buffer('E_fused_v', E_fused_v.to(cfg.device))
 
-        # --- Khoi tao User theo R @ E_modal ---
-        alpha_init = float(cfg.lia_alpha)
-        E_modal_init = alpha_init * E_fused_t + (1 - alpha_init) * E_fused_v
-
+        # Khoi tao User embeddings
+        E_modal_init = 0.5 * E_fused_t + 0.5 * E_fused_v
         edge_index_ui = self.dataset.train().to_bigraph(edge_type='u2i')['u2i'].edge_index
         edge_index_ui, edge_weight_ui = freerec.graph.to_normalized(
             edge_index_ui, normalization='left'
@@ -258,31 +208,15 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         ).to_sparse_csr().to(cfg.device)
         self.User.embeddings.weight.data.copy_(R @ E_modal_init.to(cfg.device))
 
-        # Item ID embeddings = 0 (e_item = e_ID + e_modal, e_modal = E_fused)
         self.Item.embeddings.weight.data.zero_()
-        print(f"[LIA] Initialized: alpha={alpha_init:.2f}, use_lia={use_lia}")
-        print("[LIA] Ready for training!")
+        print("[LIA] Setup completed successfully!")
 
-    # ----------------------------------------------------------------
-    # Forward
-    # ----------------------------------------------------------------
     def get_modal_item_embeddings(self) -> torch.Tensor:
-        """
-        Lightweight Fusion:
-            E_modal = alpha * E_fused_t + (1-alpha) * E_fused_v
-
-        alpha la nn.Parameter (scalar, init=0.5), duoc hoc nhe trong qua trinh train.
-        E_fused_t, E_fused_v la frozen buffers (khong thay doi trong train).
-        """
-        alpha = torch.sigmoid(self.alpha)          # (0, 1) bounded
-        e_modal = alpha * self.E_fused_t + (1 - alpha) * self.E_fused_v  # (N, 64)
+        alpha = torch.sigmoid(self.alpha_raw)
+        e_modal = alpha * self.E_fused_t + (1.0 - alpha) * self.E_fused_v
         return e_modal
 
     def encode(self) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        FSC/BSC smoothing (dong nhat voi STAIR goc):
-            item_total = Item.embeddings + E_modal
-        """
         modal_items = self.get_modal_item_embeddings()
         total_items = self.Item.embeddings.weight + modal_items
 
@@ -299,7 +233,6 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         return userEmbds, itemEmbds
 
     def fit(self, data: Dict[freerec.data.fields.Field, torch.Tensor]):
-        """BPR + optional ROI Contrastive loss."""
         userEmbds, itemEmbds = self.encode()
         users     = data[self.User]
         positives = data[self.Item]
@@ -310,7 +243,6 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
             torch.einsum('BKD,BKD->BK', userEmbds[users], itemEmbds[negatives]),
         )
 
-        # Optional ROI Contrastive Loss (Plan.md: "only CFD or InfoNCE with 0.01 weight")
         if cfg.lia_roi_cl > 0.0 and self.E_roi_t is not None:
             pos_items_flat = positives.view(-1)
             roi_t_batch = self.E_roi_t[pos_items_flat]
@@ -336,12 +268,7 @@ class STAIR_LIA_v3(freerec.models.GenRecArch):
         return torch.einsum('BKD,BKD->BK', userEmbds, itemEmbds)
 
 
-# ============================================================================
-# Coach
-# ============================================================================
 class CoachForSTAIR_LIA_v3(freerec.launcher.Coach):
-    """Coach cho STAIR-LIA v3: theo doi alpha va loss."""
-
     def set_optimizer(self):
         self.optimizer = AdamWSEvo(
             self.model.marked_params(),
@@ -349,7 +276,7 @@ class CoachForSTAIR_LIA_v3(freerec.launcher.Coach):
             betas=(self.cfg.beta1, self.cfg.beta2),
             weight_decay=self.cfg.weight_decay,
         )
-        print(f"[Optimizer] AdamWSEvo | lr={self.cfg.lr} | wd={self.cfg.weight_decay}")
+        print(f"[Optimizer] AdamWSEvo ready (base lr={self.cfg.lr})")
 
     def train_per_epoch(self, epoch: int):
         for data in self.dataloader:
@@ -362,13 +289,10 @@ class CoachForSTAIR_LIA_v3(freerec.launcher.Coach):
                 loss.item(), n=len(data[self.User]),
                 reduction='mean', mode='train', pool=['LOSS'],
             )
-        alpha_val = torch.sigmoid(self.model.alpha).item()
+        alpha_val = torch.sigmoid(self.model.alpha_raw).item()
         print(f"  [alpha @epoch {epoch:3d}]: {alpha_val:.4f} (text weight)", flush=True)
 
 
-# ============================================================================
-# Entry Point
-# ============================================================================
 def main():
     try:
         dataset = getattr(freerec.data.datasets, cfg.dataset)(root=cfg.root)
