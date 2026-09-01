@@ -20,7 +20,43 @@ from typing import Dict, List, Tuple
 import torch, os, math
 import torch.nn as nn
 import torch.nn.functional as F
+# Compatibility fallback for torchdata.datapipes in PyTorch 2.x / Kaggle environments
+try:
+    import torchdata.datapipes as dp
+except (ImportError, ModuleNotFoundError):
+    import sys, types
+    import torch.utils.data
+    
+    if 'torchdata' not in sys.modules:
+        td = types.ModuleType('torchdata')
+        sys.modules['torchdata'] = td
+    else:
+        td = sys.modules['torchdata']
+        
+    if 'torchdata.datapipes' not in sys.modules:
+        dp_mod = types.ModuleType('torchdata.datapipes')
+        iter_mod = types.ModuleType('torchdata.datapipes.iter')
+        map_mod = types.ModuleType('torchdata.datapipes.map')
+        
+        class IterDataPipe(torch.utils.data.IterableDataset):
+            pass
+            
+        class MapDataPipe(torch.utils.data.Dataset):
+            pass
+            
+        iter_mod.IterDataPipe = IterDataPipe
+        map_mod.MapDataPipe = MapDataPipe
+        
+        dp_mod.iter = iter_mod
+        dp_mod.map = map_mod
+        td.datapipes = dp_mod
+        
+        sys.modules['torchdata.datapipes'] = dp_mod
+        sys.modules['torchdata.datapipes.iter'] = iter_mod
+        sys.modules['torchdata.datapipes.map'] = map_mod
+
 import freerec
+
 
 from optimizers.Adam import AdamSEvo
 from optimizers.AdamW import AdamWSEvo
