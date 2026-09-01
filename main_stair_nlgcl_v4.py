@@ -9,7 +9,7 @@ as STAIR's original main.py. It can be invoked identically:
     python main_stair_nlgcl_v4.py --config configs/Amazon2014Baby_550_MMRec.yaml
 
 New hyperparameters (all with safe defaults):
-    --lambda-nlgcl  : Weight for NLGCL loss term (default: 0.1)
+    --lambda-nlgcl  : Weight for NLGCL loss term (default: 0.01, based on NLGCL+ multimodal SOTA)
     --nlgcl-tau     : Temperature for InfoNCE (default: 0.2)
     --nlgcl-G       : Number of contrastive gaps (default: 1)
     --nlgcl-alpha   : Balance between user-CL and item-CL (default: 0.5)

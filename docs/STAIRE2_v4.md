@@ -248,7 +248,7 @@ Tính toán bộ nhớ thực tế trên tập dữ liệu chuẩn **Amazon Baby
 
 | Tham số | Cờ Dòng lệnh (CLI Flag) | Giá trị Mặc định | Ý nghĩa & Khuyến nghị |
 | :--- | :--- | :---: | :--- |
-| **Trọng số NLGCL** | `--lambda-nlgcl` | `0.1` | Hệ số cân bằng giữa BPR Loss và NLGCL Loss. Đặt `0.0` để quay về STAIR gốc. |
+| **Trọng số NLGCL** | `--lambda-nlgcl` | `0.01` (`1e-2`) | Hệ số cân bằng loss theo chuẩn NLGCL+ (Multimodal SOTA). Thang tìm kiếm: `{1e-3, 1e-2, 1e-1}`. |
 | **Nhiệt độ InfoNCE** | `--nlgcl-tau` | `0.2` | Hệ số nhiệt độ $\tau$ kiểm soát độ phân giải của hàm Softmax trong InfoNCE. |
 | **Số khoảng cách tầng** | `--nlgcl-G` | `1` | Số lượng cặp tầng đối chiếu. $G=1$ đối chiếu Tầng 0 vs Tầng 1; $G=2$ đối chiếu thêm Tầng 1 vs Tầng 2. |
 | **Cân bằng Thực thể** | `--nlgcl-alpha` | `0.5` | Trọng số cân bằng giữa User CL ($\alpha$) và Item CL ($1 - \alpha$). |
@@ -271,6 +271,12 @@ Tính toán bộ nhớ thực tế trên tập dữ liệu chuẩn **Amazon Baby
 | | **NDCG@20** | 0.0267 | 0.0239 | 0.0258 | 0.0285 | **$\ge$ 0.0300** |
 
 ---
+
+
+### 6.3 Phân biệt Thang đo Trọng số $\lambda_{\text{nlgcl}}$: NLGCL (CF thuần) vs. NLGCL+ (Đa phương thức)
+- **NLGCL gốc (WWW 2024):** Hoạt động trên mô hình Collaborative Filtering thuần (LightGCN), tìm kiếm $\lambda \in \{10^{-6}, 10^{-5}, 10^{-4}\}$.
+- **NLGCL+ (TKDE 2024 / FREEDOM):** Mở rộng sang không gian đồ thị đa phương thức (Multimodal Recommender Systems), tìm kiếm $\lambda \in \{10^{-3}, 10^{-2}, 10^{-1}\}$ và chỉ ra **$\lambda = 10^{-2} = 0.01$** là điểm hội tụ tối ưu nhất quán trên toàn bộ benchmark.
+- **Thực nghiệm STAIR-NLGCL v4:** Xác nhận $\lambda = 10^{-5}$ là vùng tiệm cận 0 (Sports khớp 100% baseline). Chuyển dịch toàn bộ thang đo thực nghiệm sang $\lambda \in \{10^{-3}, 10^{-2}, 10^{-1}\}$ với điểm khởi đầu ưu tiên $\lambda = 0.01$.
 
 ## 7. KẾT LUẬN & HƯỚNG DẪN BƯỚC KẾ TIẾP
 
