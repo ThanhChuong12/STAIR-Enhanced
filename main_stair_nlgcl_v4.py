@@ -404,7 +404,7 @@ class STAIR_NLGCL(freerec.models.GenRecArch):
         smoothed = allEmbds
 
         # FSC: Neumann-series with dimension-wise spectral decay β₃
-        beta = 1 - cfg.beta3
+        beta = (1 - cfg.beta3).to(allEmbds.device)
         norm_correction = 1 - beta ** (self.num_layers + 1)
 
         for _ in range(self.num_layers):
@@ -428,7 +428,7 @@ class STAIR_NLGCL(freerec.models.GenRecArch):
         )
         features = allEmbds
         smoothed = allEmbds
-        beta = 1 - cfg.beta3
+        beta = (1 - cfg.beta3).to(allEmbds.device)
         norm_correction = 1 - beta ** (self.num_layers + 1)
         for _ in range(self.num_layers):
             features = self.Adj @ features * beta

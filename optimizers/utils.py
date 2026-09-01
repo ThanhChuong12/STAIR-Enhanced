@@ -12,10 +12,18 @@ class Smoother:
         self.aggr = aggr
 
     def aggregate(self, features: torch.Tensor):
+        if self.Adj.device != features.device:
+            self.Adj = self.Adj.to(features.device)
         return self.Adj @ features
 
     @torch.no_grad()
     def __call__(self, features: torch.Tensor):
+        device = features.device
+        if self.Adj.device != device:
+            self.Adj = self.Adj.to(device)
+        if isinstance(self.beta, torch.Tensor) and self.beta.device != device:
+            self.beta = self.beta.to(device)
+
         smoothed = features
         if self.aggr == 'neumann':
             norm_correction = 1 - self.beta ** (self.L + 1)     
