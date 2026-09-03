@@ -289,3 +289,49 @@ Kiến trúc **STAIR-Enhanced v4 (STAIR-NLGCL)** là sự kết hợp hoàn hả
 1. **Tạo Kaggle Notebook v4 (`stair_enhanced_v4_nlgcl.ipynb`):** Tích hợp quy trình tải dữ liệu, cấu hình pipeline và chạy huấn luyện trên các tập dữ liệu Baby, Sports, Electronics.
 2. **Thực nghiệm Quét Siêu tham số (Grid Search):** Thử nghiệm các mức $\lambda_{\text{nlgcl}} \in \{0.05, 0.1, 0.2\}$ và $\tau \in \{0.1, 0.2, 0.5\}$ để tìm ra điểm cân bằng tối ưu.
 3. **Cập nhật Báo cáo Luận văn:** Đưa toàn bộ nội dung lý thuyết, phân tích toán học và kết quả thực nghiệm v4 vào Bản thảo Khóa luận Tốt nghiệp (`report/chapters_v2/03_stair.tex`).
+
+Chào bạn, đây là một câu hỏi rất quan trọng phục vụ cho việc **bảo vệ tính mới (novelty)** của đề tài Khóa luận Tốt nghiệp.
+
+Câu trả lời ngắn gọn: **STAIR-NLGCL (v4) KHÔNG PHẢI là copy nguyên xi NLGCL-Plus/NEGCL**, mà là một công trình **kế thừa có chọn lọc và tái cấu trúc (Novel Integration & Adaptation)** để giải quyết trực tiếp bài toán xung đột giữa *Lọc phổ năng lượng STAIR* và *Học tương phản đồ thị*.
+
+Dưới đây là **4 điểm tự cải tiến và khác biệt cốt lõi** giữa STAIR-NLGCL v4 và các paper gốc:
+
+---
+
+### 1. Bản chất View Tương phản: "Phổ năng lượng lọc bước (FSC Intermediates)" vs. "Graph Conv thông thường"
+* **NLGCL / NLGCL-Plus gốc:** Lấy các tầng trung gian từ LightGCN hoặc FREEDOM ($\mathbf{H}^{(l)} = \tilde{\mathbf{A}} \mathbf{H}^{(l-1)}$) — vốn là các phép cộng trung bình đơn thuần không có phân tầng tần số.
+* **STAIR-NLGCL v4 (Cải tiến của nhóm):** Tận dụng chuỗi Neumann bậc thang có gắn **hàm suy giảm phổ năng lượng** $\beta_3(d) = 0.1 + 0.9(d/D)^\gamma$:
+  $$\mathbf{H}^{(l)} = (\tilde{\mathbf{A}} \mathbf{H}^{(l-1)}) \odot (1 - \mathbf{\beta}_3)$$
+  $\rightarrow$ Các view trung gian $\mathbf{H}^{(0)}, \mathbf{H}^{(1)}$ trong v4 **không chỉ mang thông tin $l$-hop structural**, mà đã được **lọc phổ tự nhiên** (chiều tần số thấp giữ thông tin CF, chiều tần số cao giữ thông tin Modal). Việc đối chiếu chéo các tầng này mang ý nghĩa điều hòa phổ (Spectral Regularization) mà NLGCL-Plus không có.
+
+---
+
+### 2. Khắc phục tử huyệt "Hard-Split Subspaces" của v1 (Full Continuous 64-D Space)
+* Trong lần thử nghiệm v1, nhóm từng cố gắng cắt cứng không gian 64 chiều thành $[0:32]$ (học CL) và $[32:64]$ (giữ modal), làm đứt gãy đường cong $\beta_3(d)$.
+* **Cải tiến trong v4:** Nhóm giữ nguyên không gian liên tục 64 chiều, kết hợp chuẩn hóa đơn vị $L_2$ toàn chiều ($\mathbf{z} = \frac{\mathbf{h}}{\|\mathbf{h}\|_2}$) trước khi đưa vào InfoNCE. Điều này giúp hàm mất mát tương phản hoạt động trơn tru trên toàn dải tần số của STAIR mà không phá vỡ cấu trúc ban đầu.
+
+---
+
+### 3. Cơ chế Điều hòa Đồ thị Kép (Dual-Level Graph Regularization: Forward CL + Backward BSC)
+Đây là cấu trúc **độc nhất chỉ có ở STAIR-NLGCL**, hoàn toàn không tồn tại trong NLGCL-Plus hay NEGCL:
+* **Chiều Tiến (Forward Stepwise):** Dùng In-batch Heterogeneous InfoNCE trên đồ thị lưỡng phân User-Item để kéo gần biểu diễn 1-hop láng giềng.
+* **Chiều Nghịch (Backward Stepwise):** Dùng bộ lọc `Smoother` trên đồ thị láng giềng đa phương thức Item-Item $k\text{NN}$ ($\mathbf{mAdj}$) thông qua thuật toán tối ưu `AdamWSEvo` để làm mịn gradient ngược.
+* $\rightarrow$ Hai cơ chế này bổ trợ lẫn nhau: một bên ràng buộc không gian biểu diễn (Feature Space), một bên ràng buộc không gian tối ưu (Gradient Space).
+
+---
+
+### 4. Tối ưu hóa Số học & Ngăn ngừa OOM (LogSumExp & In-batch Negative Sampling)
+* Mã nguồn gốc của một số bài báo CL thường sử dụng negative sampling toàn cục hoặc tính toán ma trận lớn dễ gây tràn VRAM trên Kaggle T4 ($16\text{ GB}$).
+* **Cải tiến trong v4:** Module `models/stair_nlgcl.py` được viết lại hoàn toàn độc lập, sử dụng `torch.logsumexp` để triệt tiêu hoàn toàn hiện tượng tràn số (numerical overflow), giới hạn chi phí ma trận ở $O(B^2) = 1024 \times 1024 \approx 4\text{ MB}$, giúp tổng overhead của mô hình chỉ vỏn vẹn $\sim 30\text{ MB}$.
+
+---
+
+### 📊 Bảng so sánh tổng hợp (Đưa vào báo cáo Luận văn):
+
+| Tiêu chí | NLGCL / NLGCL-Plus | NEGCL | **STAIR-NLGCL v4 (Đề tài)** |
+| :--- | :--- | :--- | :--- |
+| **Backbone GNN** | LightGCN / FREEDOM | LightGCN | **STAIR (FSC Neumann Series)** |
+| **Phân bổ năng lượng** | Không có (Đồng nhất) | Không có | **Spectral Decay $\beta_3(d)$ liên tục** |
+| **Bản chất tầng đối chiếu** | $l$-hop spatial neighbor | Modality triple | **$l$-hop Spectral-filtered view** |
+| **Tối ưu hóa Gradient** | Adam tiêu chuẩn | Adam tiêu chuẩn | **AdamWSEvo + BSC Smoother ($\mathbf{mAdj}$)** |
+| **Chi phí Augmentation** | Nhánh phụ / Graph masking | Modality graph embedding | **Zero-cost (Hứng trực tiếp từ FSC)** |
