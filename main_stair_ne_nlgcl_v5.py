@@ -472,12 +472,42 @@ class CoachForSTAIR_NE_NLGCL(freerec.launcher.Coach):
             )
 
     def train_per_epoch(self, epoch: int):
-        loss = super().train_per_epoch(epoch)
-        return loss
+        for data in self.dataloader:
+            data = self.dict_to_device(data)
+            loss = self.model(data)
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+            self.monitor(
+                loss.item(), n=len(data[self.User]),
+                reduction="mean", mode='train', pool=['LOSS'],
+            )
+
+
+def main():
+    try:
+        dataset = getattr(freerec.data.datasets, cfg.dataset)(root=cfg.root)
+    except AttributeError:
+        dataset = freerec.data.datasets.RecDataSet(
+            cfg.root, cfg.dataset, tasktag=cfg.tasktag
+        )
+
+    model = STAIR_NE_NLGCL_Model(dataset)
+
+    trainpipe = model.sure_trainpipe(cfg.batch_size)
+    validpipe = model.sure_validpipe(cfg.ranking)
+    testpipe  = model.sure_testpipe(cfg.ranking)
+
+    coach = CoachForSTAIR_NE_NLGCL(
+        dataset=dataset,
+        trainpipe=trainpipe,
+        validpipe=validpipe,
+        testpipe=testpipe,
+        model=model,
+        cfg=cfg,
+    )
+    coach.fit()
 
 
 if __name__ == '__main__':
-    dataset = getattr(freerec.data.datasets, cfg.dataset)(root=cfg.root)
-    model = STAIR_NE_NLGCL_Model(dataset)
-    coach = CoachForSTAIR_NE_NLGCL(dataset, model, cfg)
-    coach.fit()
+    main()
