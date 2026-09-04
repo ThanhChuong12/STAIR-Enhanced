@@ -590,79 +590,91 @@ với $G$ là số lượng khoảng cách tầng đối chiếu, $\alpha$ là h
 
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}[scale=0.82, transform shape,
-    block/.style={rectangle, draw=blue!60!black, rounded corners=4pt, minimum height=0.8cm, minimum width=2.8cm, font=\scriptsize, align=center, fill=blue!6, inner sep=4pt},
-    layerbox/.style={rectangle, draw=teal!70!black, rounded corners=4pt, minimum height=0.85cm, text width=3.8cm, font=\scriptsize\bfseries, align=center, fill=teal!8, inner sep=4pt},
-    extractbox/.style={rectangle, draw=purple!70!black, dashed, thick, rounded corners=4pt, minimum height=0.85cm, text width=7.1cm, font=\scriptsize\bfseries, align=center, fill=purple!6, inner sep=4pt},
-    clbox/.style={rectangle, draw=orange!80!black, dashed, thick, rounded corners=4pt, minimum height=1.65cm, text width=3.45cm, font=\scriptsize\bfseries, align=center, fill=orange!10, inner sep=4pt},
-    widebox/.style={rectangle, draw=orange!80!black, dashed, thick, rounded corners=4pt, minimum height=1.05cm, text width=7.1cm, font=\scriptsize\bfseries, align=center, fill=orange!10, inner sep=5pt},
-    finalbox/.style={rectangle, draw=blue!85!black, thick, rounded corners=5pt, minimum height=0.95cm, text width=8.2cm, font=\scriptsize\bfseries, align=center, fill=blue!12, inner sep=5pt},
-    arr/.style={-{Stealth[length=2.4mm, width=1.6mm]}, thick, draw=gray!30!black},
-    dasharr/.style={-{Stealth[length=2.4mm, width=1.6mm]}, thick, dashed, draw=purple!80!black},
-    subbg_left/.style={draw=blue!30, dashed, fill=blue!2, rounded corners=8pt},
-    subbg_right/.style={draw=orange!40, dashed, fill=orange!2, rounded corners=8pt}
+\begin{tikzpicture}[scale=0.78, transform shape,
+    % Styles
+    header_left/.style={rectangle, draw=blue!70!black, fill=blue!15, rounded corners=3pt, minimum height=0.75cm, text width=4.8cm, font=\scriptsize\bfseries\color{blue!80!black}, align=center},
+    header_right/.style={rectangle, draw=orange!80!black, fill=orange!20, rounded corners=3pt, minimum height=0.75cm, text width=9.2cm, font=\scriptsize\bfseries\color{orange!90!black}, align=center},
+    block/.style={rectangle, draw=blue!60!black, rounded corners=4pt, minimum height=0.9cm, text width=2.1cm, font=\scriptsize, align=center, fill=blue!6, inner sep=4pt},
+    wide_block/.style={rectangle, draw=blue!60!black, rounded corners=4pt, minimum height=0.95cm, text width=4.4cm, font=\scriptsize, align=center, fill=blue!6, inner sep=5pt},
+    layerbox/.style={rectangle, draw=teal!70!black, rounded corners=4pt, minimum height=0.95cm, text width=4.4cm, font=\scriptsize\bfseries, align=center, fill=teal!8, inner sep=5pt},
+    extractbox/.style={rectangle, draw=purple!70!black, dashed, thick, rounded corners=4pt, minimum height=1.05cm, text width=8.8cm, font=\scriptsize\bfseries, align=center, fill=purple!6, inner sep=5pt},
+    clbox/.style={rectangle, draw=orange!80!black, dashed, thick, rounded corners=4pt, minimum height=2.3cm, text width=4.1cm, font=\scriptsize, align=center, fill=orange!10, inner sep=5pt},
+    widebox/.style={rectangle, draw=orange!80!black, dashed, thick, rounded corners=4pt, minimum height=1.25cm, text width=8.8cm, font=\scriptsize\bfseries, align=center, fill=orange!10, inner sep=6pt},
+    finalbox/.style={rectangle, draw=blue!85!black, thick, rounded corners=5pt, minimum height=1.15cm, text width=9.2cm, font=\scriptsize\bfseries, align=center, fill=blue!12, inner sep=6pt},
+    arr/.style={-{Stealth[length=2.5mm, width=1.7mm]}, thick, draw=gray!35!black},
+    dasharr/.style={-{Stealth[length=2.5mm, width=1.7mm]}, thick, dashed, draw=purple!80!black},
+    subbg_left/.style={draw=blue!35, dashed, fill=blue!2, rounded corners=8pt},
+    subbg_right/.style={draw=orange!45, dashed, fill=orange!2, rounded corners=8pt}
 ]
 
-% Khung bao quanh bên trái: FSC Backbone
-\draw[subbg_left] (-5.8, 1.0) rectangle (-1.4, -6.6);
-\node[font=\scriptsize\bfseries\color{blue!70!black}, anchor=north] at (-3.6, 0.85) {FSC Backbone (Mô hình STAIR gốc)};
+% ==================== KHUNG BAO QUANH ====================
+% Khung bên trái: FSC Backbone
+\draw[subbg_left] (-6.5, 2.0) rectangle (-1.3, -8.6);
+\node[header_left] at (-3.9, 1.5) {FSC BACKBONE (MÔ HÌNH STAIR GỐC)};
 
-% Khung bao quanh bên phải: Module NLGCL
-\draw[subbg_right] (-0.2, 1.0) rectangle (7.4, -6.6);
-\node[font=\scriptsize\bfseries\color{orange!80!black}, anchor=north] at (3.6, 0.85) {Module Đối chiếu NLGCL (Tích hợp thêm)};
+% Khung bên phải: Module NLGCL
+\draw[subbg_right] (-0.1, 2.0) rectangle (9.3, -8.6);
+\node[header_right] at (4.6, 1.5) {MODULE ĐỐI CHIẾU NLGCL (TÍCH HỢP THÊM)};
 
-% ===== NHÁNH TRÁI: FORWARD STEPWISE CONVOLUTION (STAIR) =====
-\node[block, text width=2.0cm] (in_u) at (-4.75, -0.1) {User ID Embedding\\$E_u \in \mathbb{R}^{N_u \times D}$};
-\node[block, text width=2.0cm] (in_i) at (-2.45, -0.1) {Item SVD Whitened\\$E_i \in \mathbb{R}^{N_i \times D}$};
+% ==================== NHÁNH TRÁI: FSC (STAIR) ====================
+% Tầng input
+\node[block] (in_u) at (-5.1, 0.3) {User ID Embedding\\$E_u \in \mathbb{R}^{N_u \times D}$};
+\node[block] (in_i) at (-2.7, 0.3) {Item SVD Whitened\\$E_i \in \mathbb{R}^{N_i \times D}$};
 
-\node[block, text width=3.8cm] (h0) at (-3.6, -1.4) {Tầng 0: Ego Embeddings\\$H^{(0)} = [E_u \,;\, E_i] = [U_0 \,;\, I_0]$};
-\draw[arr] (in_u.south) -- ++(0, -0.2) -| ([xshift=-1.0cm]h0.north);
-\draw[arr] (in_i.south) -- ++(0, -0.2) -| ([xshift=1.0cm]h0.north);
+% Tầng 0: Ego Embeddings
+\node[wide_block] (h0) at (-3.9, -1.5) {\textbf{Tầng 0: Ego Embeddings}\\[2pt]$H^{(0)} = [E_u \,;\, E_i] = [U_0 \,;\, I_0]$};
+\draw[arr] (in_u.south) -- ++(0, -0.35) -| ([xshift=-1.1cm]h0.north);
+\draw[arr] (in_i.south) -- ++(0, -0.35) -| ([xshift=1.1cm]h0.north);
 
-\node[layerbox] (h1) at (-3.6, -2.8) {FSC Tầng 1 (1-hop lân cận)\\$H^{(1)} = \tilde{A} H^{(0)} \odot \beta = [U_1 \,;\, I_1]$};
+% FSC Tầng 1
+\node[layerbox] (h1) at (-3.9, -3.5) {FSC Tầng 1 (1-hop lân cận)\\[2pt]$H^{(1)} = \tilde{A} H^{(0)} \odot \beta = [U_1 \,;\, I_1]$};
 \draw[arr] (h0.south) -- (h1.north);
 
-\node[layerbox] (h2) at (-3.6, -4.2) {FSC Tầng 2 (2-hop lân cận)\\$H^{(2)} = \tilde{A} H^{(1)} \odot \beta = [U_2 \,;\, I_2]$};
+% FSC Tầng 2
+\node[layerbox] (h2) at (-3.9, -5.5) {FSC Tầng 2 (2-hop lân cận)\\[2pt]$H^{(2)} = \tilde{A} H^{(1)} \odot \beta = [U_2 \,;\, I_2]$};
 \draw[arr] (h1.south) -- (h2.north);
 
-\node[block, text width=3.8cm] (fsc_out) at (-3.6, -5.7) {Biểu diễn tổng hợp $\bar{H}$\\Phục vụ suy luận \& $\mathcal{L}_{\text{BPR}}$};
+% Biểu diễn tổng hợp
+\node[wide_block] (fsc_out) at (-3.9, -7.5) {\textbf{Biểu diễn tổng hợp $\bar{H}$}\\[2pt]Phục vụ suy luận \& $\mathcal{L}_{\text{BPR}}$};
 \draw[arr] (h2.south) -- (fsc_out.north);
 
-% ===== NHÁNH PHẢI: MODULE NLGCL =====
-\node[extractbox] (extract) at (3.6, -1.4) {Trích xuất tầng trung gian FSC (Zero-cost Views)\\[2pt]\normalfont\scriptsize $H^{(0)} = [U_0 \,;\, I_0], \quad H^{(1)} = [U_1 \,;\, I_1]$};
+% ==================== NHÁNH PHẢI: MODULE NLGCL ====================
+% Khối trích xuất tầng trung gian
+\node[extractbox] (extract) at (4.6, -1.5) {Trích xuất tầng trung gian FSC (Zero-cost Views)\\[3pt]\normalfont\scriptsize $H^{(0)} = [U_0 \,;\, I_0], \quad H^{(1)} = [U_1 \,;\, I_1]$};
 
-% Đường trích xuất sang Module đối chiếu
+% Đường trích xuất từ FSC sang Module NLGCL
 \draw[dasharr] (h0.east) -- (extract.west);
-\draw[dasharr] (h1.east) -- ++(0.7, 0) |- ([yshift=-4pt]extract.west);
+\draw[dasharr] (h1.east) -- ++(0.9, 0) |- ([yshift=-5pt]extract.west);
 
-% Hai khối InfoNCE nằm song song cân xứng tại x=1.7 và x=5.5
-\node[clbox] (cl_u) at (1.7, -3.4) {User-side InfoNCE ($\mathcal{L}_u$)\\[3pt]\normalfont\scriptsize Truy vấn: $I_1[i]$ (hàng tầng 1)\\[2pt]Mẫu dương: $U_0[u]$ (người tầng 0)\\[2pt]Mẫu âm: $U_0$ trong mini-batch};
+% Hai khối InfoNCE nằm song song cân xứng tuyệt đối tại x=2.3 và x=6.9
+\node[clbox] (cl_u) at (2.3, -4.3) {\textbf{User-side InfoNCE}\\[2pt]\textbf{($\mathcal{L}_u$)}\\[5pt]Truy vấn: $I_1[i]$ (hàng tầng 1)\\[3pt]Mẫu dương: $U_0[u]$ (người tầng 0)\\[3pt]Mẫu âm: $U_0$ trong mini-batch};
 
-\node[clbox] (cl_i) at (5.5, -3.4) {Item-side InfoNCE ($\mathcal{L}_i$)\\[3pt]\normalfont\scriptsize Truy vấn: $U_1[u]$ (người tầng 1)\\[2pt]Mẫu dương: $I_0[i]$ (hàng tầng 0)\\[2pt]Mẫu âm: $I_0$ trong mini-batch};
+\node[clbox] (cl_i) at (6.9, -4.3) {\textbf{Item-side InfoNCE}\\[2pt]\textbf{($\mathcal{L}_i$)}\\[5pt]Truy vấn: $U_1[u]$ (người tầng 1)\\[3pt]Mẫu dương: $I_0[i]$ (hàng tầng 0)\\[3pt]Mẫu âm: $I_0$ trong mini-batch};
 
-% Mũi tên thẳng từ extract xuống cl_u và cl_i
-\draw[arr] ([xshift=-1.9cm]extract.south) -- (cl_u.north);
-\draw[arr] ([xshift=1.9cm]extract.south) -- (cl_i.north);
+% Mũi tên thẳng từ extract xuống 2 khối InfoNCE
+\draw[arr] ([xshift=-2.3cm]extract.south) -- (cl_u.north);
+\draw[arr] ([xshift=2.3cm]extract.south) -- (cl_i.north);
 
-% Tổng hợp loss đối chiếu có chuẩn hóa 1/G
-\node[widebox] (cl_sum) at (3.6, -5.4) {Hàm mất mát NLGCL (chuẩn hóa $1/G$)\\[3pt]\normalfont\scriptsize $\mathcal{L}_{\text{NLGCL}} = \frac{1}{G}\sum_{g=0}^{G-1} \left[ \alpha \, \mathcal{L}_u^{(g)} + (1-\alpha) \, \mathcal{L}_i^{(g)} \right]$};
+% Hàm mất mát NLGCL (chuẩn hóa 1/G)
+\node[widebox] (cl_sum) at (4.6, -7.3) {Hàm mất mát NLGCL (chuẩn hóa $1/G$)\\[3pt]\normalfont\scriptsize $\mathcal{L}_{\text{NLGCL}} = \frac{1}{G}\sum_{g=0}^{G-1} \left[ \alpha \, \mathcal{L}_u^{(g)} + (1-\alpha) \, \mathcal{L}_i^{(g)} \right]$};
 
-% Mũi tên thẳng từ cl_u và cl_i xuống cl_sum
-\draw[arr] (cl_u.south) -- ([xshift=-1.9cm]cl_sum.north);
-\draw[arr] (cl_i.south) -- ([xshift=1.9cm]cl_sum.north);
+% Mũi tên thẳng từ 2 khối InfoNCE xuống cl_sum
+\draw[arr] (cl_u.south) -- ([xshift=-2.3cm]cl_sum.north);
+\draw[arr] (cl_i.south) -- ([xshift=2.3cm]cl_sum.north);
 
-% ===== KẾT HỢP ĐA NHIỆM =====
-\node[finalbox] (total_loss) at (0.0, -7.7) {Hàm mất mát tối ưu đồng thời toàn hệ thống\\[3pt]\normalfont\scriptsize $\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{BPR}} + \lambda_{\text{nlgcl}} \, \mathcal{L}_{\text{NLGCL}}$};
+% ==================== KẾT HỢP ĐA NHIỆM ====================
+\node[finalbox] (total_loss) at (0.35, -10.2) {Hàm mất mát tối ưu đồng thời toàn hệ thống\\[4pt]\normalfont\small $\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{BPR}} + \lambda_{\text{nlgcl}} \, \mathcal{L}_{\text{NLGCL}}$};
 
-\draw[arr] (fsc_out.south) -- ++(0, -0.6) -| ([xshift=-2.4cm]total_loss.north);
-\draw[arr] (cl_sum.south) -- ++(0, -0.9) -| ([xshift=2.4cm]total_loss.north);
+% Mũi tên cân xứng uốn về total_loss
+\draw[arr] (fsc_out.south) -- ++(0, -0.9) -| ([xshift=-2.6cm]total_loss.north);
+\draw[arr] (cl_sum.south) -- ++(0, -1.1) -| ([xshift=2.6cm]total_loss.north);
 
 \end{tikzpicture}
 \caption{Sơ đồ luồng tính toán tổng thể của mô hình STAIR-NLGCL v4: Tích hợp contrastive learning đa thực thể từ các tầng trung gian của Forward Stepwise Convolution không tốn thêm chi phí tạo góc nhìn.}
 \label{fig:stair_nlgcl_v4_architecture}
-\vspace{2pt}
+\vspace{4pt}
 \begin{minipage}{0.95\textwidth}
-\footnotesize\textit{Ghi chú:} Nhánh trái là khung xương FSC của STAIR thực hiện tích chập tuyến tính từng bước với hệ số co phổ $\beta$. Nhánh phải là module NLGCL kế thừa trực tiếp các biểu diễn trung gian $H^{(0)}$ và $H^{(1)}$ để thực hiện học đối chiếu hai chiều (User-side và Item-side) trong mini-batch mà không cần tạo cấu trúc đồ thị mới (zero-cost views). Trọng số $\lambda_{\text{nlgcl}}$ điều tiết sự cân bằng giữa mục tiêu xếp hạng chính $\mathcal{L}_{\text{BPR}}$ và mục tiêu tự giám sát phụ trợ $\mathcal{L}_{\text{NLGCL}}$.
+\footnotesize\textit{Ghi chú:} Khung bên trái là khung xương FSC của STAIR thực hiện tích chập tuyến tính từng bước với hệ số co phổ $\beta$. Khung bên phải là module đối chiếu NLGCL trích xuất trực tiếp các biểu diễn trung gian $H^{(0)}$ và $H^{(1)}$ từ FSC để thực hiện học đối chiếu hai chiều (User-side và Item-side) trong mini-batch mà không phát sinh thêm chi phí đồ họa hay tạo góc nhìn đồ thị mới (zero-cost views). Hệ số $\lambda_{\text{nlgcl}}$ điều tiết sự cân bằng đa nhiệm giữa mục tiêu xếp hạng khuyến nghị chính $\mathcal{L}_{\text{BPR}}$ và mục tiêu tự giám sát phụ trợ $\mathcal{L}_{\text{NLGCL}}$.
 \end{minipage}
 \end{figure}
 
