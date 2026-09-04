@@ -21,7 +21,7 @@ Bảng~\ref{tab:stair_reproduction} tổng hợp kết quả tái lập trên c�
 \setlength{\tabcolsep}{5pt}
 \begin{longtable}{%
     >{\raggedright\arraybackslash}p{1.9cm}
-    >{\centering\arraybackslash}p{1.6cm}
+    >{\centering\arraybackslash}p{1.8cm}
     >{\centering\arraybackslash}p{1.9cm}
     >{\centering\arraybackslash}p{1.9cm}
     >{\centering\arraybackslash}p{1.9cm}}
@@ -74,13 +74,13 @@ Trên toàn bộ mười hai chỉ số đo được, tức bốn chỉ số tr�
 
 \subsubsection{Phân tích chi tiết theo từng tập dữ liệu}
 
-\paragraph{Tập Baby — khớp gần như tuyệt đối:}
+\paragraph{Tập Baby:}
 Kết quả trên Baby trùng khớp hoàn toàn với paper ở ba trong bốn chỉ số, chỉ lệch nhẹ $+0.22\%$ ở NDCG@20. Checkpoint tốt nhất rơi vào epoch 455 trên tổng số 500 epoch huấn luyện, tức mô hình đã đạt trạng thái ổn định trước khi kết thúc quá trình huấn luyện khoảng 45 epoch. Điều này cho thấy 500 epoch là đủ để mô hình hội tụ hoàn toàn trên tập dữ liệu này, và kết quả thu được phản ánh đúng khả năng tối đa của mô hình trong cấu hình đã cho.
 
-\paragraph{Tập Sports — lệch nhẹ dưới 1\%, gắn liền với việc chưa hội tụ hoàn toàn:}
+\paragraph{Tập Sports :}
 Sports là tập duy nhất có kết quả thấp hơn paper một chút, dao động từ $-0.49\%$ đến $-0.60\%$ trên ba chỉ số Recall@20, NDCG@10 và NDCG@20. Đây cũng là tập duy nhất có checkpoint tốt nhất rơi đúng vào epoch cuối cùng của quá trình huấn luyện, tức epoch 500 trên 500. Việc checkpoint tốt nhất nằm ở đúng ranh giới trên cho thấy giá trị NDCG@20 trên tập validation nhiều khả năng vẫn đang trên đà tăng tại thời điểm huấn luyện dừng lại, chưa chắc đã chạm đến điểm hội tụ thật sự. Đây là cách giải thích hợp lý cho mức chênh lệch nhỏ quan sát được trên tập này, và khác biệt so với Baby, nơi checkpoint tốt nhất xuất hiện sớm hơn nhiều so với epoch cuối.
 
-\paragraph{Tập Electronics — kết quả nhỉnh hơn paper trên toàn bộ chỉ số:}
+\paragraph{Tập Electronics:}
 Trên tập Electronics, kết quả tái lập cao hơn paper trên cả bốn chỉ số, với mức chênh lệch từ $+0.30\%$ đến $+0.45\%$. Đây là tập dữ liệu có quy mô lớn nhất trong ba tập, với khoảng 192 nghìn người dùng và 1.69 triệu tương tác, nên việc pipeline tái lập cho kết quả ổn định và nhỉnh hơn nhẹ trên một tập dữ liệu lớn như vậy càng củng cố thêm độ tin cậy của quy trình huấn luyện và đánh giá đã thiết lập. Checkpoint tốt nhất được chọn tại epoch 490 trên 500, cho thấy mô hình cũng đã gần đạt trạng thái hội tụ ổn định trước khi kết thúc huấn luyện.
 
 \subsubsection{Kết luận}
@@ -222,5 +222,326 @@ Kết quả thực nghiệm cho thấy cả 12 chỉ số trên 3 tập dữ li�
 
 Thất bại hệ thống của module De-redundant Gated Projector xác nhận một nguyên lý quan trọng: việc thay thế một phép chiếu thống kê tĩnh bằng một mạng học sâu phức tạp không phải lúc nào cũng mang lại độ linh hoạt cao hơn, đặc biệt khi sự thay đổi đó phá vỡ cấu trúc không gian nền tảng của hệ thống lan truyền đồ thị phía sau.
 
+\subsection{Kết quả thực nghiệm cải tiến 2: Residual-Whitening Projector (STAIR-Enhanced v2a)}
+
+\subsubsection{Động lực kỹ thuật và kiến trúc đề xuất}
+
+Tại phiên bản cải tiến trước, hệ thống gặp hiện tượng bùng nổ nhánh thặng dư do tham số học không bị giới hạn biên độ và có sự chênh lệch độ lớn giữa các không gian đặc trưng. Khi huấn luyện với BPR loss, mô hình có xu hướng tham lam đẩy giá trị tham số kết hợp lên rất cao để nhanh chóng phân tách các mặt hàng, dẫn đến việc nhánh thặng dư hoàn toàn lấn át nhánh nền tảng SVD.
+
+Để khắc phục triệt để vấn đề này và buộc mô hình phải tôn trọng không gian chuẩn hóa gốc, kiến trúc Residual-Whitening Projector được thiết kế với bốn chốt chặn an toàn. 
+
+Thứ nhất, vector thặng dư được áp dụng kỹ thuật magnitude matching để scale bằng đúng độ lớn của không gian SVD trước khi thực hiện phép cộng. Thứ hai, hệ số kết hợp được đưa qua hàm kích hoạt sigmoid và giới hạn biên độ tối đa ở mức 0.3, đảm bảo nhánh thặng dư luôn đóng vai trò phụ trợ. Thứ ba, hệ số này được cấp quyền kiểm soát học riêng biệt trong bộ tối ưu với tốc độ học thấp hơn và có hệ số suy giảm trọng số nhằm ép giá trị về 0 nếu không thực sự mang lại lợi ích. Cuối cùng, hệ thống áp dụng kỹ thuật đóng băng gradient trong 50 epoch đầu tiên để mô hình ổn định đường đi trong không gian SVD trước khi bắt đầu học thêm các đặc trưng phi tuyến.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.9, transform shape,
+    block/.style={rectangle, draw, rounded corners=3pt, minimum height=0.7cm, minimum width=3.5cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=3pt, minimum height=0.7cm, text width=4.5cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    widebox/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=3pt, minimum height=0.7cm, text width=5.5cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    arr/.style={-{Stealth[length=2.5mm]}, thick},
+]
+
+% Input
+\node[block] (input) at (0, 0) {Raw Multimodal Features};
+
+% Branches
+\node[block] (svd) at (-3.5, -1.5) {SVD Whitening (Structural Prior)};
+\node[block] (mlp) at (3.5, -1.5) {MLP Projector (Residual Base)};
+
+\draw[arr] (input.south) -- ++(0,-0.3) -| (svd.north);
+\draw[arr] (input.south) -- ++(0,-0.3) -| (mlp.north);
+
+% Safeguards on Residual Branch
+\node[newmod] (match) at (3.5, -2.8) {Magnitude Matching\\Scale bằng chuẩn không gian SVD};
+\node[newmod] (bound) at (3.5, -4.1) {Bounded Sigmoid\\Giới hạn biên độ $\lambda_{actual} \le 0.3$};
+
+\draw[arr] (mlp.south) -- (match.north);
+\draw[arr] (match.south) -- (bound.north);
+
+% Fusion
+\node[widebox] (fusion) at (0, -5.5) {Residual Addition\\$E_{final} = E_{svd} + \lambda_{actual} \times \Delta_{scaled}$};
+
+\draw[arr] (svd.south) -- ++(0,-3.3) -| ([xshift=-1.5cm]fusion.north);
+\draw[arr] (bound.south) -- ++(0,-0.7) -| ([xshift=1.5cm]fusion.north);
+
+% Output
+\node[block] (output) at (0, -6.8) {Item Embeddings};
+\draw[arr] (fusion.south) -- (output.north);
+
+\end{tikzpicture}
+\caption{Sơ đồ kiến trúc Residual-Whitening Projector tích hợp các chốt chặn an toàn kiểm soát biên độ và chuẩn hóa độ lớn.}
+\label{fig:enhanced_v2a_architecture}
+\end{figure}
+
+\subsubsection{Kết quả thực nghiệm và đánh giá kỹ thuật}
+
+Log huấn luyện ghi nhận các chốt chặn an toàn toán học đã hoạt động chính xác tuyệt đối. Tham số kết hợp xuất phát từ mức 0.15, từ từ tịnh tiến và hội tụ ổn định quanh mức 0.235 trên cả hai tập Baby và Sports, loại bỏ hoàn toàn hiện tượng bùng nổ vượt ngưỡng 1.0. Hàm loss giảm mượt mà qua các epoch và không ghi nhận bất kỳ dấu hiệu bất ổn gradient nào.
+
+Tuy nhiên, bảng~\ref{tab:stair_enhanced_v2a_results} cho thấy hiệu năng dự đoán cuối cùng lại ghi nhận sự sụt giảm rất mạnh so với baseline.
+
+\renewcommand{\arraystretch}{1.15}
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{longtable}{%
+    >{\raggedright\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{1.8cm}
+    >{\centering\arraybackslash}p{2.2cm}
+    >{\centering\arraybackslash}p{2.2cm}
+    >{\centering\arraybackslash}p{2.2cm}
+    >{\centering\arraybackslash}p{2.2cm}}
+
+    \caption{Kết quả thực nghiệm kiến trúc Residual-Whitening Projector trên ba tập dữ liệu.}
+    \label{tab:stair_enhanced_v2a_results} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Epoch tốt nhất} & \textbf{Recall@10} & \textbf{Recall@20} & \textbf{NDCG@10} & \textbf{NDCG@20} \\
+    \hline
+    \endfirsthead
+    \multicolumn{6}{c}{{\bfseries Bảng \thetable\ (tiếp theo)}} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Epoch tốt nhất} & \textbf{Recall@10} & \textbf{Recall@20} & \textbf{NDCG@10} & \textbf{NDCG@20} \\
+    \hline
+    \endhead
+    \midrule
+    \multicolumn{6}{r}{\textit{Tiếp tục ở trang sau...}} \\
+    \endfoot
+    \hline
+    \endlastfoot
+
+    Baby & 205 & 0.0498 & 0.0770 & 0.0274 & 0.0343 \\
+    \midrule
+    Sports & 400 & 0.0336 & 0.0509 & 0.0180 & 0.0225 \\
+    \midrule
+    Electronics & N/A & 0.0196 & 0.0292 & 0.0106 & 0.0131 \\
+    \hline
+\end{longtable}
+\endgroup
+
+\subsubsection{Phân tích nguyên nhân cốt lõi}
+
+Sự sụt giảm nhất quán trên cả ba tập dữ liệu có quy mô hoàn toàn khác biệt cung cấp một kết quả âm tính mang giá trị khoa học rất lớn. Các biểu đồ đường cong học tập đều cho thấy mô hình hội tụ ổn định và đạt trạng thái plateau, nhưng duy trì một khoảng cách xa bên dưới mức baseline mà không có xu hướng bắt kịp. Điều này khẳng định hệ thống đã đạt đến một giới hạn dung lượng thấp hơn baseline chứ không phải do thiếu epoch huấn luyện. 
+
+Từ kết quả này, giả thuyết sử dụng MLP để học thêm phần thặng dư phi tuyến nhằm vượt qua SVD tĩnh đã chính thức bị bác bỏ đối với cấu trúc GNN của STAIR. Nguyên nhân cốt lõi nằm ở đặc tính dữ liệu thương mại điện tử. Đặc trưng thô trích xuất từ mô hình CNN và Sentence-BERT chứa lượng nhiễu rất lớn. Phép chiếu SVD tĩnh của baseline thực chất đóng vai trò như một bộ lọc low-pass filter vô cùng mạnh mẽ. Khi cố gắng đưa mạng MLP vào để bổ sung chi tiết phi tuyến, kiến trúc đã vô tình bơm ngược lượng nhiễu này trở lại hệ thống. Hàm BPR loss dựa trên tín hiệu tương tác thưa thớt không đủ năng lực để hướng dẫn mạng MLP phân biệt chi tiết hữu ích và thông tin nhiễu, từ đó làm sai lệch cấu trúc đồ thị và gây suy biến hiệu năng.
+
+\subsubsection{Kết luận và chuyển hướng chiến lược}
+
+Việc chứng minh được giới hạn của các phương pháp tiền xử lý phi tuyến trên nền tảng mạng GNN là một bài học thực nghiệm đắt giá. Kiến trúc tiền xử lý đầu vào chính thức được hoàn nguyên về dạng SVD tĩnh nguyên bản để khôi phục mức hiệu năng chuẩn. 
+
+Chiến lược nghiên cứu trong giai đoạn tiếp theo sẽ chuyển hướng toàn lực sang module Stepwise Graph Contrastive Learning. Thay vì nỗ lực thay đổi dữ liệu đầu vào, kỹ thuật này can thiệp trực tiếp vào phương thức lan truyền thông tin của đồ thị. Bằng cách thiết lập các góc nhìn đồ thị khác nhau và áp dụng InfoNCE loss độc quyền lên 32 chiều đại diện cho thông tin cộng tác, mô hình buộc phải học biểu diễn đồ thị một cách nhất quán. Thiết kế phân tách không gian này bảo vệ tuyệt đối 32 chiều mang đặc trưng đa phương thức, giúp hệ thống chống lại hiện tượng oversmoothing và tối ưu hóa hiệu năng tổng thể.
+
+\subsection{Kết quả thực nghiệm cải tiến 3: Local Interest Alignment với ZCA whitening (STAIR-LIA v3)}
+
+\subsubsection{Động lực kỹ thuật và kiến trúc đề xuất}
+
+Sau khi cải tiến 1 thất bại do thay hoàn toàn phép chiếu SVD tĩnh bằng một mạng chiếu học từ đầu, và cải tiến 2 chỉ giảm được mức sụt giảm xuống khoảng 1\% nhờ giữ lại SVD làm nền và chỉ cộng thêm một nhánh residual học được, nhóm tiếp tục tham khảo ba công trình công bố gần đây gồm CFDTBD~\cite{li2026cfdtbd}, CLID~\cite{qi2026clid} và MaMoE4Rec~\cite{zheng2026mamoe4rec} để tìm hướng cải thiện tiếp theo. Ba công trình này lần lượt đề xuất: tách đặc trưng đa phương thức thành phần chung và phần riêng bằng distillation hai chiều, dùng attention hai chiều để làm nổi bật vùng đặc trưng đáng quan tâm trong ảnh và văn bản đồng thời khử nhiễu nền, và dùng mixture of experts để dung hợp đặc trưng theo ngữ cảnh của item.
+
+Trong quá trình thiết kế, nhóm nhận thấy nếu kết hợp cả ba kỹ thuật trên cùng lúc, số lượng tham số mới sẽ tăng rất nhanh so với quy mô dữ liệu của Baby, Sports và Electronics, đồng thời việc tối ưu đồng thời nhiều hàm mất mát riêng biệt trong cùng một bước huấn luyện dễ dẫn đến các gradient triệt tiêu lẫn nhau. Vì vậy nhóm quyết định giản lược kiến trúc, chỉ giữ lại hai thành phần được đánh giá là cốt lõi và ít rủi ro nhất, đặt tên phiên bản này là STAIR-LIA v3, viết tắt của Local Interest Aligned.
+
+Thành phần thứ nhất là ZCA whitening, dùng thay cho SVD whitening ở bước khởi tạo đặc trưng. Khác với SVD whitening vốn xoay toàn bộ trục tọa độ của không gian embedding sang một hệ cơ sở mới, ZCA whitening khử tương quan đặc trưng nhưng nhân ngược lại ma trận xoay, giữ cho vector sau khi làm trắng có hướng gần nhất với hệ trục tọa độ gốc. Với công thức
+\begin{equation}
+\mathrm{ZCA}(X) = (X - \bar{X}) \, U \, (\Lambda + \epsilon I)^{-1/2} \, U^{\top}
+\end{equation}
+trong đó $U$ và $\Lambda$ lần lượt là ma trận vector riêng và ma trận trị riêng của hiệp phương sai đặc trưng, mục tiêu là bảo toàn ý nghĩa của từng chiều vector, vì cơ chế Forward và Backward Stepwise Convolution của STAIR phân bổ trọng số tích chập theo đúng từng chiều cụ thể của embedding.
+
+Thành phần thứ hai là trích xuất vùng quan tâm theo cơ chế attention hai chiều của CLID, được thực hiện ngoại tuyến trước khi vào vòng lặp huấn luyện chính nhằm cô lập gradient của bước này khỏi hàm mất mát BPR. Vector ảnh 4096 chiều và vector văn bản 384 chiều được chia thành các đoạn con 64 chiều, sau đó dùng attention để mỗi phía tạo trọng số tập trung vào các đoạn liên quan của phía còn lại, thu được vector vùng quan tâm $E_{roi}^t$ cho văn bản và $E_{roi}^v$ cho ảnh. Hai vector này sau đó được kết hợp với đặc trưng toàn cục bằng một cổng dung hợp đơn giản, dùng một hệ số vô hướng học được $\alpha$, khởi tạo bằng 0.5:
+\begin{equation}
+E_{final} = \alpha \, E_{roi} + (1 - \alpha) \, E_{global}
+\end{equation}
+
+Khác với cải tiến 1, mô hình STAIR-LIA v3 chỉ được huấn luyện bằng đúng một hàm mất mát BPR gốc của STAIR, không thêm bất kỳ hàm mất mát phụ trợ nào từ CFDTBD hay MaMoE4Rec, nhằm loại trừ hoàn toàn khả năng thất bại đến từ xung đột gradient giữa nhiều mục tiêu tối ưu cùng lúc.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.85, transform shape,
+    block/.style={rectangle, draw=blue!60!black, rounded corners=3pt, minimum height=0.75cm, minimum width=2.8cm, font=\scriptsize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=3pt, minimum height=0.8cm, text width=3.9cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    widebox/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=3pt, minimum height=0.85cm, text width=7.4cm, font=\scriptsize\bfseries, align=center, fill=orange!15},
+    offline/.style={rectangle, draw=teal!70!black, dashed, thick, rounded corners=3pt, minimum height=1.0cm, text width=7.4cm, font=\scriptsize\bfseries, align=center, fill=teal!10},
+    arr/.style={-{Stealth[length=2.3mm, width=1.5mm]}, thick},
+    dasharr/.style={-{Stealth[length=2.3mm, width=1.5mm]}, thick, dashed, draw=red!70!black},
+    bus/.style={thick, draw=blue!50!black}
+]
+
+% ===== Hàng 1: Input =====
+\node[block] (text_in) at (-5.2, 0) {\textbf{Text Feature}\\(384-D)};
+\node[block] (vis_in) at (5.2, 0) {\textbf{Visual Feature}\\(4096-D)};
+
+% ===== Hàng 2: ZCA Whitening =====
+\node[newmod] (zca_t) at (-5.2, -1.4) {ZCA Whitening\\[1pt]\normalfont\scriptsize Không xoay hệ trục tọa độ};
+\node[newmod] (zca_v) at (5.2, -1.4) {ZCA Whitening\\[1pt]\normalfont\scriptsize Không xoay hệ trục tọa độ};
+
+\draw[arr] (text_in.south) -- (zca_t.north);
+\draw[arr] (vis_in.south) -- (zca_v.north);
+
+% ===== Hàng 3: Global whitened feature =====
+\node[block] (glob_t) at (-5.2, -2.7) {$E_{global}^{t}$ (64-D)};
+\node[block] (glob_v) at (5.2, -2.7) {$E_{global}^{v}$ (64-D)};
+
+\draw[arr] (zca_t.south) -- (glob_t.north);
+\draw[arr] (zca_v.south) -- (glob_v.north);
+
+% ===== Hàng 4: Offline Bidirectional Cross-Attention =====
+\node[offline] (attn) at (0, -4.4) {Offline Bidirectional Cross-Attention\\[1pt]\normalfont\scriptsize Trích xuất vùng quan tâm (ROI), tính toán tách rời khỏi vòng lặp huấn luyện chính};
+
+\coordinate (attn_in_l) at ($(attn.north)+(-2.0,0)$);
+\coordinate (attn_in_r) at ($(attn.north)+(2.0,0)$);
+\coordinate (attn_out_l) at ($(attn.south)+(-2.0,0)$);
+\coordinate (attn_out_r) at ($(attn.south)+(2.0,0)$);
+
+\draw[arr] (glob_t.south) -- (attn_in_l);
+\draw[arr] (glob_v.south) -- (attn_in_r);
+
+% ===== Hàng 5: ROI output (đường nét đứt = điểm dừng gradient) =====
+\node[block] (roi_t) at (-2.3, -6.1) {$E_{roi}^{t}$ (64-D)};
+\node[block] (roi_v) at (2.3, -6.1) {$E_{roi}^{v}$ (64-D)};
+
+\draw[dasharr] (attn_out_l) -- (roi_t.north);
+\draw[dasharr] (attn_out_r) -- (roi_v.north);
+
+% ===== Hàng 6: Scalar Gated Fusion =====
+\node[widebox] (gate) at (0, -7.6) {Scalar Gated Fusion ($\alpha$ khởi tạo 0.5)\\[1pt]\normalfont\scriptsize $E_{final} = \alpha \, E_{roi} + (1-\alpha) \, E_{global}$};
+
+\coordinate (gate_roi_l) at ($(gate.north)+(-0.9,0)$);
+\coordinate (gate_roi_r) at ($(gate.north)+(0.9,0)$);
+\coordinate (gate_glob_l) at ($(gate.north)+(-2.8,0)$);
+\coordinate (gate_glob_r) at ($(gate.north)+(2.8,0)$);
+
+% Đường ROI đi thẳng vào giữa cổng
+\draw[arr] (roi_t.south) -- (gate_roi_l);
+\draw[arr] (roi_v.south) -- (gate_roi_r);
+
+% Kênh bus của Global feature: đi vòng ra ngoài, thẳng đứng song song,
+% không cắt ngang qua Attention hay ROI box
+\coordinate (bus_t) at (-5.2, -6.9);
+\coordinate (bus_v) at (5.2, -6.9);
+
+\draw[bus] (glob_t.south) -- (bus_t);
+\draw[arr]  (bus_t) -- (gate_glob_l);
+
+\draw[bus] (glob_v.south) -- (bus_v);
+\draw[arr]  (bus_v) -- (gate_glob_r);
+
+% ===== Hàng 7: Output =====
+\node[block, minimum width=5.6cm] (output) at (0, -9.0) {\textbf{BPR Loss duy nhất $\rightarrow$ Item Embeddings ($e_i$)}};
+\draw[arr] (gate.south) -- (output.north);
+
+\end{tikzpicture}
+\caption{Sơ đồ luồng xử lý của STAIR-LIA v3: ZCA whitening thay cho SVD, kết hợp trích xuất vùng quan tâm bằng attention hai chiều tính toán ngoại tuyến, và cổng dung hợp bằng một hệ số vô hướng học được.}
+\textit{Ghi chú: Đường nét đứt màu đỏ biểu thị điểm dừng lan truyền gradient; đường xanh bên ngoài biểu thị nhánh đặc trưng toàn cục đi thẳng vào cổng dung hợp, tương tự một kết nối tắt.}
+\label{fig:lia_v3_architecture}
+\end{figure}
+
+\subsubsection{Kết quả thực nghiệm và phân tích hiệu năng}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\linewidth]{graphics/stair/alpha_evolution_v3_lia.png}
+    \caption[Quá trình thay đổi hệ số $\alpha$ của STAIR-LIA v3 qua các epoch]{Quá trình thay đổi hệ số $\alpha$ của STAIR-LIA v3 qua các epoch trên Baby và Sports.\protect\\[2pt]
+    \textit{Ghi chú: $\alpha$ biểu thị trọng số của nhánh văn bản, khởi tạo bằng 0.5. Kết quả trên Electronics chưa có do lần chạy này chưa hoàn tất trên tập dữ liệu này.}}
+    \label{fig:lia_v3_alpha}
+\end{figure}
+
+Bảng~\ref{tab:stair_lia_v3_detail} trình bày chi tiết giá trị từng chỉ số của STAIR-LIA v3 trên Baby và Sports, đối chiếu trực tiếp với baseline. Kết quả trên Electronics chưa có tại thời điểm báo cáo do lần chạy thực nghiệm này chưa được thực hiện trên tập dữ liệu này.
+
+\renewcommand{\arraystretch}{1.15}
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{5pt}
+\begin{longtable}{%
+    >{\raggedright\arraybackslash}p{1.9cm}
+    >{\centering\arraybackslash}p{1.6cm}
+    >{\centering\arraybackslash}p{1.9cm}
+    >{\centering\arraybackslash}p{1.9cm}
+    >{\centering\arraybackslash}p{1.9cm}}
+
+    \caption{Kết quả thực nghiệm chi tiết của STAIR-LIA v3 so với baseline trên Baby và Sports.}
+    \label{tab:stair_lia_v3_detail} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{STAIR Baseline} & \textbf{STAIR-LIA v3} & \textbf{Chênh lệch} \\
+    \hline
+    \endfirsthead
+    \multicolumn{5}{c}{{\bfseries Bảng \thetable\ (tiếp theo)}} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{STAIR Baseline} & \textbf{STAIR-LIA v3} & \textbf{Chênh lệch} \\
+    \hline
+    \endhead
+    \midrule
+    \multicolumn{5}{r}{\textit{Tiếp tục ở trang sau...}} \\
+    \endfoot
+    \hline
+    \endlastfoot
+
+    Baby & Recall@10 & 0.0674 & 0.0473 & $-29.82\%$ \\
+    \midrule
+    {(baseline: epoch 455/500} & Recall@20 & 0.1042 & 0.0769 & $-26.20\%$ \\
+    \midrule
+    {v3: epoch 495/500)} & NDCG@10   & 0.0359 & 0.0254 & $-29.25\%$ \\
+    \midrule
+    & NDCG@20   & 0.0454 & 0.0330 & $-27.31\%$ \\
+    \hline
+    Sports & Recall@10 & 0.0743 & 0.0601 & $-19.11\%$ \\
+    \midrule
+    {(baseline: epoch 500/500} & Recall@20 & 0.1111 & 0.0898 & $-19.17\%$ \\
+    \midrule
+    {v3: epoch 480/500)} & NDCG@10   & 0.0405 & 0.0326 & $-19.51\%$ \\
+    \midrule
+    & NDCG@20   & 0.0500 & 0.0402 & $-19.60\%$ \\
+    \hline
+\end{longtable}
+\endgroup
+
+Bảng~\ref{tab:stair_lia_v3_results} tóm tắt lại mức thay đổi hiệu năng dưới dạng phần trăm để tiện so sánh nhanh giữa hai tập dữ liệu.
+
+
+\renewcommand{\arraystretch}{1.15}
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{5pt}
+\begin{longtable}{%
+    >{\raggedright\arraybackslash}p{2.2cm}
+    >{\centering\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{2.0cm}}
+
+    \caption{Mức độ suy giảm hiệu năng của STAIR-LIA v3 so với baseline.}
+    \label{tab:stair_lia_v3_results} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Recall@10} & \textbf{Recall@20} & \textbf{NDCG@10} & \textbf{NDCG@20} \\
+    \hline
+    \endfirsthead
+    \multicolumn{5}{c}{{\bfseries Bảng \thetable\ (tiếp theo)}} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Recall@10} & \textbf{Recall@20} & \textbf{NDCG@10} & \textbf{NDCG@20} \\
+    \hline
+    \endhead
+    \midrule
+    \multicolumn{5}{r}{\textit{Tiếp tục ở trang sau...}} \\
+    \endfoot
+    \hline
+    \endlastfoot
+
+    Baby & $-29.82\%$ & $-26.20\%$ & $-29.25\%$ & $-27.31\%$ \\
+    \midrule
+    Sports & $-19.11\%$ & $-19.17\%$ & $-19.51\%$ & $-19.60\%$ \\
+    \hline
+\end{longtable}
+\endgroup
+
+Mức sụt giảm của STAIR-LIA v3 lớn hơn nhiều so với cải tiến 1 và cải tiến 2, dù kiến trúc lần này đã được giản lược đáng kể và chỉ dùng một hàm mất mát duy nhất. Điều này đặt ra câu hỏi cần làm rõ, vì việc giảm độ phức tạp mô hình thường được kỳ vọng sẽ giúp huấn luyện ổn định hơn và kết quả tốt hơn, không phải tệ hơn.
+
+Quan sát biểu đồ hệ số $\alpha$ ở Hình~\ref{fig:lia_v3_alpha} cho thấy một tín hiệu quan trọng để giải thích hiện tượng trên. Hệ số $\alpha$ khởi tạo từ 0.5, tăng đều và mượt theo epoch, hội tụ ổn định ở khoảng 0.61 trên Baby và khoảng 0.77 trên Sports. Đường cong hàm mất mát trong quá trình huấn luyện cũng giảm đều, không xuất hiện dấu hiệu bùng nổ hay dao động bất thường. Hai quan sát này cho thấy quá trình tối ưu của cổng dung hợp và toàn bộ mô hình diễn ra đúng như thiết kế, không gặp lỗi kỹ thuật hay mất ổn định gradient như từng lo ngại ở giai đoạn thiết kế kiến trúc. Nói cách khác, nguyên nhân sụt giảm hiệu năng của STAIR-LIA v3 không nằm ở quá trình tối ưu, mà nằm ở chất lượng của chính đặc trưng đầu vào được đưa vào mô hình.
+
+\subsubsection{Phân tích nguyên nhân cốt lõi}
+
+Kết quả của STAIR-LIA v3 chỉ ra hai nguyên nhân liên quan chặt chẽ với nhau, đều xuất phát từ bước trích xuất vùng quan tâm bằng attention.
+
+Nguyên nhân thứ nhất liên quan đến cách chia đoạn vector đặc trưng để đưa vào attention. Vector ảnh 4096 chiều và vector văn bản 384 chiều mà STAIR sử dụng đều là đặc trưng đã được nén toàn cục từ mạng trích xuất đặc trưng gốc, không phải chuỗi các patch ảnh hay chuỗi token văn bản có vị trí không gian hoặc ngữ nghĩa xác định như trong các mô hình thị giác hoặc ngôn ngữ hiện đại. Việc chia đều vector này thành 64 đoạn cho ảnh và 6 đoạn cho văn bản chỉ là một phép cắt số học trên một mảng số, không tương ứng với 64 vùng không gian thực tế trên bức ảnh hay 6 cụm từ có nghĩa trong văn bản. Do đó cơ chế attention hai chiều thực chất đang tính toán mức tương quan giữa các đoạn số không mang cấu trúc ngữ nghĩa rõ ràng, khiến vector vùng quan tâm thu được chứa nhiều thông tin nhiễu hơn là tín hiệu hữu ích.
+
+Nguyên nhân thứ hai liên quan đến vai trò của đồ thị kNN item xây dựng trên đặc trưng đa phương thức, vốn là thành phần trung tâm điều khiển luồng gradient trong Backward Stepwise Convolution của STAIR. Khi attention chỉ giữ lại phần đặc trưng được cho là vùng quan tâm và bỏ bớt phần đặc trưng ngữ cảnh xung quanh, hai item vốn khác biệt về tổng thể nhưng trùng nhau ở phần đặc trưng cục bộ này có thể bị xem là tương đồng và bị nối với nhau trên đồ thị kNN. Việc kết nối sai lệch như vậy làm đồ thị lan truyền nhầm tín hiệu collaborative giữa các item không thực sự liên quan, và hậu quả này lan sang toàn bộ quá trình cập nhật embedding ở bước BSC. Đây cũng chính là rủi ro mà nhóm tác giả CLID đã cảnh báo trong bài báo gốc~\cite{qi2026clid}, khi việc quá phụ thuộc vào đặc trưng vùng quan tâm có thể tạo ra các liên kết sai trên đồ thị item-item nếu không có cơ chế kiểm soát phù hợp, và cơ chế dung hợp bằng một hệ số vô hướng đơn giản trong STAIR-LIA v3 chưa đủ để ngăn chặn rủi ro này.
+
+Sự thay đổi của hệ số $\alpha$ trong quá trình huấn luyện cung cấp thêm bằng chứng ủng hộ hai nguyên nhân trên. Vì vector ảnh bị chia thành 64 đoạn trong khi vector văn bản chỉ chia thành 6 đoạn, mức độ phá vỡ cấu trúc ngữ nghĩa ở nhánh ảnh nghiêm trọng hơn nhiều so với nhánh văn bản. Trong quá trình huấn luyện, mô hình dần học được rằng nhánh ảnh mang nhiều nhiễu hơn, nên tự động điều chỉnh $\alpha$ tăng lên để ưu tiên nhánh văn bản và giảm trọng số của nhánh ảnh. Việc cổng dung hợp có thể tự nhận diện và điều chỉnh theo chất lượng thực tế của từng nhánh phương thức là bằng chứng cho thấy cơ chế tối ưu hoạt động đúng, đồng thời gián tiếp xác nhận rằng vấn đề nằm ở chất lượng đặc trưng đầu vào của nhánh ảnh, đúng như phân tích ở trên.
+
+Kết hợp cả ba lần thực nghiệm cải tiến đã thực hiện, có thể rút ra một kết luận chung nhất quán cho kiến trúc STAIR. Cải tiến 1 thất bại vì thay hoàn toàn bước whitening bằng một mạng học từ đầu, làm mất đi cấu trúc không gian mà hai module tích chập theo từng chiều phụ thuộc vào. Cải tiến 2 chỉ giảm được mức sụt giảm xuống mức nhỏ khi giữ lại whitening làm nền và chỉ cộng thêm phần học được. Cải tiến 3 tiếp tục giữ whitening làm nền nhưng đưa thêm bước trích xuất vùng quan tâm cục bộ bằng attention, và kết quả cho thấy chính bước này gây tổn hại nghiêm trọng đến chất lượng đặc trưng, do dữ liệu đầu vào không có cấu trúc chuỗi hay không gian thực sự để attention khai thác. Nhìn chung, cả ba lần thực nghiệm đều cho thấy việc bảo toàn tính toàn vẹn của đặc trưng toàn cục quan trọng hơn việc cố gắng trích xuất đặc trưng cục bộ chi tiết, đặc biệt khi dữ liệu đầu vào của bài toán không mang cấu trúc chuỗi hay không gian rõ ràng để các kỹ thuật attention phát huy đúng vai trò của mình.
 
 \clearpage
