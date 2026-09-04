@@ -90,6 +90,8 @@ cfg.add_argument("--nlgcl-G", type=int, default=1,
                  help="Number of contrastive gaps G (contrast layer g vs g+1)")
 cfg.add_argument("--nlgcl-alpha", type=float, default=0.5,
                  help="Balance: α·L_user + (1-α)·L_item")
+cfg.add_argument("--nlgcl-raw-hop", action="store_true", default=False,
+                 help="Use raw graph hops (A^l E) for NLGCL instead of beta-damped FSC intermediates")
 
 cfg.set_defaults(
     description="STAIR-NLGCL-v4",
@@ -219,6 +221,11 @@ class NLGCL_Module(nn.Module):
             )
 
             total_loss = total_loss + self.alpha * cl_u + (1.0 - self.alpha) * cl_i
+
+        # Average over contrastive gaps (Eq. 6-7 in NLGCL / Eq. 12-13 in NLGCL+)
+        # Ensures scaling G isolates architectural signal rather than scaling effective lambda.
+        if num_gaps > 0:
+            total_loss = total_loss / num_gaps
 
         return total_loss
 
@@ -407,12 +414,20 @@ class STAIR_NLGCL(freerec.models.GenRecArch):
         beta = (1 - cfg.beta3).to(allEmbds.device)
         norm_correction = 1 - beta ** (self.num_layers + 1)
 
+        raw_hop = getattr(cfg, 'nlgcl_raw_hop', False)
+        if raw_hop:
+            raw_features = allEmbds
+
         for _ in range(self.num_layers):
             features = self.Adj @ features * beta
             smoothed = smoothed + features
 
             # Layer l: l-hop graph-propagated features (zero-cost "view")
-            layer_embeds.append(features)
+            if raw_hop:
+                raw_features = self.Adj @ raw_features
+                layer_embeds.append(raw_features)
+            else:
+                layer_embeds.append(features)
 
         avgEmbds = smoothed.mul(1 - beta).div(norm_correction)
         userEmbds, itemEmbds = torch.split(

@@ -37,7 +37,7 @@ Given L=3 FSC layers producing layer_embeds = [H⁰, H¹, H², H³]:
     L_i = -log [ exp(sim(U_{g+1}[u], I_g[pos]) / τ)
                  / Σ_k exp(sim(U_{g+1}[u], I_g[k]) / τ) ]
 
-    L_NLGCL = Σ_g (α · L_u + (1-α) · L_i)
+    L_NLGCL = (1 / G) · Σ_g (α · L_u + (1-α) · L_i)
 
   Total Loss:
     L = L_BPR + λ_nlgcl · L_NLGCL
@@ -196,5 +196,10 @@ class NLGCL_Module(nn.Module):
             )
 
             total_loss = total_loss + self.alpha * cl_u + (1.0 - self.alpha) * cl_i
+
+        # Average over contrastive gaps (Eq. 6-7 in NLGCL / Eq. 12-13 in NLGCL+)
+        # Ensures scaling G isolates architectural signal rather than scaling effective lambda.
+        if num_gaps > 0:
+            total_loss = total_loss / num_gaps
 
         return total_loss
