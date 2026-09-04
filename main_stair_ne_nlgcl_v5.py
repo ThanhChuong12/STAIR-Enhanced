@@ -22,39 +22,73 @@ import sys
 import types
 from typing import Dict, List, Tuple
 
-# ── Ensure torchdata shims are available for compatibility ──
-try:
-    import torchdata
-except Exception:
-    pass
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.utils.data
 
-if 'torchdata' in sys.modules:
-    td = sys.modules['torchdata']
-    if 'torchdata.datapipes' not in sys.modules:
-        dp_mod = types.ModuleType('torchdata.datapipes')
-        iter_mod = types.ModuleType('torchdata.datapipes.iter')
-        map_mod = types.ModuleType('torchdata.datapipes.map')
-        
-        class IterDataPipe(torch.utils.data.IterableDataset):
-            pass
-            
-        class MapDataPipe(torch.utils.data.Dataset):
-            pass
-            
-        iter_mod.IterDataPipe = IterDataPipe
-        map_mod.MapDataPipe = MapDataPipe
-        
-        dp_mod.iter = iter_mod
-        dp_mod.map = map_mod
-        td.datapipes = dp_mod
-        
-        sys.modules['torchdata.datapipes'] = dp_mod
-        sys.modules['torchdata.datapipes.iter'] = iter_mod
-        sys.modules['torchdata.datapipes.map'] = map_mod
+# ── Compatibility Patch for torchdata in PyTorch 2.x / Python 3.12 / Kaggle ──
+try:
+    import torchdata
+    import torchdata.datapipes as dp
+except Exception:
+    dp = None
+
+if dp is None or 'torchdata.datapipes' not in sys.modules:
+    if 'torchdata' not in sys.modules:
+        td = types.ModuleType('torchdata')
+        sys.modules['torchdata'] = td
+    else:
+        td = sys.modules['torchdata']
+
+    dp = types.ModuleType('torchdata.datapipes')
+    td.datapipes = dp
+    sys.modules['torchdata.datapipes'] = dp
+
+# Ensure dp.iter and IterDataPipe exist
+if not hasattr(dp, 'iter'):
+    iter_mod = types.ModuleType('torchdata.datapipes.iter')
+    dp.iter = iter_mod
+    sys.modules['torchdata.datapipes.iter'] = iter_mod
+if not hasattr(dp.iter, 'IterDataPipe'):
+    class IterDataPipe(torch.utils.data.IterableDataset):
+        def __iter__(self):
+            return iter([])
+    dp.iter.IterDataPipe = IterDataPipe
+
+# Ensure dp.map and MapDataPipe exist
+if not hasattr(dp, 'map'):
+    map_mod = types.ModuleType('torchdata.datapipes.map')
+    dp.map = map_mod
+    sys.modules['torchdata.datapipes.map'] = map_mod
+if not hasattr(dp.map, 'MapDataPipe'):
+    class MapDataPipe(torch.utils.data.Dataset):
+        def __getitem__(self, idx):
+            raise NotImplementedError
+        def __len__(self):
+            return 0
+    dp.map.MapDataPipe = MapDataPipe
+
+# Ensure functional_datapipe decorator exists on dp
+if not hasattr(dp, 'functional_datapipe'):
+    def functional_datapipe(name, enable_df_datapipes_support=False):
+        def decorator(cls):
+            def method(self, *args, **kwargs):
+                return cls(self, *args, **kwargs)
+            if hasattr(dp, 'iter') and hasattr(dp.iter, 'IterDataPipe'):
+                setattr(dp.iter.IterDataPipe, name, method)
+            if hasattr(dp, 'map') and hasattr(dp.map, 'MapDataPipe'):
+                setattr(dp.map.MapDataPipe, name, method)
+            try:
+                if hasattr(torch.utils.data, 'IterDataPipe'):
+                    setattr(torch.utils.data.IterDataPipe, name, method)
+                if hasattr(torch.utils.data, 'MapDataPipe'):
+                    setattr(torch.utils.data.MapDataPipe, name, method)
+            except Exception:
+                pass
+            return cls
+        return decorator
+    dp.functional_datapipe = functional_datapipe
 
 import freerec
 
