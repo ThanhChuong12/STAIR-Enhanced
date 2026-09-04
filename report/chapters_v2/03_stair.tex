@@ -782,25 +782,25 @@ Dựa trên nghiên cứu NLGCL-Plus khi áp dụng contrastive learning trên c
     \midrule
     {(best epoch 365/500)} & Recall@20 & 0.1042 & 0.1028 & $-1.34\%$ \\
     \midrule
-    & NDCG@10   & 0.0359 & 0.0360 & $+0.28\%$ \\
+    & NDCG@10   & 0.0359 & \textbf{0.0360} & $\mathbf{+0.28\%}$ \\
     \midrule
     & NDCG@20   & 0.0454 & 0.0453 & $-0.22\%$ \\
     \hline
-    Sports & Recall@10 & 0.0743 & 0.0761 & $+2.42\%$ \\
+    Sports & Recall@10 & 0.0743 & \textbf{0.0761} & $\mathbf{+2.42\%}$ \\
     \midrule
     {(best epoch 500/500)} & Recall@20 & 0.1111 & 0.1110 & $-0.09\%$ \\
     \midrule
-    & NDCG@10   & 0.0405 & 0.0417 & $+2.96\%$ \\
+    & NDCG@10   & 0.0405 & \textbf{0.0417} & $\mathbf{+2.96\%}$ \\
     \midrule
-    & NDCG@20   & 0.0500 & 0.0507 & $+1.40\%$ \\
+    & NDCG@20   & 0.0500 & \textbf{0.0507} & $\mathbf{+1.40\%}$ \\
     \hline
-    Electronics & Recall@10 & 0.0440 & 0.0458 & $+4.09\%$ \\
+    Electronics & Recall@10 & 0.0440 & \textbf{0.0458} & $\mathbf{+4.09\%}$ \\
     \midrule
-    {(best epoch 440/500)} & Recall@20 & 0.0663 & 0.0676 & $+1.96\%$ \\
+    {(best epoch 440/500)} & Recall@20 & 0.0663 & \textbf{0.0676} & $\mathbf{+1.96\%}$ \\
     \midrule
-    & NDCG@10   & 0.0245 & 0.0258 & $+5.31\%$ \\
+    & NDCG@10   & 0.0245 & \textbf{0.0258} & $\mathbf{+5.31\%}$ \\
     \midrule
-    & NDCG@20   & 0.0302 & 0.0314 & $+3.97\%$ \\
+    & NDCG@20   & 0.0302 & \textbf{0.0314} & $\mathbf{+3.97\%}$ \\
     \hline
 \end{longtable}
 \endgroup
@@ -854,7 +854,7 @@ Mặc dù $\lambda = 0.01$ mang lại kết quả rất tốt trên Sports và E
     \midrule
     $\lambda = 10^{-3}$ & 0.0661 & 0.1021 & 0.0351 & 0.0443 & 175 \\
     \midrule
-    $\lambda = 0.01$    & 0.0666 & 0.1028 & 0.0360 & 0.0453 & 365 \\
+    $\lambda = 0.01$    & 0.0666 & 0.1028 & \textbf{0.0360} & 0.0453 & 365 \\
     \hline
 \end{longtable}
 \endgroup
@@ -910,19 +910,19 @@ Bảng~\ref{tab:stair_v4_g2_comparison} trình bày kết quả so sánh trực 
     \midrule
     {(G=1: ep 365} & Recall@20 & 0.1042 & 0.1028 & 0.1023 & $-0.49\%$ \\
     \midrule
-    {G=2: ep 350)} & NDCG@10   & 0.0359 & 0.0360 & 0.0362 & $+0.56\%$ \\
+    {G=2: ep 350)} & NDCG@10   & 0.0359 & \textbf{0.0360} & \textbf{0.0362} & $+0.56\%$ \\
     \midrule
     & NDCG@20   & 0.0454 & 0.0453 & 0.0454 & $+0.22\%$ \\
     \midrule
     & \textbf{Trung bình} & — & — & — & $\mathbf{+0.07\%}$ \\
     \hline
-    Sports & Recall@10 & 0.0743 & 0.0761 & 0.0763 & $+0.26\%$ \\
+    Sports & Recall@10 & 0.0743 & \textbf{0.0761} & \textbf{0.0763} & $+0.26\%$ \\
     \midrule
-    {(G=1: ep 500} & Recall@20 & 0.1111 & 0.1110 & 0.1121 & $+0.99\%$ \\
+    {(G=1: ep 500} & Recall@20 & 0.1111 & 0.1110 & \textbf{0.1121} & $+0.99\%$ \\
     \midrule
-    {G=2: ep 500)} & NDCG@10   & 0.0405 & 0.0417 & 0.0414 & $-0.72\%$ \\
+    {G=2: ep 500)} & NDCG@10   & 0.0405 & \textbf{0.0417} & \textbf{0.0414} & $-0.72\%$ \\
     \midrule
-    & NDCG@20   & 0.0500 & 0.0507 & 0.0506 & $-0.20\%$ \\
+    & NDCG@20   & 0.0500 & \textbf{0.0507} & \textbf{0.0506} & $-0.20\%$ \\
     \midrule
     & \textbf{Trung bình} & — & — & — & $\mathbf{+0.08\%}$ \\
     \hline
@@ -1016,11 +1016,11 @@ Bảng~\ref{tab:stair_all_versions_comparison} tổng hợp kết quả của c�
     \hline
     \endlastfoot
 
-    Baby & Recall@20 & 0.1042 & 0.0948 & 0.0770 & 0.0769 & \textbf{0.1028} \\
+    Baby & Recall@20 & 0.1042 & 0.0948 & 0.0770 & 0.0769 & 0.1028 \\
     \midrule
-    & NDCG@20   & 0.0454 & 0.0412 & 0.0343 & 0.0330 & \textbf{0.0453} \\
+    & NDCG@20   & 0.0454 & 0.0412 & 0.0343 & 0.0330 & 0.0453 \\
     \hline
-    Sports & Recall@20 & 0.1111 & 0.1040 & 0.0509 & 0.0898 & \textbf{0.1110} \\
+    Sports & Recall@20 & 0.1111 & 0.1040 & 0.0509 & 0.0898 & 0.1110 \\
     \midrule
     & NDCG@20   & 0.0500 & 0.0466 & 0.0225 & 0.0402 & \textbf{0.0507} \\
     \hline
