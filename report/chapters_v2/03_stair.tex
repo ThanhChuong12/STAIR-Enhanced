@@ -72,17 +72,6 @@ Bảng~\ref{tab:stair_reproduction} tổng hợp kết quả tái lập trên c�
 
 Trên toàn bộ mười hai chỉ số đo được, tức bốn chỉ số trên mỗi tập trong số ba tập dữ liệu, chênh lệch tuyệt đối so với paper đều nằm dưới 1\%. Đây là mức sai lệch nằm trong biên độ nhiễu tự nhiên giữa một lần chạy đơn lẻ so với kết quả trung bình của nhiều lần chạy mà tác giả công bố, không phản ánh lỗi trong pipeline tái lập.
 
-\subsubsection{Phân tích chi tiết theo từng tập dữ liệu}
-
-\paragraph{Tập Baby:}
-Kết quả trên Baby trùng khớp hoàn toàn với paper ở ba trong bốn chỉ số, chỉ lệch nhẹ $+0.22\%$ ở NDCG@20. Checkpoint tốt nhất rơi vào epoch 455 trên tổng số 500 epoch huấn luyện, tức mô hình đã đạt trạng thái ổn định trước khi kết thúc quá trình huấn luyện khoảng 45 epoch. Điều này cho thấy 500 epoch là đủ để mô hình hội tụ hoàn toàn trên tập dữ liệu này, và kết quả thu được phản ánh đúng khả năng tối đa của mô hình trong cấu hình đã cho.
-
-\paragraph{Tập Sports :}
-Sports là tập duy nhất có kết quả thấp hơn paper một chút, dao động từ $-0.49\%$ đến $-0.60\%$ trên ba chỉ số Recall@20, NDCG@10 và NDCG@20. Đây cũng là tập duy nhất có checkpoint tốt nhất rơi đúng vào epoch cuối cùng của quá trình huấn luyện, tức epoch 500 trên 500. Việc checkpoint tốt nhất nằm ở đúng ranh giới trên cho thấy giá trị NDCG@20 trên tập validation nhiều khả năng vẫn đang trên đà tăng tại thời điểm huấn luyện dừng lại, chưa chắc đã chạm đến điểm hội tụ thật sự. Đây là cách giải thích hợp lý cho mức chênh lệch nhỏ quan sát được trên tập này, và khác biệt so với Baby, nơi checkpoint tốt nhất xuất hiện sớm hơn nhiều so với epoch cuối.
-
-\paragraph{Tập Electronics:}
-Trên tập Electronics, kết quả tái lập cao hơn paper trên cả bốn chỉ số, với mức chênh lệch từ $+0.30\%$ đến $+0.45\%$. Đây là tập dữ liệu có quy mô lớn nhất trong ba tập, với khoảng 192 nghìn người dùng và 1.69 triệu tương tác, nên việc pipeline tái lập cho kết quả ổn định và nhỉnh hơn nhẹ trên một tập dữ liệu lớn như vậy càng củng cố thêm độ tin cậy của quy trình huấn luyện và đánh giá đã thiết lập. Checkpoint tốt nhất được chọn tại epoch 490 trên 500, cho thấy mô hình cũng đã gần đạt trạng thái hội tụ ổn định trước khi kết thúc huấn luyện.
-
 \subsubsection{Kết luận}
 
 Kết quả tái lập trên cả ba tập dữ liệu đều đạt độ khớp cao với số liệu công bố trong paper gốc, với sai lệch tuyệt đối dưới 1\% trên toàn bộ mười hai chỉ số đánh giá. Mức chênh lệch nhỏ quan sát được trên tập Sports có nguyên nhân hợp lý là quá trình huấn luyện chưa hoàn toàn hội tụ trong giới hạn 500 epoch, không xuất phát từ sai sót trong cấu hình hay quy trình đánh giá. Kết quả này xác nhận pipeline tái lập đã hoạt động đúng theo mô tả của tác giả và đủ tin cậy để dùng làm nền tảng so sánh cho các phương án cải tiến được trình bày ở các phần tiếp theo của đợt 2.
