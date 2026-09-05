@@ -1105,14 +1105,16 @@ Hình~\ref{fig:stair_v5_architecture} minh họa cấu trúc tính toán tổng 
 
 \begin{figure}[htbp]
 \centering
-\begin{tikzpicture}[scale=0.80, transform shape,
-    block/.style={rectangle, draw=blue!60!black, rounded corners=4pt, minimum height=0.85cm, text width=2.2cm, font=\scriptsize, align=center, fill=blue!6, inner sep=4pt},
-    layerbox/.style={rectangle, draw=teal!70!black, rounded corners=4pt, minimum height=0.9cm, text width=4.6cm, font=\scriptsize\bfseries, align=center, fill=teal!8, inner sep=4pt},
-    noisebox/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=4pt, minimum height=1.1cm, text width=9.2cm, font=\scriptsize\bfseries, align=center, fill=red!6, inner sep=5pt},
-    filterbox/.style={rectangle, draw=purple!70!black, dashed, thick, rounded corners=4pt, minimum height=1.1cm, text width=9.2cm, font=\scriptsize\bfseries, align=center, fill=purple!6, inner sep=5pt},
-    clbox/.style={rectangle, draw=orange!80!black, dashed, thick, rounded corners=4pt, minimum height=2.45cm, text width=4.3cm, font=\scriptsize, align=center, fill=orange!10, inner sep=5pt},
-    widebox/.style={rectangle, draw=orange!80!black, dashed, thick, rounded corners=4pt, minimum height=1.15cm, text width=9.2cm, font=\scriptsize\bfseries, align=center, fill=orange!10, inner sep=5pt},
-    finalbox/.style={rectangle, draw=blue!85!black, thick, rounded corners=5pt, minimum height=1.1cm, text width=9.2cm, font=\scriptsize\bfseries, align=center, fill=blue!12, inner sep=6pt},
+\begin{tikzpicture}[scale=0.82, transform shape,
+    % Styles
+    inputbox/.style={rectangle, draw=blue!60!black, rounded corners=4pt, minimum height=0.95cm, text width=2.7cm, font=\scriptsize, align=center, fill=blue!6, inner sep=4pt},
+    block/.style={rectangle, draw=blue!60!black, rounded corners=4pt, minimum height=0.95cm, text width=5.2cm, font=\scriptsize, align=center, fill=blue!6, inner sep=5pt},
+    layerbox/.style={rectangle, draw=teal!70!black, rounded corners=4pt, minimum height=1.05cm, text width=5.2cm, font=\scriptsize\bfseries, align=center, fill=teal!8, inner sep=5pt},
+    noisebox/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=4pt, minimum height=1.45cm, text width=10.4cm, font=\scriptsize, align=center, fill=red!6, inner sep=6pt},
+    filterbox/.style={rectangle, draw=purple!70!black, dashed, thick, rounded corners=4pt, minimum height=1.45cm, text width=10.4cm, font=\scriptsize, align=center, fill=purple!6, inner sep=6pt},
+    clbox/.style={rectangle, draw=orange!80!black, dashed, thick, rounded corners=4pt, minimum height=3.0cm, text width=4.8cm, font=\scriptsize, align=center, fill=orange!10, inner sep=6pt},
+    widebox/.style={rectangle, draw=orange!80!black, dashed, thick, rounded corners=4pt, minimum height=1.35cm, text width=10.4cm, font=\scriptsize, align=center, fill=orange!10, inner sep=6pt},
+    finalbox/.style={rectangle, draw=blue!85!black, thick, rounded corners=5pt, minimum height=1.3cm, text width=10.4cm, font=\scriptsize, align=center, fill=blue!12, inner sep=7pt},
     arr/.style={-{Stealth[length=2.5mm, width=1.7mm]}, thick, draw=gray!30!black},
     dasharr/.style={-{Stealth[length=2.5mm, width=1.7mm]}, thick, dashed, draw=purple!80!black},
     subbg_left/.style={draw=blue!30, dashed, fill=blue!2, rounded corners=8pt},
@@ -1120,62 +1122,62 @@ Hình~\ref{fig:stair_v5_architecture} minh họa cấu trúc tính toán tổng 
 ]
 
 % Khung bao quanh ben trai: FSC Backbone
-\draw[subbg_left] (-6.7, 1.4) rectangle (-1.3, -9.0);
-\node[font=\scriptsize\bfseries\color{blue!70!black}, anchor=north] at (-4.0, 1.25) {FSC Backbone (STAIR)};
+\draw[subbg_left] (-7.3, 2.0) rectangle (-1.5, -9.8);
+\node[font=\scriptsize\bfseries\color{blue!70!black}, anchor=north] at (-4.4, 1.8) {FSC Backbone (STAIR)};
 
 % Khung bao quanh ben phai: Module NE-NLGCL v5
-\draw[subbg_right] (-0.3, 1.4) rectangle (9.5, -9.0);
-\node[font=\scriptsize\bfseries\color{orange!80!black}, anchor=north] at (4.6, 1.25) {Module STAIR-NE-NLGCL v5};
+\draw[subbg_right] (-0.4, 2.0) rectangle (10.6, -9.8);
+\node[font=\scriptsize\bfseries\color{orange!80!black}, anchor=north] at (5.1, 1.8) {Module STAIR-NE-NLGCL v5};
 
 % ===== NHANH TRAI: FORWARD STEPWISE CONVOLUTION (STAIR) =====
-\node[block] (in_u) at (-5.2, 0.2) {User ID Embedding\\$E_u \in \mathbb{R}^{N_u \times D}$};
-\node[block] (in_i) at (-2.8, 0.2) {Item SVD Whitened\\$E_i \in \mathbb{R}^{N_i \times D}$};
+\node[inputbox] (in_u) at (-5.9, 0.6) {User ID Embedding\\[2pt]$E_u \in \mathbb{R}^{N_u \times D}$};
+\node[inputbox] (in_i) at (-2.9, 0.6) {Item SVD Whitened\\[2pt]$E_i \in \mathbb{R}^{N_i \times D}$};
 
-\node[block, text width=4.6cm] (h0) at (-4.0, -1.3) {Tầng 0: Ego Embeddings\\[2pt]$H^{(0)} = [E_u \,;\, E_i] = [U_0 \,;\, I_0]$};
-\draw[arr] (in_u.south) -- ++(0, -0.2) -| ([xshift=-1.1cm]h0.north);
-\draw[arr] (in_i.south) -- ++(0, -0.2) -| ([xshift=1.1cm]h0.north);
+\node[block] (h0) at (-4.4, -1.1) {\textbf{Tầng 0: Ego Embeddings}\\[3pt]$H^{(0)} = [E_u \,;\, E_i] = [U_0 \,;\, I_0]$};
+\draw[arr] (in_u.south) -- ++(0, -0.3) -| ([xshift=-1.4cm]h0.north);
+\draw[arr] (in_i.south) -- ++(0, -0.3) -| ([xshift=1.4cm]h0.north);
 
-\node[layerbox] (h1) at (-4.0, -2.9) {FSC Tầng 1 (1-hop lân cận)\\[2pt]$H^{(1)} = \tilde{A} H^{(0)} \odot \beta = [U_1 \,;\, I_1]$};
+\node[layerbox] (h1) at (-4.4, -3.1) {FSC Tầng 1 (1-hop lân cận)\\[3pt]$H^{(1)} = \tilde{A} H^{(0)} \odot \beta = [U_1 \,;\, I_1]$};
 \draw[arr] (h0.south) -- (h1.north);
 
-\node[layerbox] (h2) at (-4.0, -4.5) {FSC Tầng 2 (2-hop lân cận)\\[2pt]$H^{(2)} = \tilde{A} H^{(1)} \odot \beta = [U_2 \,;\, I_2]$};
+\node[layerbox] (h2) at (-4.4, -5.1) {FSC Tầng 2 (2-hop lân cận)\\[3pt]$H^{(2)} = \tilde{A} H^{(1)} \odot \beta = [U_2 \,;\, I_2]$};
 \draw[arr] (h1.south) -- (h2.north);
 
-\node[block, text width=4.6cm] (fsc_out) at (-4.0, -6.3) {Biểu diễn tổng hợp $\bar{H}$\\[2pt]Phục vụ suy luận \& $\mathcal{L}_{\text{BPR}}$};
+\node[block] (fsc_out) at (-4.4, -7.3) {\textbf{Biểu diễn tổng hợp $\bar{H}$}\\[3pt]Phục vụ suy luận \& $\mathcal{L}_{\text{BPR}}$};
 \draw[arr] (h2.south) -- (fsc_out.north);
 
 % ===== NHANH PHAI: MODULE NE-NLGCL v5 =====
 % Khoi 1: Spectral-Decayed Noise Injection
-\node[noisebox] (noise) at (4.6, -0.6) {Spectral-Decayed Noise Injection\\[3pt]$\tilde{\mathbf{h}} = \mathbf{h} + \epsilon \cdot \left( \boldsymbol{\beta} \odot \text{sign}(\mathbf{h}) \odot \frac{\boldsymbol{\eta}}{\|\boldsymbol{\eta}\|_2} \right), \quad \boldsymbol{\beta} = 1 - \boldsymbol{\beta}_3$\\[2pt]\normalfont\tiny Low-freq ($d \to 0$): $\beta \approx 0.9$ (nhiễu tối đa, mở rộng phân bố) \quad High-freq ($d \to 63$): $\beta \approx 0.0$ (triệt tiêu nhiễu, bảo toàn SVD)};
+\node[noisebox] (noise) at (5.1, 0.3) {\textbf{Spectral-Decayed Noise Injection}\\[4pt]$\tilde{\mathbf{h}} = \mathbf{h} + \epsilon \cdot \left( \boldsymbol{\beta} \odot \text{sign}(\mathbf{h}) \odot \frac{\boldsymbol{\eta}}{\|\boldsymbol{\eta}\|_2} \right), \quad \boldsymbol{\beta} = 1 - \boldsymbol{\beta}_3$\\[4pt]\normalfont\scriptsize Low-freq ($d \to 0$): $\beta \approx 0.9$ (nhiễu tối đa, mở rộng phân bố) \quad High-freq ($d \to 63$): $\beta \approx 0.0$ (triệt tiêu nhiễu, bảo toàn SVD)};
 
-% Duong trich xuat tu FSC sang khoi Noise
-\draw[dasharr] (h0.east) -- ++(0.4, 0) |- ([yshift=6pt]noise.west);
-\draw[dasharr] (h1.east) -- ++(0.4, 0) |- ([yshift=-6pt]noise.west);
+% Duong trich xuat tu FSC sang khoi Noise (dan theo khoang trong giua 2 khung)
+\draw[dasharr] (h0.east) -- ++(0.6, 0) |- ([yshift=8pt]noise.west);
+\draw[dasharr] (h1.east) -- ++(0.4, 0) |- ([yshift=-8pt]noise.west);
 
 % Khoi 2: In-batch False Negative Filtering
-\node[filterbox] (fn_filter) at (4.6, -2.3) {In-batch False Negative Semantic Masking\\[3pt]$S_{b,k} = \frac{\mathbf{p}_u^{(b)} \cdot \mathbf{m}_i^{(k)}}{\|\mathbf{p}_u^{(b)}\|_2 \|\mathbf{m}_i^{(k)}\|_2}, \quad \mathcal{M}_{b,k} = \mathbb{I}(S_{b,k} \le \tau_{\text{thresh}})$\\[2pt]\normalfont\tiny Mặt nạ loại bỏ các cặp có độ tương đồng ngữ nghĩa cao khỏi mẫu số InfoNCE};
+\node[filterbox] (fn_filter) at (5.1, -2.3) {\textbf{In-batch False Negative Semantic Masking}\\[4pt]$S_{b,k} = \frac{\mathbf{p}_u^{(b)} \cdot \mathbf{m}_i^{(k)}}{\|\mathbf{p}_u^{(b)}\|_2 \|\mathbf{m}_i^{(k)}\|_2}, \quad \mathcal{M}_{b,k} = \mathbb{I}(S_{b,k} \le \tau_{\text{thresh}})$\\[4pt]\normalfont\scriptsize Mặt nạ loại bỏ các cặp có độ tương đồng ngữ nghĩa cao khỏi mẫu số InfoNCE};
 
 \draw[arr] (noise.south) -- (fn_filter.north);
 
-% Hai khoi InfoNCE hai chieu nam song song
-\node[clbox] (cl_u) at (2.25, -4.7) {\textbf{User-side InfoNCE} ($\mathcal{L}_u$)\\[4pt]Truy vấn: $\tilde{I}_1[i]$ (item tầng 1)\\[2pt]Mẫu dương: $\tilde{U}_0[u]$ (user tầng 0)\\[4pt]Mẫu số có mặt nạ lọc:\\[2pt]$\sum_{k \neq b} \mathcal{M}_{b,k} \exp(\tilde{\mathbf{u}}_b^{(0)} \cdot \tilde{\mathbf{i}}_k^{(1)} / \tau)$};
+% Hai khoi InfoNCE hai chieu nam song song can xung
+\node[clbox] (cl_u) at (2.45, -5.6) {\textbf{User-side InfoNCE} ($\mathcal{L}_u$)\\[6pt]Truy vấn: $\tilde{I}_1[i]$ (item tầng 1)\\[3pt]Mẫu dương: $\tilde{U}_0[u]$ (user tầng 0)\\[6pt]Mẫu số có mặt nạ lọc:\\[3pt]$\sum_{k \neq b} \mathcal{M}_{b,k} \exp(\tilde{\mathbf{u}}_b^{(0)} \cdot \tilde{\mathbf{i}}_k^{(1)} / \tau)$};
 
-\node[clbox] (cl_i) at (6.95, -4.7) {\textbf{Item-side InfoNCE} ($\mathcal{L}_i$)\\[4pt]Truy vấn: $\tilde{U}_1[u]$ (user tầng 1)\\[2pt]Mẫu dương: $\tilde{I}_0[i]$ (item tầng 0)\\[4pt]Mẫu số có mặt nạ lọc:\\[2pt]$\sum_{k \neq b} \mathcal{M}_{b,k} \exp(\tilde{\mathbf{i}}_b^{(0)} \cdot \tilde{\mathbf{u}}_k^{(1)} / \tau)$};
+\node[clbox] (cl_i) at (7.75, -5.6) {\textbf{Item-side InfoNCE} ($\mathcal{L}_i$)\\[6pt]Truy vấn: $\tilde{U}_1[u]$ (user tầng 1)\\[3pt]Mẫu dương: $\tilde{I}_0[i]$ (item tầng 0)\\[6pt]Mẫu số có mặt nạ lọc:\\[3pt]$\sum_{k \neq b} \mathcal{M}_{b,k} \exp(\tilde{\mathbf{i}}_b^{(0)} \cdot \tilde{\mathbf{u}}_k^{(1)} / \tau)$};
 
-\draw[arr] ([xshift=-2.35cm]fn_filter.south) -- (cl_u.north);
-\draw[arr] ([xshift=2.35cm]fn_filter.south) -- (cl_i.north);
+\draw[arr] ([xshift=-2.65cm]fn_filter.south) -- (cl_u.north);
+\draw[arr] ([xshift=2.65cm]fn_filter.south) -- (cl_i.north);
 
 % Tong hop loss NE-NLGCL
-\node[widebox] (cl_sum) at (4.6, -7.0) {Hàm mất mát STAIR-NE-NLGCL v5\\[3pt]\normalfont\scriptsize $\mathcal{L}_{\text{NE-NLGCL}} = \alpha \, \mathcal{L}_u + (1-\alpha) \, \mathcal{L}_i$};
+\node[widebox] (cl_sum) at (5.1, -8.7) {\textbf{Hàm mất mát STAIR-NE-NLGCL v5}\\[4pt]\normalfont\small $\mathcal{L}_{\text{NE-NLGCL}} = \alpha \, \mathcal{L}_u + (1-\alpha) \, \mathcal{L}_i$};
 
-\draw[arr] (cl_u.south) -- ([xshift=-2.35cm]cl_sum.north);
-\draw[arr] (cl_i.south) -- ([xshift=2.35cm]cl_sum.north);
+\draw[arr] (cl_u.south) -- ([xshift=-2.65cm]cl_sum.north);
+\draw[arr] (cl_i.south) -- ([xshift=2.65cm]cl_sum.north);
 
 % ===== KET HOP DA NHIEM =====
-\node[finalbox] (total_loss) at (0.3, -10.2) {Hàm mất mát tối ưu đồng thời toàn hệ thống\\[3pt]\normalfont\small $\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{BPR}} + \lambda_{\text{nlgcl}} \, \mathcal{L}_{\text{NE-NLGCL}}$};
+\node[finalbox] (total_loss) at (0.35, -11.5) {\textbf{Hàm mất mát tối ưu đồng thời toàn hệ thống}\\[4pt]\normalfont\small $\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{BPR}} + \lambda_{\text{nlgcl}} \, \mathcal{L}_{\text{NE-NLGCL}}$};
 
-\draw[arr] (fsc_out.south) -- ++(0, -1.4) -| ([xshift=-2.6cm]total_loss.north);
-\draw[arr] (cl_sum.south) -- ++(0, -0.6) -| ([xshift=2.6cm]total_loss.north);
+\draw[arr] (fsc_out.south) -- ++(0, -1.8) -| ([xshift=-3.0cm]total_loss.north);
+\draw[arr] (cl_sum.south) -- ++(0, -0.9) -| ([xshift=3.0cm]total_loss.north);
 
 \end{tikzpicture}
 \caption{Cấu trúc tổng thể của mô hình STAIR-NE-NLGCL v5.}
