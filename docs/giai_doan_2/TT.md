@@ -5,11 +5,11 @@
 
 ## LƯU Ý CHUNG VỀ PHONG CÁCH TRÌNH BÀY
 - **Tâm thế:** Báo cáo định kỳ thân mật, chân thành, khoa học và rõ ràng. Tự tin vào các số liệu và chuỗi thử nghiệm thực tế của nhóm.
-- **Cách xưng hô:** Xưng *"em"* hoặc *"tụi em"*, gọi *"cô"*.
+- **Cách xưng hô:** Xưng *"em"*, gọi *"cô"*.
 - **Cấu trúc mỗi phần:** 
-  1. *Tóm tắt ý chính cần nắm:* Giúp mình liếc nhanh các luận điểm và con số then chốt trước khi nói.
-  2. *Lời thoại trình bày chi tiết:* Văn phong tự nhiên, dễ hiểu, dẫn dắt mạch lạc theo logic nguyên nhân - kết quả.
-  3. *Gợi ý trả lời câu hỏi của Cô:* Dự kiến trước các câu hỏi cô có thể hỏi để trả lời chắc chắn, có cơ sở lý thuyết.
+  1. *Tóm tắt ý chính cần nắm:* Giúp mình liếc nhanh các luận điểm, cấu trúc kiến trúc và con số then chốt trước khi nói.
+  2. *Lời thoại trình bày chi tiết:* Văn phong tự nhiên, mạch lạc, dẫn dắt theo logic nguyên nhân - kết quả, mô tả rõ ràng kiến trúc và lý do đưa ra thiết kế đó.
+  3. *Gợi ý trả lời câu hỏi của Cô:* Dự kiến trước các câu hỏi cô có thể hỏi để trả lời chắc chắn, có cơ sở lý thuyết vững vàng.
 
 ---
 
@@ -29,11 +29,11 @@
 ---
 
 ### Lời thoại trình bày với Cô:
-> *"Dạ thưa cô, trước khi đi vào các phương án cải tiến, tụi em đã dành thời gian để tái lập độc lập lại toàn bộ mô hình STAIR gốc của tác giả trên cả ba tập dữ liệu: Baby, Sports và Electronics.*
+> *"Dạ thưa cô, trước khi đi vào các phương án cải tiến, em có dành thời gian để tái lập độc lập lại toàn bộ mô hình STAIR gốc của tác giả trên cả ba tập dữ liệu: Baby, Sports và Electronics.*
 >
-> *Tụi em cài đặt quy trình đánh giá chuẩn: dùng chỉ số NDCG@20 trên tập Validation để lưu checkpoint tốt nhất, sau đó mới đánh giá trên tập Test. Kết quả cho thấy các chỉ số Recall và NDCG mà tụi em chạy lại đều khớp với bài báo gốc, sai số tuyệt đối đều dưới 1%.*
+> *Em cài đặt quy trình đánh giá chuẩn: dùng chỉ số NDCG@20 trên tập Validation để lưu checkpoint tốt nhất, sau đó mới đánh giá trên tập Test. Kết quả cho thấy các chỉ số Recall và NDCG mà em chạy lại đều khớp với bài báo gốc, sai số tuyệt đối đều dưới 1%.*
 >
-> *Việc này giúp tụi em hoàn toàn yên tâm là pipeline mã nguồn, cách chia dữ liệu và môi trường chạy thực nghiệm đã chuẩn xác, tạo thành một baseline đối soát tin cậy cho toàn bộ các thử nghiệm phía sau ạ."*
+> *Việc này giúp em hoàn toàn yên tâm là pipeline mã nguồn, cách chia dữ liệu và môi trường chạy thực nghiệm đã chuẩn xác, tạo thành một baseline đối soát tin cậy cho toàn bộ các thử nghiệm phía sau ạ."*
 
 ---
 
@@ -45,41 +45,83 @@
 
 ## 2. NHÓM CẢI TIẾN CAN THIỆP ĐẦU VÀO (v1, v2a, v3) VÀ NGUYÊN NHÂN HIỆU NĂNG GIẢM
 
-### Tóm tắt ý chính cần nắm:
-- **Ý tưởng ban đầu:** Nghĩ rằng phương pháp SVD Whitening tĩnh của tác giả quá đơn giản, nên nhóm thử đưa các mạng nơ-ron học tham số vào tiền xử lý đặc trưng.
-  - **v1 (De-redundant Gated Projector):** Dùng MLP 2 tầng kèm cổng Gating học được thay thế hoàn toàn cho SVD Whitening.
-    - *Kết quả:* Hiệu năng giảm đồng loạt từ **-6.41% đến -9.60%**.
-  - **v2a (Residual-Whitening Projector):** Giữ SVD làm nhánh chính, chỉ cộng thêm một nhánh residual MLP nhỏ học độ lệch.
-    - *Kết quả:* Hiệu năng vẫn giảm nhẹ **~1% đến 2%**.
-  - **v3 (STAIR-LIA v3):** Dùng cơ chế Cross-Attention lọc vùng quan tâm (ROI) lấy cảm hứng từ bài báo CLID, kết hợp ZCA Whitening để giữ trục toạ độ.
-    - *Kết quả:* Hiệu năng sụt giảm rất nặng, từ **-19.11% đến -29.82%** (trên tập Baby, Recall@20 từ 0.1042 rơi xuống 0.0731).
-- **Nguyên nhân cốt lõi:**
-  - SVD Whitening trong STAIR không chỉ là giảm chiều dữ liệu, mà nó tạo ra một hệ cơ sở trực giao và giải tương quan hoàn toàn ($E[xx^T] = I$).
-  - Quan trọng hơn, cấu trúc tích chập tiến (FSC) và tích chập lùi (BSC) của STAIR dựa trực tiếp vào phân rã phổ năng lượng theo từng chiều toạ độ (các chiều đầu là tần số thấp chứa tín hiệu cộng tác, các chiều sau là tần số cao chứa tín hiệu đa phương thức).
-  - Bất kỳ phép biến đổi phi tuyến (MLP) hay Cross-Attention nào ở đầu vào cũng làm xoay không gian, xáo trộn thứ tự các tần số, khiến bộ lọc tích chập Stepwise Convolution phía sau bị mất phương hướng.
+### Tóm tắt ý chính & Kiến trúc chi tiết từng phiên bản:
+
+Nhóm cải tiến đầu tiên xuất phát từ nhận định ban đầu: phép chiếu SVD Whitening tuyến tính tĩnh của STAIR có thể làm biến dạng cấu trúc đa tạp phi tuyến và bỏ qua sự tương quan dư thừa giữa ảnh và chữ. Do đó, em đã lần lượt thử nghiệm 3 kiến trúc can thiệp vào tầng tiền xử lý đầu vào:
+
+#### A. Cải tiến 1: De-redundant Gated Projector (STAIR-Enhanced v1)
+- **Kiến trúc đề xuất:**
+  1. *Nhánh chiếu phi tuyến:* Đầu vào gồm vector văn bản 384 chiều (Sentence-BERT) và ảnh 4096 chiều (CNN). Thay vì dùng ma trận SVD tĩnh, mô hình dùng hai mạng MLP riêng biệt kết hợp hàm kích hoạt GELU để chiếu phi tuyến về không gian 64 chiều ($h_t, h_v$).
+  2. *Cơ chế khử dư thừa (Null-space Projection):* Duy trì một ma trận hiệp phương sai tích lũy toàn cục $\Sigma_{\text{EMA}}$ qua kỹ thuật Exponential Moving Average theo từng batch. Từ $\Sigma_{\text{EMA}}$, trích xuất các vector riêng mang phương sai chung lớn nhất và xây dựng toán tử chiếu không gian vô hiệu $P_\perp$ để triệt tiêu các thành phần thông tin trùng lặp giữa hai phương thức: $h_t^{proj} = P_\perp h_t$ và $h_v^{proj} = P_\perp h_v$.
+  3. *Dung hợp qua cổng thích ứng (Dimension-wise Gating):* Dùng một mạng nơ-ron học cổng $z = \sigma(W_z [h_t^{proj} ; h_v^{proj}] + b_z)$ để tự động cân bằng tỷ trọng cho từng chiều đặc trưng: $h_{fuse} = z \odot h_t^{proj} + (1 - z) \odot h_v^{proj}$, sau đó chuẩn hóa $L_2$ trước khi đưa vào đồ thị.
+- **Kết quả thực nghiệm:** Hiệu năng sụt giảm đồng loạt từ **-6.41% đến -9.60%** trên cả 3 tập dữ liệu.
+
+#### B. Cải tiến 2: Residual-Whitening Projector (STAIR-Enhanced v2a)
+- **Kiến trúc đề xuất:**
+  - Nhận thấy việc bỏ hoàn toàn SVD ở v1 làm mất hẳn thông tin cấu trúc nền tảng, v2a được thiết kế theo cấu trúc Residual: giữ SVD Whitening làm nhánh nền tảng chính ($E_{svd}$) và chỉ cộng thêm một nhánh thặng dư phi tuyến MLP học từ đặc trưng thô ($\Delta$).
+  - Để ngăn chặn việc nhánh MLP tự do bùng nổ gradient và lấn át nhánh SVD, kiến trúc tích hợp **4 chốt chặn an toàn toán học**:
+    1. *Khớp độ lớn (Magnitude Matching):* Scale vector thặng dư $\Delta_{scaled} = \Delta \cdot \frac{\|E_{svd}\|_2}{\|\Delta\|_2}$ để đưa về cùng chuẩn độ lớn với không gian SVD trước khi cộng.
+    2. *Giới hạn biên độ nghiêm ngặt (Bounded Sigmoid):* Hệ số kết hợp được khống chế $\lambda_{actual} = 0.3 \cdot \sigma(\theta)$, khởi tạo ở 0.15 và tối đa không bao giờ vượt quá 0.30 để nhánh thặng dư luôn đóng vai trò phụ trợ.
+    3. *Tách biệt bộ tối ưu:* Cấp learning rate riêng thấp hơn và bổ sung weight decay cho tham số kết hợp nhằm ép giá trị về 0 nếu không có lợi.
+    4. *Đóng băng gradient (Freeze Warm-up):* Khóa gradient nhánh MLP trong 50 epoch đầu tiên để mô hình ổn định trong không gian SVD trước.
+    - Công thức dung hợp cuối cùng: $E_{final} = E_{svd} + \lambda_{actual} \times \Delta_{scaled}$.
+- **Kết quả thực nghiệm:** Các chốt chặn hoạt động hoàn hảo ($\lambda$ hội tụ ổn định về mức 0.235, không bị bùng nổ), nhưng hiệu năng vẫn suy giảm nặng: trên Baby, Recall@20 giảm từ 0.1042 xuống **0.0770**; trên Sports giảm từ 0.1111 xuống **0.0509**.
+
+#### C. Cải tiến 3: Local Interest Alignment với ZCA Whitening (STAIR-LIA v3)
+- **Kiến trúc đề xuất:**
+  - Tham khảo 3 công trình SOTA mới nhất (CFDTBD, CLID, MaMoE4Rec). Để tránh bùng nổ tham số và xung đột gradient, kiến trúc tinh giản tối đa chỉ giữ lại 2 thành phần cốt lõi:
+    1. *ZCA Whitening:* Thay thế hoàn toàn cho SVD Whitening ở bước tiền xử lý:
+       $$\text{ZCA}(X) = (X - \bar{X}) U (\Lambda + \epsilon I)^{-1/2} U^T$$
+       Khác với SVD làm xoay toạ độ sang hệ cơ sở mới ($U^T$), ZCA nhân ngược lại ma trận xoay $U$, giúp vector sau khi làm trắng giải tương quan nhưng giữ hướng gần nhất với hệ trục gốc, nhằm bảo toàn ý nghĩa từng chiều toạ độ cho các bộ lọc Stepwise của STAIR.
+    2. *Trích xuất vùng quan tâm ngoại tuyến (Offline Bidirectional ROI Attention theo CLID):*
+       - Cắt nhỏ vector ảnh 4096 chiều và văn bản 384 chiều thành các đoạn con (chunks) 64 chiều đóng vai trò như các token nhân tạo.
+       - Tính Cross-Attention hai chiều giữa ảnh và chữ để lọc ra vùng quan tâm cốt lõi ($E_{roi}^t, E_{roi}^v$), loại bỏ nhiễu nền và từ ngữ thừa.
+       - Chạy ngoại tuyến hoàn toàn để cô lập gradient khỏi hàm BPR.
+       - Dung hợp bằng cổng vô hướng học được: $E_{final} = \alpha E_{roi} + (1 - \alpha) E_{global}$ (khởi tạo $\alpha = 0.5$).
+    - Huấn luyện thuần túy bằng duy nhất hàm loss BPR gốc để tránh xung đột gradient.
+- **Kết quả thực nghiệm:** Hiệu năng sụt giảm nghiêm trọng nhất trong các phiên bản: trên Baby, Recall@20 từ 0.1042 rơi xuống **0.0731** (giảm **-29.82%**).
 
 ---
 
-### Lời thoại trình bày với Cô:
-> *"Dạ thưa cô, ở giai đoạn đầu, tụi em tiếp cận bài toán theo hướng khá tự nhiên: đó là tìm cách làm sạch và nâng cấp biểu diễn đa phương thức ngay từ tầng đầu vào.*
+### Lời thoại trình bày chi tiết với Cô:
+> *"Dạ thưa cô, ở giai đoạn đầu, em tiếp cận bài toán theo một hướng đi khá tự nhiên: đó là tìm cách làm sạch và nâng cấp biểu diễn đa phương thức ngay từ tầng đầu vào.
 >
-> *Trong STAIR gốc, tác giả dùng SVD Whitening tĩnh để nén vector văn bản và hình ảnh từ vài nghìn chiều xuống 64 chiều. Tụi em nghĩ nếu dùng mạng nơ-ron học tham số thì mô hình sẽ thích ứng dữ liệu tốt hơn. Vì vậy, tụi em đã lần lượt thử nghiệm ba phương án:*
+> Trong STAIR gốc, tác giả dùng phép chiếu SVD Whitening tĩnh để nén vector văn bản và hình ảnh từ vài nghìn chiều xuống 64 chiều. Lúc đầu em nhận thấy SVD chỉ là một phép biến đổi tuyến tính tĩnh, không thể học thích ứng theo tương tác người dùng, đồng thời chưa xử lý được sự trùng lặp thông tin giữa ảnh và chữ. Vì vậy, em đã lần lượt triển khai ba phương án cải tiến từ đơn giản đến phức tạp:
 >
-> *Đầu tiên là bản v1, tụi em thiết kế một mạng MLP có cơ chế cổng Gating để lọc bớt đặc trưng dư thừa. Nhưng kết quả chạy ra lại bị giảm khá rõ, từ 6% đến gần 10% trên cả 3 tập dữ liệu.*
+> **Đầu tiên là bản v1 (De-redundant Gated Projector):**
+> Em thay thế hoàn toàn khối SVD tĩnh bằng một mạng nơ-ron truyền thẳng. Thay vì nén tuyến tính, em dùng hai mạng MLP riêng biệt kèm hàm kích hoạt GELU để chiếu phi tuyến ảnh và văn bản về 64 chiều. Điểm mấu chốt là em xây dựng một khối hiệp phương sai toàn cục cập nhật online bằng EMA, rồi dùng phép chiếu không gian vô hiệu Null-space để loại bỏ các thành phần mang phương sai chung lớn nhất, nhằm triệt tiêu sự dư thừa giữa hai phương thức. Sau đó, một cổng Dimension-wise Gating sẽ tự động tính toán trọng số kết hợp cho từng chiều đặc trưng.
+> Tuy nhiên, khi đưa vào huấn luyện đồ thị, kết quả lại sụt giảm đồng loạt từ 6% đến gần 10% trên cả 3 tập dữ liệu.
 >
-> *Sang bản v2a, tụi em nghĩ có thể do mình bỏ hoàn toàn SVD nên mất thông tin nền, nên tụi em đổi sang kiến trúc Residual: giữ SVD làm nhánh chính và chỉ cộng thêm một nhánh residual nhỏ. Kết quả có cải thiện hơn v1, mức giảm co lại còn khoảng 1% đến 2%, nhưng nhìn chung vẫn chưa vượt qua được baseline gốc.*
+> **Nhận thấy việc loại bỏ hoàn toàn SVD ở v1 làm mất đi thông tin cấu trúc nền tảng, em phát triển tiếp bản v2a (Residual-Whitening Projector):**
+> Ở bản này, em giữ SVD Whitening làm nhánh nền tảng chính để bảo toàn tiên nghiệm cấu trúc, và chỉ thiết kế thêm một nhánh thặng dư phi tuyến MLP học song song từ đặc trưng thô.
+> Để tránh hiện tượng nhánh MLP học tự do bùng nổ gradient và lấn át nhánh SVD gốc, em đã thiết lập bốn chốt chặn an toàn toán học:
+> 1. Scale vector thặng dư bằng kỹ thuật Magnitude Matching để đưa về cùng chuẩn độ lớn với không gian SVD.
+> 2. Đưa hệ số kết hợp qua hàm Bounded Sigmoid và chặn cứng mức tối đa không quá 0.30 để nhánh MLP luôn đóng vai trò phụ trợ.
+> 3. Cấp quyền học riêng trong bộ tối ưu với learning rate thấp hơn và weight decay riêng để ép hệ số về 0 nếu không hữu ích.
+> 4. Và đóng băng gradient nhánh MLP trong 50 epoch đầu tiên để mô hình ổn định toạ độ SVD trước.
+> Kết quả kỹ thuật cho thấy các chốt chặn hoạt động rất chính xác: hệ số kết hợp hội tụ ổn định ở mức 0.235, đường cong loss giảm mượt mà. Thế nhưng, hiệu năng gợi ý cuối cùng vẫn giảm sâu: Recall@20 trên Baby giảm từ 0.1042 xuống 0.0770, trên Sports giảm từ 0.1111 xuống 0.0509.
 >
-> *Đến bản v3, tụi em thử một hướng sâu hơn lấy cảm hứng từ mô hình CLID: dùng Cross-Attention hai chiều để trích xuất các vùng quan tâm giữa ảnh và chữ, đồng thời thay SVD bằng ZCA Whitening để tránh bị xoay trục toạ độ. Tuy nhiên, kết quả ở bản v3 lại sụt giảm rất nặng, giảm tới gần 30% trên tập Baby.*
+> **Tiếp đó, em tham khảo các bài báo SOTA mới nhất như CLID và CFDTBD để phát triển bản v3 (STAIR-LIA v3):**
+> Ở bản này, em đưa vào cơ chế Cross-Attention hai chiều lấy cảm hứng từ CLID để tự động lọc các vùng quan tâm (ROI) giữa ảnh và chữ, loại bỏ nhiễu nền và từ ngữ thừa. Để cô lập gradient, em cho khối Attention này chạy ngoại tuyến hoàn toàn trước khi train.
+> Đồng thời, vì biết SVD làm xoay hệ trục toạ độ, em đã thay SVD bằng ZCA Whitening. ZCA có đặc tính toán học là nhân ngược lại ma trận xoay U, giúp vector sau khi khử tương quan vẫn giữ hướng gần nhất với hệ trục gốc, nhằm bảo toàn ý nghĩa từng chiều cho các phép tích chập của STAIR.
+> Thế nhưng, kết quả ở bản v3 lại sụt giảm nghiêm trọng nhất: Recall@20 trên Baby giảm tới gần 30%, từ 0.1042 rơi xuống 0.0731.
 >
-> *Lúc này tụi em dừng lại và phân tích thật kỹ nguyên nhân về mặt bản chất toán học: Hóa ra không gian SVD Whitening của STAIR có một đặc tính rất đặc biệt. Các vector sau khi làm trắng đã hoàn toàn trực giao và được sắp xếp thứ tự theo năng lượng phổ. Cấu trúc tích chập Stepwise của STAIR tận dụng chính xác thứ tự này: các chiều đầu là tần số thấp để học hành vi cộng tác, các chiều sau là tần số cao để giữ chi tiết đa phương thức.*
+> **Sau chuỗi kết quả này, em đã dừng lại và phân tích sâu về mặt bản chất toán học:**
+> Hóa ra không gian SVD Whitening của STAIR có một đặc thù mà các mô hình GNN khác không có:
+> Thứ nhất, SVD Whitening tĩnh thực chất đóng vai trò như một bộ lọc thông thấp (low-pass filter) cực mạnh, loại bỏ toàn bộ nhiễu của các mô hình trích xuất thô như CNN hay Sentence-BERT. Khi mình đưa MLP hay Residual vào, mình vô tình bơm ngược lượng nhiễu này vào hệ thống, mà hàm BPR trên đồ thị thưa không đủ tín hiệu để lọc nhiễu.
+> Thứ hai, và quan trọng nhất: Không gian sau SVD Whitening sở hữu tính trực giao hoàn toàn và được phân rã phổ năng lượng nghiêm ngặt theo từng chiều toạ độ: các chiều đầu là tần số thấp chứa tín hiệu cộng tác, các chiều sau là tần số cao chứa tín hiệu đa phương thức. Bộ lọc tích chập Stepwise Convolution (cả FSC và BSC) của STAIR dựa tuyệt đối vào thứ tự phân rã này để điều hướng gradient.
+> Việc mình đưa MLP phi tuyến, hay cắt nhỏ vector phẳng thành các token nhân tạo để tính Cross-Attention, đã làm xáo trộn hoàn toàn trật tự tần số và cấu trúc trực giao đó, khiến các tầng tích chập phía sau bị mất phương hướng.
 >
-> *Khi mình đưa MLP phi tuyến hay Attention vào, mình vô tình làm xáo trộn cấu trúc trực giao và thứ tự tần số đó, khiến các tầng tích chập phía sau không còn phân rã đúng phổ năng lượng nữa. Từ phân tích này, tụi em quyết định chuyển hướng hoàn toàn: giữ nguyên vẹn tầng tiền xử lý SVD Whitening và không can thiệp vào đầu vào nữa ạ."*
+> Từ bài học thực nghiệm mang tính hệ thống này, em nhận ra: can thiệp vào tầng tiền xử lý đầu vào của STAIR là đi ngược lại nguyên lý vận hành của nó. Vì vậy, em quyết định chuyển hướng chiến lược hoàn toàn: giữ nguyên vẹn 100% tầng tiền xử lý SVD Whitening và chuyển sang khai thác thông tin ở tầng biểu diễn ẩn của GNN bằng Contrastive Learning ạ."*
 
 ---
 
 ### Gợi ý trả lời nếu Cô hỏi:
-- **Câu hỏi:** *"Tại sao ở bản v3 dùng ZCA Whitening mà vẫn giảm nặng như vậy? ZCA vốn giữ nguyên không gian toạ độ cơ sở mà?"*
-- **Trả lời:** *"Dạ thưa cô, ZCA đúng là giảm thiểu sự xoay trục toạ độ so với SVD, nhưng vấn đề chính của bản v3 nằm ở khối Cross-Attention. Để tính Attention giữa đặc trưng ảnh 4096 chiều và chữ 384 chiều, tụi em phải cắt nhỏ vector phẳng thành các token nhân tạo. Việc chia cắt này làm mất tính liên kết cục bộ tự nhiên của hình ảnh và văn bản. Khi kết hợp với đồ thị người dùng - sản phẩm quá thưa, các trọng số Attention bị nhiễu nặng và làm hỏng hoàn toàn biểu diễn đặc trưng đưa vào mạng tích chập phía sau ạ."*
+- **Câu hỏi 1:** *"Tại sao ở bản v3 dùng ZCA Whitening để giữ nguyên trục toạ độ rồi mà hiệu năng vẫn sụt giảm nặng nhất (-29.82%)?"*
+- **Trả lời:** *"Dạ thưa cô, ZCA đúng là giảm thiểu sự xoay trục toạ độ, nhưng nguyên nhân làm sụt giảm nặng nằm ở khối Cross-Attention. Để tính Attention giữa đặc trưng ảnh 4096 chiều và chữ 384 chiều, em buộc phải cắt vector phẳng thành các đoạn con (chunks) 64 chiều xem như các token nhân tạo. Việc chia cắt cơ học này làm phá vỡ cấu trúc không gian liên tục tự nhiên của ảnh và văn bản. Khi kết hợp với đồ thị người dùng - sản phẩm quá thưa, các trọng số Attention bị nhiễu loạn nghiêm trọng, sinh ra các vector ROI bị méo mó và làm hỏng biểu diễn đưa vào mạng tích chập phía sau ạ."*
+
+- **Câu hỏi 2:** *"Bản v2a có tới 4 chốt chặn an toàn, loss giảm rất đẹp, tại sao Recall vẫn giảm sâu?"*
+- **Trả lời:** *"Dạ thưa cô, log huấn luyện cho thấy hàm loss BPR trên tập train giảm rất mượt, tham số kết hợp hội tụ rất đẹp ở mức 0.235. Điều đó chứng tỏ mạng nơ-ron học rất tốt trên tập train, nhưng đó là học thuộc lòng trên các tương tác thưa (overfitting vào nhiễu). Bản chất SVD tĩnh là bộ lọc làm sạch nhiễu; khi thêm nhánh MLP, mô hình có thêm bậc tự do để vừa khớp tín hiệu vừa khớp cả nhiễu, dẫn đến việc trên tập Test khả năng tổng quát hóa bị suy giảm rõ rệt ạ."*
 
 ---
 
@@ -94,8 +136,8 @@
   - Dùng trực tiếp biểu diễn tầng $0$ (Ego-embedding) và biểu diễn tầng $1$ (1-hop tích hợp lân cận) có sẵn trong quá trình Forward để làm cặp đối chiếu tích cực.
 - **Học đối chiếu 2 chiều:** Áp dụng cả phía Người dùng ($\mathcal{L}_u$) và phía Sản phẩm ($\mathcal{L}_i$).
 - **Kết quả thực nghiệm theo 2 đợt:**
-  - *Đợt 1 (Thang đo siêu tham số CF thuần $\lambda_{	ext{nlgcl}} = 0.0001$):* Hiệu năng gần như không đổi so với baseline (chỉ nhích +0.05% đến +0.10%) vì gradient đối chiếu quá bé so với hàm BPR.
-  - *Đợt 2 (Thang đo siêu tham số đa phương thức $\lambda_{	ext{nlgcl}} = 0.01$):* Hiệu năng tăng trưởng đồng loạt trên cả 3 tập dữ liệu (trung bình tăng **+1.63%** trên 12 chỉ số).
+  - *Đợt 1 (Thang đo siêu tham số CF thuần $\lambda_{\text{nlgcl}} = 0.0001$):* Hiệu năng gần như không đổi so với baseline (chỉ nhích +0.05% đến +0.10%) vì gradient đối chiếu quá bé so với hàm BPR.
+  - *Đợt 2 (Thang đo siêu tham số đa phương thức $\lambda_{\text{nlgcl}} = 0.01$):* Hiệu năng tăng trưởng đồng loạt trên cả 3 tập dữ liệu (trung bình tăng **+1.63%** trên 12 chỉ số).
     - **Electronics:** Tăng mạnh nhất; NDCG@10 tăng **+5.31%**, Recall@10 tăng **+4.09%**.
     - **Sports:** NDCG@10 tăng **+2.96%**, Recall@10 tăng **+2.42%**.
     - **Baby:** NDCG@10 tăng **+0.28%**.
@@ -106,26 +148,26 @@
 ---
 
 ### Lời thoại trình bày với Cô:
-> *"Dạ thưa cô, sau khi nhận ra bản chất của SVD Whitening, ở cải tiến 4 (tụi em đặt tên là STAIR-NLGCL), tụi em thực hiện một bước ngoặt về chiến lược: giữ nguyên vẹn toàn bộ đầu vào SVD và cấu trúc tích chập của tác giả. Thay vào đó, tụi em bổ sung một nhánh học tương phản (Contrastive Learning) ở tầng biểu diễn ẩn như một hàm mất mát phụ trợ.
+> *"Dạ thưa cô, sau khi nhận ra bản chất của SVD Whitening, ở cải tiến 4 (em đặt tên là STAIR-NLGCL), em thực hiện một bước ngoặt về chiến lược: giữ nguyên vẹn toàn bộ đầu vào SVD và cấu trúc tích chập của tác giả. Thay vào đó, em bổ sung một nhánh học tương phản (Contrastive Learning) ở tầng biểu diễn ẩn như một hàm mất mát phụ trợ.
 >
-> Tụi em áp dụng một kỹ thuật rất hay lấy cảm hứng từ bài báo NLGCL+, gọi là Zero-cost views. Nghĩa là tụi em không cần làm Edge Dropout hay tạo thêm view đồ thị phụ gây tốn bộ nhớ, mà tận dụng ngay biểu diễn tầng 0 (đặc trưng gốc) và biểu diễn tầng 1 (đã gom thông tin lân cận) có sẵn trong nhánh tích chập FSC để làm cặp đối chiếu. Tụi em tính InfoNCE cho cả hai phía người dùng và sản phẩm.
+> Em áp dụng một kỹ thuật rất hay lấy cảm hứng từ bài báo NLGCL+, gọi là Zero-cost views. Nghĩa là em không cần làm Edge Dropout hay tạo thêm view đồ thị phụ gây tốn bộ nhớ, mà tận dụng ngay biểu diễn tầng 0 (đặc trưng gốc) và biểu diễn tầng 1 (đã gom thông tin lân cận) có sẵn trong nhánh tích chập FSC để làm cặp đối chiếu. Em tính InfoNCE cho cả hai phía người dùng và sản phẩm.
 >
-> Khi thử nghiệm, ban đầu tụi em áp dụng trọng số lambda = 0.0001 theo các bài báo đồ thị đơn phương thức, thì thấy kết quả hầu như không thay đổi gì so với baseline. Tụi em nhận ra trong mô hình đa phương thức, độ lớn gradient của đặc trưng multimodal lớn hơn hẳn CF thuần, nên lambda đó quá nhỏ.
+> Khi thử nghiệm, ban đầu em áp dụng trọng số lambda = 0.0001 theo các bài báo đồ thị đơn phương thức, thì thấy kết quả hầu như không thay đổi gì so với baseline. Em nhận ra trong mô hình đa phương thức, độ lớn gradient của đặc trưng multimodal lớn hơn hẳn CF thuần, nên lambda đó quá nhỏ.
 >
-> Tụi em đã nâng lambda lên mức 0.01 cho phù hợp với bài toán đa phương thức. Và kết quả thực nghiệm đợt 2 đã cho thấy hiệu quả rất rõ rệt:
+> Em đã nâng lambda lên mức 0.01 cho phù hợp với bài toán đa phương thức. Và kết quả thực nghiệm đợt 2 đã cho thấy hiệu quả rất rõ rệt:
 > - Cả ba tập dữ liệu đều ghi nhận mức tăng trưởng dương.
 > - Đáng chú ý nhất là tập Electronics, tập lớn nhất với hơn 1.6 triệu tương tác: chỉ số NDCG@10 tăng vọt +5.31%, Recall@10 tăng +4.09%.
 > - Trên tập Sports, NDCG@10 cũng tăng +2.96% và Recall@10 tăng +2.42%.
 >
-> Tụi em nhận thấy hàm mất mát tương phản có tác dụng rất mạnh trong việc xếp hạng (ranking), kéo các sản phẩm thực sự liên quan lên các vị trí đầu tiên của danh sách, đó là lý do NDCG tăng mạnh hơn Recall.
+> Em nhận thấy hàm mất mát tương phản có tác dụng rất mạnh trong việc xếp hạng (ranking), kéo các sản phẩm thực sự liên quan lên các vị trí đầu tiên của danh sách, đó là lý do NDCG tăng mạnh hơn Recall.
 >
-> Tuy nhiên, khi soi kỹ vào số liệu của tập Sports, tụi em phát hiện một điểm thú vị: trong khi Recall@10 tăng tốt thì Recall@20 lại bị kẹt nhẹ ở mức 0.1110, thấp hơn baseline một chút xíu (0.1111). Phân tích ra thì đây là hiện tượng co cụm biểu diễn thường gặp trên các đồ thị có mật độ quá thưa. Và đây chính là động lực trực tiếp để tụi em nghiên cứu tiếp cải tiến 5 ạ."*
+> Tuy nhiên, khi soi kỹ vào số liệu của tập Sports, em phát hiện một điểm thú vị: trong khi Recall@10 tăng tốt thì Recall@20 lại bị kẹt nhẹ ở mức 0.1110, thấp hơn baseline một chút xíu (0.1111). Phân tích ra thì đây là hiện tượng co cụm biểu diễn thường gặp trên các đồ thị có mật độ quá thưa. Và đây chính là động lực trực tiếp để em nghiên cứu tiếp cải tiến 5 ạ."*
 
 ---
 
 ### Gợi ý trả lời nếu Cô hỏi:
 - **Câu hỏi:** *"Zero-cost views nghĩa là không tốn chi phí gì à? Cụ thể nó tiết kiệm tài nguyên thế nào?"*
-- **Trả lời:** *"Dạ thưa cô, thông thường trong Graph Contrastive Learning như SGL hay SimGCL, mô hình phải thực hiện Edge Dropout hoặc Node Dropout để tạo ra một ma trận kề ngẫu nhiên mới, rồi phải chạy thêm một lần Forward Pass qua GNN nữa. Việc đó làm tăng gấp đôi thời gian huấn luyện và tăng mạnh VRAM. Còn ở đây, STAIR trong quá trình Forward tự nhiên đã phải tính biểu diễn tầng 0 và tầng 1 rồi. Tụi em lấy trực tiếp hai tensor đó tính InfoNCE trong cùng một batch luôn, không sinh ma trận mới và không chạy lại GNN, nên thời gian huấn luyện mỗi epoch gần như không đổi so với baseline gốc ạ."*
+- **Trả lời:** *"Dạ thưa cô, thông thường trong Graph Contrastive Learning như SGL hay SimGCL, mô hình phải thực hiện Edge Dropout hoặc Node Dropout để tạo ra một ma trận kề ngẫu nhiên mới, rồi phải chạy thêm một lần Forward Pass qua GNN nữa. Việc đó làm tăng gấp đôi thời gian huấn luyện và tăng mạnh VRAM. Còn ở đây, STAIR trong quá trình Forward tự nhiên đã phải tính biểu diễn tầng 0 và tầng 1 rồi. Em lấy trực tiếp hai tensor đó tính InfoNCE trong cùng một batch luôn, không sinh ma trận mới và không chạy lại GNN, nên thời gian huấn luyện mỗi epoch gần như không đổi so với baseline gốc ạ."*
 
 ---
 
@@ -155,23 +197,23 @@
 ---
 
 ### Lời thoại trình bày với Cô:
-> *"Dạ thưa cô, để giải quyết hiện tượng co cụm biểu diễn của bản v4 trên tập dữ liệu thưa, tụi em đã thiết kế phiên bản hoàn thiện tiếp theo là STAIR-NE-NLGCL (bản v5).
+> *"Dạ thưa cô, để giải quyết hiện tượng co cụm biểu diễn của bản v4 trên tập dữ liệu thưa, em đã thiết kế phiên bản hoàn thiện tiếp theo là STAIR-NE-NLGCL (bản v5).
 >
-> Ở bản này, tụi em đưa thêm một lượng nhiễu Gauss ngẫu nhiên vào biểu diễn ẩn để kích thích không gian biểu diễn phân tán đều hơn, chống hiện tượng co cụm. Điểm mấu chốt là tụi em không bơm nhiễu đồng đều trên mọi chiều, vì làm thế sẽ làm hỏng đặc trưng đa phương thức giống như các bản v1-v3 trước đây.
+> Ở bản này, em đưa thêm một lượng nhiễu Gauss ngẫu nhiên vào biểu diễn ẩn để kích thích không gian biểu diễn phân tán đều hơn, chống hiện tượng co cụm. Điểm mấu chốt là em không bơm nhiễu đồng đều trên mọi chiều, vì làm thế sẽ làm hỏng đặc trưng đa phương thức giống như các bản v1-v3 trước đây.
 >
-> Tụi em đã thiết kế công thức bơm nhiễu điều hòa thích ứng theo phổ năng lượng của STAIR:
+> Em đã thiết kế công thức bơm nhiễu điều hòa thích ứng theo phổ năng lượng của STAIR:
 > - Ở các chiều đầu là tần số thấp (chứa hành vi cộng tác), lượng nhiễu được đưa vào lớn nhất để mở rộng phân bố không gian.
 > - Càng về các chiều sau là tần số cao (chứa đặc trưng ảnh và chữ sau SVD), lượng nhiễu triệt tiêu dần về 0 để bảo toàn tuyệt đối thông tin đa phương thức.
-> - Đồng thời, tụi em sử dụng phép nhân bảo toàn hướng vector sign(h) để đảm bảo vector nhiễu không làm lật dấu toạ độ của biểu diễn.
+> - Đồng thời, em sử dụng phép nhân bảo toàn hướng vector sign(h) để đảm bảo vector nhiễu không làm lật dấu toạ độ của biểu diễn.
 >
-> Kết quả chạy ở Pha 1 (chế độ bơm nhiễu phổ thuần) đã mang lại kết quả đúng như kỳ vọng của tụi em:
+> Kết quả chạy ở Pha 1 (chế độ bơm nhiễu phổ thuần) đã mang lại kết quả đúng như kỳ vọng của em:
 > - Trên tập siêu thưa Sports, mô hình đã phá vỡ được mức trần bão hòa của v4: Recall@20 đạt 0.1113, vượt cả baseline gốc và bản v4. Chỉ số NDCG@20 thiết lập đỉnh mới là 0.0508, tăng +1.60% so với baseline.
 > - Trên tập Baby, chỉ số NDCG@10 cũng được củng cố tăng +0.56%.
-> - Quan sát đường cong huấn luyện, tụi em thấy chỉ số Validation NDCG@20 tăng đều đặn xuyên suốt các epoch và đạt đỉnh bền bỉ ở epoch 365 mà không hề bị quá khớp (overfitting) sớm.
+> - Quan sát đường cong huấn luyện, em thấy chỉ số Validation NDCG@20 tăng đều đặn xuyên suốt các epoch và đạt đỉnh bền bỉ ở epoch 365 mà không hề bị quá khớp (overfitting) sớm.
 >
-> Bên cạnh đó, tụi em cũng chạy thử nghiệm Pha 2 với cơ chế Lọc mẫu âm giả (False Negative Filtering) bằng ngưỡng tương đồng cosine 0.85 trên tập Baby. Kết quả pha này hiệu năng lại bị giảm. Tụi em đã phân tích sâu và nhận ra một kết luận khoa học rất giá trị: Trong không gian SVD Whitening, các chiều đã được giải tương quan và phân bố đẳng hướng dạng hình cầu, nên tích vô hướng ở đây không còn mang ngữ nghĩa góc cosine thông thường như không gian đặc trưng thô ban đầu. Việc áp ngưỡng 0.85 đã vô tình lọc mất các mẫu âm hữu ích.
+> Bên cạnh đó, em cũng chạy thử nghiệm Pha 2 với cơ chế Lọc mẫu âm giả (False Negative Filtering) bằng ngưỡng tương đồng cosine 0.85 trên tập Baby. Kết quả pha này hiệu năng lại bị giảm. Em đã phân tích sâu và nhận ra một kết luận khoa học rất giá trị: Trong không gian SVD Whitening, các chiều đã được giải tương quan và phân bố đẳng hướng dạng hình cầu, nên tích vô hướng ở đây không còn mang ngữ nghĩa góc cosine thông thường như không gian đặc trưng thô ban đầu. Việc áp ngưỡng 0.85 đã vô tình lọc mất các mẫu âm hữu ích.
 >
-> Nhờ đó, tụi em kết luận rằng phương án Bơm nhiễu thích ứng phổ của Pha 1 chính là cấu hình tối ưu và vững chắc nhất cho mô hình v5 ạ."*
+> Nhờ đó, em kết luận rằng phương án Bơm nhiễu thích ứng phổ của Pha 1 chính là cấu hình tối ưu và vững chắc nhất cho mô hình v5 ạ."*
 
 ---
 
@@ -200,25 +242,25 @@
 ### Lời thoại trình bày với Cô:
 > *"Dạ thưa cô, một tiêu chí quan trọng mà nhóm luôn bám sát từ đầu đề tài là: mô hình cải tiến phải giữ được ưu điểm cốt lõi của STAIR gốc, đó là tính gọn nhẹ và khả năng huấn luyện nhanh trên phần cứng thông thường.
 >
-> Tụi em đã dùng thư viện pynvml để đo chính xác mức tiêu thụ bộ nhớ đỉnh VRAM trên GPU xuyên suốt quá trình huấn luyện:
+> Em đã dùng thư viện pynvml để đo chính xác mức tiêu thụ bộ nhớ đỉnh VRAM trên GPU xuyên suốt quá trình huấn luyện:
 > - Trên cả hai tập Baby và Sports, phiên bản v5 hoàn chỉnh chỉ tiêu tốn lần lượt 797 MB và 995 MB VRAM, tức là chỉ tăng khoảng 50 đến 70 MB so với baseline thô, và duy trì an toàn dưới ngưỡng 1 GB.
 > - Ngay cả trên tập lớn nhất là Electronics với 1.6 triệu tương tác, VRAM chỉ tốn 4.85 GB, hoàn toàn nằm trong giới hạn của các GPU phổ thông như GTX 1660 hay RTX 3060.
 > - Thời gian huấn luyện mỗi epoch cũng không phát sinh thêm đáng kể vì cơ chế Zero-cost views và bơm nhiễu đều là các phép toán vector trực tiếp trên PyTorch.
 >
 > Tổng kết lại chuỗi nghiên cứu qua các phiên bản:
-> - Các phiên bản đầu v1, v2a, v3 giúp tụi em hiểu sâu sắc về bản chất bảo toàn phổ năng lượng và tính trực giao của SVD Whitening.
+> - Các phiên bản đầu v1, v2a, v3 giúp em hiểu sâu sắc về bản chất bảo toàn phổ năng lượng và tính trực giao của SVD Whitening.
 > - Phiên bản v4 chứng minh hiệu quả vượt bậc của Contrastive Learning đa tầng ở không gian ẩn, mang lại mức tăng trưởng mạnh mẽ trên tập dữ liệu lớn.
 > - Và phiên bản v5 hoàn thiện trọn vẹn bài toán khi giải tỏa được hiện tượng co cụm trên tập dữ liệu thưa nhờ cơ chế bơm nhiễu thích ứng phổ.
 >
-> Do đó, tụi em xin phép cô lấy mô hình STAIR-NE-NLGCL v5 làm mô hình đề xuất chính thức của nhánh STAIR trong đề tài tốt nghiệp. Tụi em đã hoàn thành toàn bộ phần văn bản báo cáo chi tiết và bảng biểu trong Chương 3 của cuốn luận văn ạ.
+> Do đó, em xin phép cô lấy mô hình STAIR-NE-NLGCL v5 làm mô hình đề xuất chính thức của nhánh STAIR trong đề tài tốt nghiệp. Em đã hoàn thành toàn bộ phần văn bản báo cáo chi tiết và bảng biểu trong Chương 3 của cuốn luận văn ạ.
 >
-> Tụi em rất mong nhận được những nhận xét và góp ý thêm từ cô để hoàn thiện đề tài tốt hơn nữa ạ!"*
+> Em rất mong nhận được những nhận xét và góp ý thêm từ cô để hoàn thiện đề tài tốt hơn nữa ạ!"*
 
 ---
 
 ### Gợi ý các câu hỏi mở rộng Cô có thể hỏi & Hướng trả lời:
 1. **Câu hỏi:** *"Nếu so sánh giữa nhánh cải tiến của STAIR và nhánh của REARM trong đề tài thì STAIR có ưu thế gì vượt trội?"*
-   - **Trả lời:** *"Dạ thưa cô, ưu thế lớn nhất của STAIR là tính tinh gọn (lightweight) và tốc độ hội tụ cực nhanh. Nhờ SVD Whitening tĩnh và cấu trúc Stepwise Convolution, STAIR giải quyết triệt để bài toán tài nguyên. Các cải tiến v4 và v5 của tụi em kế thừa trọn vẹn ưu điểm này: vừa nâng cao độ chính xác bằng tự giám sát, vừa không làm phình to mô hình hay tốn thêm VRAM, rất phù hợp cho các bài toán thực tế có tài nguyên tính toán giới hạn ạ."*
+   - **Trả lời:** *"Dạ thưa cô, ưu thế lớn nhất của STAIR là tính tinh gọn (lightweight) và tốc độ hội tụ cực nhanh. Nhờ SVD Whitening tĩnh và cấu trúc Stepwise Convolution, STAIR giải quyết triệt để bài toán tài nguyên. Các cải tiến v4 và v5 của em kế thừa trọn vẹn ưu điểm này: vừa nâng cao độ chính xác bằng tự giám sát, vừa không làm phình to mô hình hay tốn thêm VRAM, rất phù hợp cho các bài toán thực tế có tài nguyên tính toán giới hạn ạ."*
 
 2. **Câu hỏi:** *"Kế hoạch tiếp theo của nhóm sau buổi báo cáo này là gì?"*
-   - **Trả lời:** *"Dạ thưa cô, kế hoạch của tụi em gồm 2 việc chính: Thứ nhất là rà soát lại toàn bộ định dạng LaTeX, tài liệu trích dẫn và bảng biểu của Chương 3 theo góp ý của cô hôm nay. Thứ hai là tụi em sẽ chuyển sang đồng bộ kết quả thực nghiệm của nhánh mô hình thứ hai (REARM/NEGCL) để viết tiếp Chương 4 và chuẩn bị cho đợt báo cáo nghiệm thu tổng thể ạ."*
+   - **Trả lời:** *"Dạ thưa cô, kế hoạch của em gồm 2 việc chính: Thứ nhất là rà soát lại toàn bộ định dạng LaTeX, tài liệu trích dẫn và bảng biểu của Chương 3 theo góp ý của cô hôm nay. Thứ hai là em sẽ chuyển sang đồng bộ kết quả thực nghiệm của nhánh mô hình thứ hai (REARM/NEGCL) để viết tiếp Chương 4 và chuẩn bị cho đợt báo cáo nghiệm thu tổng thể ạ."*
