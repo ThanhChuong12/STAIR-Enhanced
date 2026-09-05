@@ -712,13 +712,13 @@ Bài báo NLGCL gốc nghiên cứu trên mô hình LightGCN với dữ liệu I
     \hline
     \endlastfoot
 
-    Baby & Recall@10 & 0.0674 & 0.0660 & $-2.08\%$ \\
+    Baby & Recall@10 & \textbf{0.0674} & 0.0660 & $-2.08\%$ \\
     \midrule
-    {(best epoch 175/500)} & Recall@20 & 0.1042 & 0.1020 & $-2.11\%$ \\
+    {(best epoch 175/500)} & Recall@20 & \textbf{0.1042} & 0.1020 & $-2.11\%$ \\
     \midrule
-    & NDCG@10   & 0.0359 & 0.0350 & $-2.51\%$ \\
+    & NDCG@10   & \textbf{0.0359} & 0.0350 & $-2.51\%$ \\
     \midrule
-    & NDCG@20   & 0.0454 & 0.0443 & $-2.42\%$ \\
+    & NDCG@20   & \textbf{0.0454} & 0.0443 & $-2.42\%$ \\
     \hline
     Sports & Recall@10 & 0.0743 & 0.0743 & $0.00\%$ \\
     \midrule
@@ -735,7 +735,7 @@ Số liệu cho thấy trên tập Sports, mô hình cho kết quả trùng kh�
 
 Hiện tượng trên được giải thích bởi sự khác biệt về bản chất dữ liệu giữa mô hình collaborative filtering thuần và mô hình gợi ý đa phương thức. Trong LightGCN, vector embedding khởi tạo ngẫu nhiên từ phân phối chuẩn với biên độ nhỏ, nên hàm mất mát InfoNCE có độ lớn tương đương với BPR loss và trọng số $\lambda = 10^{-5}$ là đủ để tạo ra lực điều hòa nhẹ. Ngược lại, trong STAIR, đặc trưng mặt hàng được khởi tạo từ biểu diễn hình ảnh và văn bản qua SVD whitening với năng lượng được scale theo $\sqrt{N_i/D}$, mang biên độ và độ phong phú thông tin lớn hơn nhiều. Khi nhân với $\lambda = 10^{-5}$, giá trị loss đối chiếu chỉ dao động quanh mức $10^{-5}$ đến $10^{-4}$, khiến gradient của InfoNCE bị gradient của BPR loss lấn át hoàn toàn. Do đó, mô hình trên Sports hoạt động gần như một bản sao của baseline mà không nhận được tín hiệu cải thiện nào từ contrastive learning.
 
-\subsubsection{Kết quả thực nghiệm đợt 2 với thang đo siêu tham số đa phương thức và bước đột phá hiệu năng}
+\subsubsection{Kết quả thực nghiệm đợt 2 với thang đo siêu tham số đa phương thức}
 
 Dựa trên nghiên cứu NLGCL-Plus khi áp dụng contrastive learning trên các mô hình gợi ý đa phương thức như MMRec và FREEDOM, thang đo trọng số phù hợp được xác định là $\{10^{-3}, 10^{-2}, 10^{-1}\}$, trong đó $\lambda = 0.01$ là giá trị tối ưu được báo cáo trên hầu hết các tập dữ liệu. Nhóm nghiên cứu tiến hành nâng trọng số lên $\lambda = 0.01$ và kiểm thử trên toàn bộ ba tập dữ liệu. Kết quả chi tiết được tổng hợp trong Bảng~\ref{tab:stair_v4_round2}.
 
@@ -767,17 +767,17 @@ Dựa trên nghiên cứu NLGCL-Plus khi áp dụng contrastive learning trên c
     \hline
     \endlastfoot
 
-    Baby & Recall@10 & 0.0674 & 0.0666 & $-1.19\%$ \\
+    Baby & Recall@10 & \textbf{0.0674} & 0.0666 & $-1.19\%$ \\
     \midrule
-    {(best epoch 365/500)} & Recall@20 & 0.1042 & 0.1028 & $-1.34\%$ \\
+    {(best epoch 365/500)} & Recall@20 & \textbf{0.1042} & 0.1028 & $-1.34\%$ \\
     \midrule
     & NDCG@10   & 0.0359 & \textbf{0.0360} & $\mathbf{+0.28\%}$ \\
     \midrule
-    & NDCG@20   & 0.0454 & 0.0453 & $-0.22\%$ \\
+    & NDCG@20   & \textbf{0.0454} & 0.0453 & $-0.22\%$ \\
     \hline
     Sports & Recall@10 & 0.0743 & \textbf{0.0761} & $\mathbf{+2.42\%}$ \\
     \midrule
-    {(best epoch 500/500)} & Recall@20 & 0.1111 & 0.1110 & $-0.09\%$ \\
+    {(best epoch 500/500)} & Recall@20 & \textbf{0.1111} & 0.1110 & $-0.09\%$ \\
     \midrule
     & NDCG@10   & 0.0405 & \textbf{0.0417} & $\mathbf{+2.96\%}$ \\
     \midrule
@@ -804,7 +804,7 @@ Nguyên nhân nằm ở cơ chế in-batch negatives của hàm InfoNCE. Với t
 
 Thứ hai, mức tăng trưởng của NDCG luôn cao hơn Recall trên cả ba tập dữ liệu. Cụ thể, trên Electronics, NDCG@10 tăng $+5.31\%$ trong khi Recall@10 tăng $+4.09\%$; trên Sports, NDCG@10 tăng $+2.96\%$ so với Recall@10 tăng $+2.42\%$; trên Baby, NDCG@10 tăng $+0.28\%$ dù Recall@10 giảm $-1.19\%$. Điều này cho thấy InfoNCE có tác dụng đặc biệt mạnh trong việc điều chỉnh thứ hạng, kéo các mặt hàng liên quan lên các vị trí hàng đầu của danh sách gợi ý.
 
-\subsubsection{Thực nghiệm tinh chỉnh trên tập Baby và hiện tượng vùng trũng}
+\subsubsection{Thực nghiệm tinh chỉnh trên tập Baby}
 
 Mặc dù $\lambda = 0.01$ mang lại kết quả rất tốt trên Sports và Electronics, trên tập Baby hai chỉ số Recall vẫn giảm nhẹ khoảng $1.2\%$. Nhóm nghiên cứu đặt giả thuyết rằng do Baby là tập dữ liệu có quy mô nhỏ và độ thưa thớt cao, có thể mức trọng số $\lambda = 0.01$ hơi mạnh và một giá trị trung gian như $\lambda = 10^{-3}$ sẽ phù hợp hơn. Bảng~\ref{tab:stair_v4_baby_tuning} so sánh hiệu năng của ba mức trọng số trên tập Baby.
 
@@ -837,7 +837,7 @@ Mặc dù $\lambda = 0.01$ mang lại kết quả rất tốt trên Sports và E
     \hline
     \endlastfoot
 
-    STAIR Baseline & 0.0674 & 0.1042 & 0.0359 & 0.0454 & 455 \\
+    STAIR Baseline & \textbf{0.0674} & \textbf{0.1042} & 0.0359 & \textbf{0.0454} & 455 \\
     \midrule
     $\lambda = 10^{-5}$ & 0.0660 & 0.1020 & 0.0350 & 0.0443 & 175 \\
     \midrule
@@ -895,23 +895,23 @@ Bảng~\ref{tab:stair_v4_g2_comparison} trình bày kết quả so sánh trực 
     \hline
     \endlastfoot
 
-    Baby & Recall@10 & 0.0674 & 0.0666 & 0.0666 & $0.00\%$ \\
+    Baby & Recall@10 & \textbf{0.0674} & 0.0666 & 0.0666 & $0.00\%$ \\
     \midrule
-    {(G=1: ep 365} & Recall@20 & 0.1042 & 0.1028 & 0.1023 & $-0.49\%$ \\
+    {(G=1: ep 365} & Recall@20 & \textbf{0.1042} & 0.1028 & 0.1023 & $-0.49\%$ \\
     \midrule
-    {G=2: ep 350)} & NDCG@10   & 0.0359 & \textbf{0.0360} & \textbf{0.0362} & $+0.56\%$ \\
+    {G=2: ep 350)} & NDCG@10   & 0.0359 & 0.0360 & \textbf{0.0362} & $+0.56\%$ \\
     \midrule
-    & NDCG@20   & 0.0454 & 0.0453 & 0.0454 & $+0.22\%$ \\
+    & NDCG@20   & \textbf{0.0454} & 0.0453 & \textbf{0.0454} & $+0.22\%$ \\
     \midrule
     & \textbf{Trung bình} & — & — & — & $\mathbf{+0.07\%}$ \\
     \hline
-    Sports & Recall@10 & 0.0743 & \textbf{0.0761} & \textbf{0.0763} & $+0.26\%$ \\
+    Sports & Recall@10 & 0.0743 & 0.0761 & \textbf{0.0763} & $+0.26\%$ \\
     \midrule
     {(G=1: ep 500} & Recall@20 & 0.1111 & 0.1110 & \textbf{0.1121} & $+0.99\%$ \\
     \midrule
-    {G=2: ep 500)} & NDCG@10   & 0.0405 & \textbf{0.0417} & \textbf{0.0414} & $-0.72\%$ \\
+    {G=2: ep 500)} & NDCG@10   & 0.0405 & \textbf{0.0417} & 0.0414 & $-0.72\%$ \\
     \midrule
-    & NDCG@20   & 0.0500 & \textbf{0.0507} & \textbf{0.0506} & $-0.20\%$ \\
+    & NDCG@20   & 0.0500 & \textbf{0.0507} & 0.0506 & $-0.20\%$ \\
     \midrule
     & \textbf{Trung bình} & — & — & — & $\mathbf{+0.08\%}$ \\
     \hline
@@ -1005,11 +1005,11 @@ Bảng~\ref{tab:stair_all_versions_comparison} tổng hợp kết quả của c�
     \hline
     \endlastfoot
 
-    Baby & Recall@20 & 0.1042 & 0.0948 & 0.0770 & 0.0769 & 0.1028 \\
+    Baby & Recall@20 & \textbf{0.1042} & 0.0948 & 0.0770 & 0.0769 & 0.1028 \\
     \midrule
-    & NDCG@20   & 0.0454 & 0.0412 & 0.0343 & 0.0330 & 0.0453 \\
+    & NDCG@20   & \textbf{0.0454} & 0.0412 & 0.0343 & 0.0330 & 0.0453 \\
     \hline
-    Sports & Recall@20 & 0.1111 & 0.1040 & 0.0509 & 0.0898 & 0.1110 \\
+    Sports & Recall@20 & \textbf{0.1111} & 0.1040 & 0.0509 & 0.0898 & 0.1110 \\
     \midrule
     & NDCG@20   & 0.0500 & 0.0466 & 0.0225 & 0.0402 & \textbf{0.0507} \\
     \hline
@@ -1283,19 +1283,19 @@ Bảng~\ref{tab:stair_v5_phase1_results} trình bày kết quả thực nghiệm
     \hline
     \endlastfoot
 
-    Baby & Recall@10 & 0.0674 & 0.0666 & \textbf{0.0666} & $-1.19\%$ & $0.00\%$ \\
+    Baby & Recall@10 & \textbf{0.0674} & 0.0666 & 0.0666 & $-1.19\%$ & $0.00\%$ \\
     \midrule
-    {(19k users)} & Recall@20 & 0.1042 & 0.1037 & \textbf{0.1022} & $-1.92\%$ & $-1.45\%$ \\
+    {(19k users)} & Recall@20 & \textbf{0.1042} & 0.1037 & 0.1022 & $-1.92\%$ & $-1.45\%$ \\
     \midrule
     & NDCG@10   & 0.0359 & 0.0360 & \textbf{0.0361} & $\mathbf{+0.56\%}$ & $\mathbf{+0.28\%}$ \\
     \midrule
-    & NDCG@20   & 0.0454 & 0.0453 & \textbf{0.0452} & $-0.44\%$ & $-0.22\%$ \\
+    & NDCG@20   & \textbf{0.0454} & 0.0453 & 0.0452 & $-0.44\%$ & $-0.22\%$ \\
     \hline
-    Sports & Recall@10 & 0.0743 & 0.0761 & \textbf{0.0753} & $\mathbf{+1.35\%}$ & $-1.05\%$ \\
+    Sports & Recall@10 & 0.0743 & \textbf{0.0761} & 0.0753 & $\mathbf{+1.35\%}$ & $-1.05\%$ \\
     \midrule
     {(35k users)} & Recall@20 & 0.1111 & 0.1110 & \textbf{0.1113} & $\mathbf{+0.18\%}$ & $\mathbf{+0.27\%}$ \\
     \midrule
-    & NDCG@10   & 0.0405 & 0.0417 & \textbf{0.0415} & $\mathbf{+2.47\%}$ & $-0.48\%$ \\
+    & NDCG@10   & 0.0405 & \textbf{0.0417} & 0.0415 & $\mathbf{+2.47\%}$ & $-0.48\%$ \\
     \midrule
     & NDCG@20   & 0.0500 & 0.0507 & \textbf{0.0508} & $\mathbf{+1.60\%}$ & $\mathbf{+0.20\%}$ \\
     \hline
@@ -1427,9 +1427,9 @@ Bảng~\ref{tab:stair_all_six_versions_comparison} tổng hợp kết quả đ�
     \hline
     \endlastfoot
 
-    Baby & Recall@20 & 0.1042 & 0.0948 & 0.0770 & 0.0769 & 0.1028 & \textbf{0.1022} \\
+    Baby & Recall@20 & \textbf{0.1042} & 0.0948 & 0.0770 & 0.0769 & 0.1028 & 0.1022 \\
     \midrule
-    & NDCG@20   & 0.0454 & 0.0412 & 0.0343 & 0.0330 & 0.0453 & \textbf{0.0452} \\
+    & NDCG@20   & \textbf{0.0454} & 0.0412 & 0.0343 & 0.0330 & 0.0453 & 0.0452 \\
     \hline
     Sports & Recall@20 & 0.1111 & 0.1040 & 0.0509 & 0.0898 & 0.1110 & \textbf{0.1113} \\
     \midrule
