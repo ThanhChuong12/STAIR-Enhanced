@@ -667,7 +667,7 @@ với $G$ là số lượng khoảng cách tầng đối chiếu, $\alpha$ là h
 \end{minipage}
 \end{figure}
 
-\subsubsection{Thiết lập thực nghiệm và phương pháp luận cách ly biến số}
+\subsubsection{Thiết lập thực nghiệm và phương pháp cách ly biến số}
 
 Để đảm bảo kết quả đánh giá phản ánh chính xác hiệu quả của module đề xuất, toàn bộ quá trình thực nghiệm tuân thủ nguyên tắc cách ly biến số. Mọi siêu tham số của STAIR baseline đều được kế thừa nguyên vẹn từ cấu hình gốc, bao gồm bộ tối ưu AdamWSEvo, learning rate $10^{-3}$, weight decay $0.3$, kích thước không gian nhúng $D=64$, số tầng tích chập $L=3$, và hệ số suy giảm phổ $\gamma = 0.1$ cho Baby, Sports và $\gamma = 0.2$ cho Electronics.
 
@@ -1285,7 +1285,7 @@ Bảng~\ref{tab:stair_v5_phase1_results} trình bày kết quả thực nghiệm
 
     Baby & Recall@10 & 0.0674 & 0.0666 & \textbf{0.0666} & $-1.19\%$ & $0.00\%$ \\
     \midrule
-    (19k users) & Recall@20 & 0.1042 & 0.1037 & \textbf{0.1022} & $-1.92\%$ & $-1.45\%$ \\
+    {(19k users)} & Recall@20 & 0.1042 & 0.1037 & \textbf{0.1022} & $-1.92\%$ & $-1.45\%$ \\
     \midrule
     & NDCG@10   & 0.0359 & 0.0360 & \textbf{0.0361} & $\mathbf{+0.56\%}$ & $\mathbf{+0.28\%}$ \\
     \midrule
@@ -1293,7 +1293,7 @@ Bảng~\ref{tab:stair_v5_phase1_results} trình bày kết quả thực nghiệm
     \hline
     Sports & Recall@10 & 0.0743 & 0.0761 & \textbf{0.0753} & $\mathbf{+1.35\%}$ & $-1.05\%$ \\
     \midrule
-    (35k users) & Recall@20 & 0.1111 & 0.1110 & \textbf{0.1113} & $\mathbf{+0.18\%}$ & $\mathbf{+0.27\%}$ \\
+    {(35k users)} & Recall@20 & 0.1111 & 0.1110 & \textbf{0.1113} & $\mathbf{+0.18\%}$ & $\mathbf{+0.27\%}$ \\
     \midrule
     & NDCG@10   & 0.0405 & 0.0417 & \textbf{0.0415} & $\mathbf{+2.47\%}$ & $-0.48\%$ \\
     \midrule
