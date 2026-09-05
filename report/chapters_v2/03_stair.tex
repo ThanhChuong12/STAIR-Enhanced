@@ -1394,7 +1394,7 @@ Số liệu đo lường xác nhận tính gọn nhẹ vượt trội của ki�
 
 \subsubsection{Bảng tổng hợp đối soát sáu phiên bản và kết luận}
 
-Bảng~\ref{tab:stair_all_six_versions_comparison} tổng hợp kết quả đối soát toàn diện qua sáu phiên bản thực nghiệm trên hai chỉ số chính Recall@20 và NDCG@20.
+Bảng~\ref{tab:stair_all_six_versions_comparison} tổng hợp kết quả đối soát toàn diện qua sáu phiên bản thực nghiệm trên bốn chỉ số đánh giá chính: Recall@10, Recall@20, NDCG@10 và NDCG@20.
 
 \renewcommand{\arraystretch}{1.15}
 \begingroup
@@ -1427,15 +1427,27 @@ Bảng~\ref{tab:stair_all_six_versions_comparison} tổng hợp kết quả đ�
     \hline
     \endlastfoot
 
-    Baby & Recall@20 & \textbf{0.1042} & 0.0948 & 0.0770 & 0.0769 & 0.1028 & 0.1022 \\
+    Baby & Recall@10 & \textbf{0.0674} & 0.0617 & 0.0498 & 0.0473 & 0.0666 & 0.0666 \\
+    \midrule
+    & Recall@20 & \textbf{0.1042} & 0.0948 & 0.0770 & 0.0769 & 0.1028 & 0.1022 \\
+    \midrule
+    & NDCG@10   & 0.0359 & 0.0336 & 0.0274 & 0.0254 & 0.0360 & \textbf{0.0361} \\
     \midrule
     & NDCG@20   & \textbf{0.0454} & 0.0412 & 0.0343 & 0.0330 & 0.0453 & 0.0452 \\
     \hline
-    Sports & Recall@20 & 0.1111 & 0.1040 & 0.0509 & 0.0898 & 0.1110 & \textbf{0.1113} \\
+    Sports & Recall@10 & 0.0743 & 0.0687 & 0.0336 & 0.0601 & \textbf{0.0761} & 0.0753 \\
+    \midrule
+    & Recall@20 & 0.1111 & 0.1040 & 0.0509 & 0.0898 & 0.1110 & \textbf{0.1113} \\
+    \midrule
+    & NDCG@10   & 0.0405 & 0.0372 & 0.0180 & 0.0326 & \textbf{0.0417} & 0.0415 \\
     \midrule
     & NDCG@20   & 0.0500 & 0.0466 & 0.0225 & 0.0402 & 0.0507 & \textbf{0.0508} \\
     \hline
-    Electronics & Recall@20 & 0.0663 & 0.0601 & 0.0292 & N/A & \textbf{0.0676} & — \\
+    Electronics & Recall@10 & 0.0440 & 0.0403 & 0.0196 & N/A & \textbf{0.0458} & — \\
+    \midrule
+    & Recall@20 & 0.0663 & 0.0601 & 0.0292 & N/A & \textbf{0.0676} & — \\
+    \midrule
+    & NDCG@10   & 0.0245 & 0.0226 & 0.0106 & N/A & \textbf{0.0258} & — \\
     \midrule
     & NDCG@20   & 0.0302 & 0.0274 & 0.0131 & N/A & \textbf{0.0314} & — \\
     \hline
