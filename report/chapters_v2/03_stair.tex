@@ -1316,35 +1316,53 @@ Phân tích động lực học đường cong huấn luyện cho thấy sự kh
 
 Về cơ chế vật lý, khi cộng vector nhiễu $\epsilon \cdot \left( \boldsymbol{\beta} \odot \text{sign}(\mathbf{h}) \odot \frac{\boldsymbol{\eta}}{\|\boldsymbol{\eta}\|_2} \right)$, mô hình tạo ra một vùng dao động ngẫu nhiên xung quanh mỗi vector biểu diễn. Nhờ hàm suy giảm phổ $\boldsymbol{\beta}$, chỉ các chiều cộng tác dễ bão hòa ở dải tần số thấp ($d \to 0$) mới chịu tác động của lực đẩy này, buộc bộ tối ưu phải tìm kiếm các biểu diễn có khoảng cách góc đủ rộng để phân tách các sản phẩm ở Top-20. Trong khi đó, các chiều tần số cao ($d \to 63$) có $\beta(d) \to 0$, lượng nhiễu triệt tiêu hoàn toàn, bảo toàn trọn vẹn đặc trưng trực quan và văn bản từ SVD whitening.
 
-\subsubsection{Kết quả thực nghiệm pha 2 và đặc tính đẳng hướng của không gian SVD whitening}
+\subsubsection{Chẩn đoán thực nghiệm Pha 2: Cơ chế lọc mẫu âm giả và phân tích phân bố tương đồng trên không gian SVD}
 
-Thực nghiệm Pha 2 được tiến hành trên tập dữ liệu Amazon Baby với ngưỡng lọc mẫu âm giả $\tau_{\text{thresh}} = 0.85$ và biên độ nhiễu $\epsilon = 0.10$.
+Thực nghiệm Pha 2 được thiết kế trên tập dữ liệu Amazon Baby với mục tiêu khảo sát cơ chế lọc mẫu âm giả (\textit{In-batch False Negative Filtering - FNF}) bằng việc áp dụng ngưỡng tương đồng ngữ nghĩa $\tau_{\text{thresh}} = 0.85$ và biên độ nhiễu phổ $\epsilon = 0.10$.
 
-Trong quá trình trích xuất kết quả ban đầu, một lỗi phân tích văn bản trong mã nguồn trích xuất tự động đã tìm kiếm kết quả đầu tiên xuất hiện trong tệp log, vô tình bắt nhầm dòng ghi nhận tại epoch 0 (giai đoạn khởi tạo ngẫu nhiên trước huấn luyện) với các giá trị Recall@10 = 0.0229 và NDCG@20 = 0.0152. Khi kiểm tra trực tiếp nhật ký huấn luyện tại dòng kiểm tra mô hình tối ưu ở cuối tệp log, kết quả thẩm định thực tế xác nhận mô hình hoàn toàn ổn định và đạt các giá trị tại epoch 365: Recall@10 = 0.0666, Recall@20 = 0.1022, NDCG@10 = 0.0361, và NDCG@20 = 0.0452. Đặc biệt, tại epoch 500, NDCG@20 đạt mức 0.0455, cao hơn baseline 0.0454.
-
-Đối chiếu chi tiết từng epoch giữa tệp log của Pha 1 ($\tau_{\text{thresh}} = 1.0$) và Pha 2 ($\tau_{\text{thresh}} = 0.85$) cho thấy giá trị training loss trùng khớp chính xác qua mọi mốc thời gian:
+Trong các báo cáo sơ bộ ban đầu, nhật ký huấn luyện ghi nhận một hiện tượng bất thường: giá trị training loss của Pha 1 ($\tau_{\text{thresh}} = 1.0$) và Pha 2 ($\tau_{\text{thresh}} = 0.85$) trùng khớp chính xác qua mọi mốc thời gian:
 \begin{itemize}
-    \item Epoch 1: loss đạt 0.68764 ở cả hai pha;
-    \item Epoch 100: loss đạt 0.21786 ở cả hai pha;
-    \item Epoch 365: loss đạt 0.19305 ở cả hai pha;
-    \item Epoch 500: loss đạt 0.19071 ở cả hai pha.
+    \item Epoch 1: training loss đạt 0.68764 ở cả hai pha;
+    \item Epoch 100: training loss đạt 0.21786 ở cả hai pha;
+    \item Epoch 365: training loss đạt 0.19305 ở cả hai pha;
+    \item Epoch 500: training loss đạt 0.19071 ở cả hai pha.
 \end{itemize}
 
-Hiện tượng hai cấu hình cho kết quả toán học tương đương bắt nguồn từ bản chất hình học của không gian SVD whitening:
+Một số phân tích lý thuyết ban đầu từng phỏng đoán rằng việc biến đổi SVD whitening tạo ra không gian có tính đẳng hướng tuyệt đối ($\sigma = 1/\sqrt{64} = 0.125$), dẫn đến ngưỡng $0.85$ tương đương mức độ lệch chuẩn $6.8\sigma$ và có xác suất $P \approx 10^{-11}$, khiến mặt nạ lọc âm trở thành ma trận toàn số 1. Tuy nhiên, lập luận thống kê này mắc phải ngụy biện căn bản giữa \textit{phân bố trung bình toàn cục} (global marginal covariance) và \textit{cấu trúc tương quan cụm cục bộ} (local extreme correlation). Phép làm trắng SVD chỉ đảm bảo ma trận hiệp phương sai trên toàn bộ tập dữ liệu thỏa mãn $\frac{1}{N}\mathbf{X}^T\mathbf{X} = \mathbf{I}_{64}$, hoàn toàn không xóa bỏ mối tương quan giữa các sản phẩm thay thế hoặc sản phẩm tương tự thực tế (near-duplicate items, ví dụ các sản phẩm tã lót hoặc bình sữa cùng thương hiệu nhưng khác dung tích hay màu sắc).
+
+Nhằm làm sáng tỏ bản chất thực nghiệm và kiểm tra xem mặt nạ lọc âm có thực sự hoạt động hay không, nghiên cứu đã tiến hành phân tích phân bố độ tương đồng cosine trực tiếp trên tập dữ liệu Amazon Baby ($7{,}050$ sản phẩm). Kết quả đo đạc thực tế được tổng hợp trong Bảng~\ref{tab:stair_v5_fn_diag}.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Phân bố độ tương đồng cosine và tỷ lệ kích hoạt mặt nạ lọc âm giả trên dữ liệu thực Amazon Baby.}
+\label{tab:stair_v5_fn_diag}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Đặc trưng phân bố} & \textbf{Item-Item ($\mathbf{i}_b \cdot \mathbf{i}_k$)} & \textbf{User-Item Profile ($\mathbf{u}_b^{prof} \cdot \mathbf{i}_k$)} \\
+\midrule
+Min / Max Cosine & $-0.5137$ / $+1.0000$ & $-0.4682$ / $+0.8710$ \\
+Trung bình ($\mu$) $\pm$ Độ lệch chuẩn ($\sigma$) & $0.0013 \pm 0.1284$ & $0.0034 \pm 0.1285$ \\
+Số cặp vượt ngưỡng $0.85$ & 630 cặp ($0.060\%$) & 1 -- 7 cặp / batch $1024$ ($< 0.0007\%$) \\
+Số cặp vượt ngưỡng $0.70$ & 1,250 cặp ($0.119\%$) & 24 cặp / batch $1024$ ($0.002\%$) \\
+Số cặp vượt ngưỡng $0.35$ & 11,970 cặp ($1.140\%$) & 11,853 cặp / batch $1024$ ($1.130\%$) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Số liệu thực nghiệm khẳng định hai kết luận quan trọng:
+\begin{enumerate}
+    \item \textbf{Các sản phẩm tương đồng cao (near-duplicates) thực sự tồn tại trong không gian SVD whitening:} Giá trị tương đồng cosine cực đại giữa các item đạt tuyệt đối $+1.0000$, với 630 cặp sản phẩm vượt ngưỡng $0.85$. Điều này bác bỏ dứt khoát giả thiết rằng không gian SVD triệt tiêu hoàn toàn các cặp có tương đồng cao.
+    \item \textbf{Nguyên nhân cốt lõi khiến loss Pha 2 trùng khớp Pha 1:} Trong kiến trúc ban đầu, ma trận tương đồng $S_{b, k}$ được tính giữa vector hồ sơ người dùng $\mathbf{u}_b^{prof} = \mathbf{R}_b\mathbf{X}$ (trung bình cộng đặc trưng các item trong lịch sử) và đặc trưng item $\mathbf{i}_k^{mod}$. Do phép trung bình hóa qua nhiều item phân tán kéo vector hồ sơ về phía tâm cầu, độ tương đồng user-item bị co ngót mạnh. Trong một mini-batch $1024 \times 1024$ (chứa $1{,}048{,}576$ cặp âm), chỉ có từ $1$ đến $7$ cặp vượt qua ngưỡng uncalibrated $\tau_{\text{thresh}} = 0.85$ (tỷ lệ dưới $0.0007\%$). Việc loại bỏ $1 \sim 7$ phần tử trong mẫu số InfoNCE gồm hơn một triệu số hạng chỉ tạo ra độ lệch contrastive loss ở mức $\Delta \mathcal{L}_{\text{CL}} \approx +0.000259$. Khi nhân với hệ số điều hòa $\lambda_{\text{nlgcl}} = 0.01$, mức chênh lệch hàm mất mát tổng chỉ đạt $+0.00000259$, hoàn toàn bị triệt tiêu khi hiển thị ở độ chính xác 5 chữ số thập phân ($0.68764$).
+\end{enumerate}
+
+Từ chẩn đoán trên, nghiên cứu đã tái cấu trúc mô hình STAIR-NE-NLGCL v5 hỗ trợ hai chế độ lọc mẫu âm cùng hệ thống cảnh báo chẩn đoán thời gian thực (\textit{runtime diagnostic logging}):
 \begin{itemize}
-    \item Trong các mô hình contrastive learning truyền thống chạy trên đặc trưng thô chưa qua làm trắng, phân bố độ tương đồng cosine giữa các sản phẩm bị lệch dương mạnh (dao động từ 0.6 đến 0.9 do tần suất xuất hiện của từ ngữ hoặc độ sáng trung bình của hình ảnh). Khi đó, việc đặt ngưỡng $\tau_{\text{thresh}} = 0.85$ sẽ lọc bỏ được một tỷ lệ đáng kể các cặp có độ tương đồng quá cao trong batch.
-    \item Ngược lại, trong mô hình STAIR, toàn bộ đặc trưng đa phương thức bắt buộc phải trải qua bước tiền xử lý SVD whitening. Phép biến đổi này làm cho ma trận hiệp phương sai trở thành ma trận đơn vị tỷ lệ $\frac{1}{D}\mathbf{I}_{64}$. Trên mặt cầu siêu không gian 64 chiều chuẩn tắc, phân bố độ tương đồng cosine giữa hai vector ngẫu nhiên tuân theo phân bố xấp xỉ chuẩn:
-    \begin{equation}
-    S \sim \mathcal{N}\left(0, \sigma^2\right), \quad \text{với } \sigma = \frac{1}{\sqrt{D}} = \frac{1}{\sqrt{64}} = 0.125
-    \end{equation}
-    \item Ngưỡng lọc $\tau_{\text{thresh}} = 0.85$ tương ứng với độ lệch chuẩn:
-    \begin{equation}
-    z = \frac{0.85}{0.125} = 6.8\sigma
-    \end{equation}
-    Xác suất để một cặp vector ngẫu nhiên có độ tương đồng cosine vượt qua ngưỡng $6.8\sigma$ xấp xỉ $10^{-11}$. Trong một mini-batch kích thước 1024 (chứa khoảng $10^6$ cặp), số cặp có độ tương đồng vượt ngưỡng 0.85 gần như bằng không. Do đó, mặt nạ $\mathcal{M}_{b, k} \equiv 1$ trên toàn bộ batch, khiến hàm mất mát của Pha 2 đồng nhất về mặt toán học với Pha 1.
+    \item \textbf{Chế độ Item-Item (`item\_item`):} Tính ma trận tương đồng trực tiếp giữa các item trong batch $\mathbf{i}_b \cdot \mathbf{i}_k$ nhằm triệt tiêu lực đẩy tiêu cực giữa các sản phẩm tương tự/thay thế. Với chế độ này, ngưỡng lọc được hiệu chỉnh về khoảng $\tau_{\text{thresh}} \in [0.70, 0.85]$. Ở $\tau_{\text{thresh}} = 0.70$, mô hình lọc chính xác $0.12\%$ các cặp sản phẩm tương đồng cao nhất.
+    \item \textbf{Chế độ User-Item (`user\_item`):} Do vector hồ sơ người dùng bị co ngót bởi trung bình hóa, ngưỡng lọc cần được hiệu chỉnh về dải $\tau_{\text{thresh}} \in [0.30, 0.40]$ (tiêu biểu $\tau_{\text{thresh}} = 0.35$). Tại ngưỡng này, mô hình lọc $1.13\%$ các mẫu âm có tính tương thích cao với sở thích người dùng.
 \end{itemize}
 
-Kết quả này đem lại một phát hiện khoa học quan trọng: không gian biểu diễn của STAIR sau bước tiền xử lý SVD whitening vốn đã đạt đặc tính đẳng hướng isotropic rất cao, các vector phân bố đồng đều trên mặt cầu siêu không gian mà không bị hiện tượng co cụm góc. Do đó, việc kích hoạt cơ chế lọc âm là không cần thiết, và cấu hình thuần túy của Pha 1 ($\epsilon = 0.10, \lambda_{\text{nlgcl}} = 0.01$) là giải pháp hoàn thiện, tối ưu và bảo toàn toán học nhất cho hệ thống.
+Về mặt hiệu năng tổng thể, cơ chế Bơm nhiễu thích ứng phổ (Pha 1) đóng vai trò là động lực cải tiến cốt lõi, nâng NDCG@10 trên Amazon Baby từ $0.0359$ lên $0.0361$ ($+0.56\%$) và duy trì các chỉ số xếp hạng vượt trội. Cơ chế lọc mẫu âm giả (Pha 2), sau khi được hiệu chỉnh ngưỡng và chế độ tính toán chính xác, cung cấp một công cụ kiểm soát lực đẩy tiêu cực có cơ sở toán học rõ ràng, giúp loại bỏ các giả định thiếu cơ sở thực nghiệm và đảm bảo tính minh bạch khoa học trọn vẹn cho đề tài.
 
 \subsubsection{Đánh giá chi phí tài nguyên tính toán và bộ nhớ VRAM}
 

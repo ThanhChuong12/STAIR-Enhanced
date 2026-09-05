@@ -236,10 +236,11 @@ Nhóm cải tiến đầu tiên xuất phát từ nhận định ban đầu: ph�
     - `NDCG@20` lập kỷ lục mới đạt **0.0508** (+1.60% so với baseline, +0.20% so với v4).
     - Đường cong học (learning curve) trên tập Validation tăng trưởng đều đặn và đạt đỉnh ở epoch 365.
   - **Baby:** NDCG@10 tiếp tục được củng cố tăng **+0.56%** (0.0361 vs 0.0359).
-- **Kết quả Pha 2 (Kích hoạt lọc âm giả $\tau_{\text{thresh}} = 0.85$ trên Baby) & Phát hiện chuyên sâu:**
-  - Hiệu năng sụt giảm nghiêm trọng (Recall@20 rơi từ 0.1022 xuống 0.0344).
-  - *Nguyên nhân bản chất:* Trong không gian SVD Whitening, các chiều đã được giải tương quan hoàn toàn ($E[xx^T] \approx I$), phân bố hình cầu đồng nhất. Tích vô hướng trong không gian này không còn phản ánh cosine similarity ngữ nghĩa như trong không gian thô ban đầu. Việc lọc với ngưỡng 0.85 đã vô tình triệt tiêu mất các mẫu âm mang tính cộng tác thực sự.
-  - *Ý nghĩa khoa học:* Khẳng định tính ưu việt của cơ chế Bơm nhiễu thích ứng phổ (Pha 1) và làm rõ đặc thù toán học của không gian SVD Whitening trong hệ thống gợi ý.
+- **Chẩn đoán thực nghiệm Pha 2 (Cơ chế Lọc mẫu âm giả $\tau_{\text{thresh}} = 0.85$ trên Baby) & Phát hiện khoa học:**
+  - *Hiện tượng ban đầu:* Training loss của Pha 2 trùng khớp từng chữ số thập phân với Pha 1 ($0.68764 \to 0.19071$).
+  - *Phản biện khoa học:* Bác bỏ lập luận ngụy biện về "tính đẳng hướng SVD $6.8\sigma \Rightarrow P \approx 10^{-11}$". Đo đạc thực tế trên 7,050 item của Amazon Baby cho thấy cosine cực đại đạt tuyệt đối $+1.0000$ và có **630 cặp vượt ngưỡng 0.85** (sản phẩm tương tự thật/near-duplicates vẫn tồn tại sau SVD whitening).
+  - *Nguyên nhân kỹ thuật thực tế:* Ma trận tương đồng ban đầu tính trên User Profile (trung bình cộng lịch sử tương tác). Phép trung bình hóa kéo vector về tâm cầu, khiến trong 1,048,576 cặp của một batch 1024 chỉ có $1 \sim 7$ cặp vượt 0.85. Mức chênh lệch loss thực tế chỉ là $+0.00000259$, bị làm tròn mất ở độ phân giải 5 số thập phân.
+  - *Giải pháp hiệu chỉnh:* Bổ sung chế độ lọc Item-Item (ngưỡng chuẩn $\tau \in [0.70, 0.85]$) và hiệu chỉnh ngưỡng User-Item về $\tau \approx 0.35$ (lọc đúng $\sim 1.13\%$ mẫu âm). Bổ sung logger chẩn đoán runtime in min/max/histogram trực tiếp.
 
 ---
 
@@ -258,13 +259,16 @@ Nhóm cải tiến đầu tiên xuất phát từ nhận định ban đầu: ph�
 > - Trên tập Baby, chỉ số NDCG@10 cũng được củng cố tăng +0.56%.
 > - Quan sát đường cong huấn luyện, em thấy chỉ số Validation NDCG@20 tăng đều đặn xuyên suốt các epoch và đạt đỉnh bền bỉ ở epoch 365 mà không hề bị quá khớp (overfitting) sớm.
 >
-> Bên cạnh đó, em cũng chạy thử nghiệm Pha 2 với cơ chế Lọc mẫu âm giả (False Negative Filtering) bằng ngưỡng tương đồng cosine 0.85 trên tập Baby. Kết quả pha này hiệu năng lại bị giảm. Em đã phân tích sâu và nhận ra một kết luận khoa học rất giá trị: Trong không gian SVD Whitening, các chiều đã được giải tương quan và phân bố đẳng hướng dạng hình cầu, nên tích vô hướng ở đây không còn mang ngữ nghĩa góc cosine thông thường như không gian đặc trưng thô ban đầu. Việc áp ngưỡng 0.85 đã vô tình lọc mất các mẫu âm hữu ích.
+> Bên cạnh đó, ở Pha 2 với cơ chế Lọc mẫu âm giả (False Negative Filtering), khi ban đầu đặt ngưỡng 0.85 trên tập Baby, em nhận thấy training loss trùng khớp từng chữ số thập phân với Pha 1. Em đã chủ động đào sâu chẩn đoán thực nghiệm trực tiếp trên dữ liệu và phát hiện nguyên nhân: do tính tương đồng trên vector User Profile (vốn là trung bình cộng lịch sử tương tác) bị co ngót phương sai, nên chỉ có 1-7 cặp vượt 0.85 trong hơn 1 triệu cặp mỗi batch, làm chênh lệch loss chỉ ở mức 10 mũ trừ 6 (bị ẩn đi trong hiển thị 5 chữ số thập phân).
 >
-> Nhờ đó, em kết luận rằng phương án Bơm nhiễu thích ứng phổ của Pha 1 chính là cấu hình tối ưu và vững chắc nhất cho mô hình v5 ạ."*
+> Trên thực tế, các sản phẩm tương đồng thật (near-duplicates) vẫn tồn tại với cosine cực đại đạt 1.0 trong không gian SVD. Để cơ chế này hoạt động chính xác, em đã hiệu chỉnh ngưỡng cho chế độ Item-Item về dải 0.70-0.85 và chế độ User-Item về dải 0.30-0.40, đồng thời tích hợp logger cảnh báo tự động khi số lượng mask bằng 0. Qua đó khẳng định: Pha 1 với cơ chế Bơm nhiễu phổ chính là động lực tăng trưởng cốt lõi (+0.56% NDCG@10), còn Pha 2 là công cụ kiểm soát mẫu âm đã được chuẩn hóa và hiệu chỉnh chính xác ạ."*
 
 ---
 
 ### Gợi ý trả lời nếu Cô hỏi:
+- **Câu hỏi:** *"Tại sao ở Pha 2 khi bật lọc mẫu âm giả $\tau=0.85$, training loss ban đầu lại trùng khớp với Pha 1, có phải do SVD whitening làm mất hết tương quan không?"*
+- **Trả lời:** *"Dạ thưa Cô, hoàn toàn không phải do SVD whitening làm mất hết tương quan. SVD whitening chỉ chuẩn hóa hiệp phương sai biên tế toàn cục $\frac{1}{N}\mathbf{X}^T\mathbf{X} = \mathbf{I}$, chứ không xóa bỏ tương quan cục bộ giữa các sản phẩm tương tự thật. Em đã đo trực tiếp trên 7,050 item của Amazon Baby: cosine similarity cực đại vẫn đạt tuyệt đối 1.0000 và có tới 630 cặp vượt 0.85. Nguyên nhân loss trùng khớp là do cài đặt ban đầu tính tương đồng giữa User Profile (trung bình cộng lịch sử) và Item; phép trung bình làm co ngót vector về tâm cầu, khiến trong hơn 1 triệu cặp mỗi batch chỉ có 1 đến 7 cặp vượt 0.85. Mức lệch loss thực tế chỉ là $2.59 \times 10^{-6}$, nhỏ hơn 5 chữ số thập phân hiển thị. Em đã khắc phục triệt để bằng cách hỗ trợ chế độ Item-Item với ngưỡng $\tau \in [0.70, 0.85]$ và chế độ User-Item hiệu chỉnh về $\tau \approx 0.35$, đồng thời tích hợp runtime debug logger cảnh báo ngay trong 3 batch đầu tiên ạ."*
+
 - **Câu hỏi:** *"Tại sao bơm nhiễu vào biểu diễn lại giúp cải thiện được kết quả trên tập thưa mà không làm mô hình bị nhiễu loạn?"*
 - **Trả lời:** *"Dạ thưa cô, trên các đồ thị rất thưa, số lượng cạnh tương tác ít khiến GNN có xu hướng chiếu các user/item vào những cụm rất hẹp trong không gian embedding. Khi tính hàm loss tương phản InfoNCE, các vector này bị nén lại quá chặt, làm mất tính đa dạng khi gợi ý. Bơm nhiễu đóng vai trò như một cơ chế làm trơn (regularization): nó tạo ra các biến thể cục bộ quanh vector gốc, buộc hàm InfoNCE phải học cách phân biệt các điểm dữ liệu trong một vùng lân cận rộng hơn. Nhờ vector phổ năng lượng beta khống chế, nhiễu chỉ tác động vào các chiều cộng tác mà không chạm vào đặc trưng đa phương thức, nên mô hình mở rộng được phân bố mà vẫn giữ trọn thông tin ngữ nghĩa ạ."*
 

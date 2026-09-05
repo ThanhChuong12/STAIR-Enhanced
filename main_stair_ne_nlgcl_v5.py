@@ -132,6 +132,10 @@ cfg.add_argument("--nlgcl-eps", type=float, default=0.1,
                  help="Spectral-decayed noise amplitude epsilon (default: 0.1)")
 cfg.add_argument("--nlgcl-tau-thresh", type=float, default=1.0,
                  help="Semantic similarity threshold for false negative attenuation (1.0 = disabled / Phase 1)")
+cfg.add_argument("--nlgcl-fn-mode", type=str, default="item_item", choices=["item_item", "user_item"],
+                 help="Mode for false negative similarity: item_item (near-duplicates) or user_item (profile compatibility)")
+cfg.add_argument("--nlgcl-debug", action="store_true", default=False,
+                 help="Enable diagnostic debugging for in-batch similarities and mask counts")
 
 cfg.set_defaults(
     description="STAIR-NE-NLGCL-v5",
@@ -198,6 +202,8 @@ class STAIR_NE_NLGCL_Model(freerec.models.GenRecArch):
             alpha      = cfg.nlgcl_alpha,
             eps        = cfg.nlgcl_eps,
             tau_thresh = cfg.nlgcl_tau_thresh,
+            fn_mode    = getattr(cfg, 'nlgcl_fn_mode', 'item_item'),
+            debug      = getattr(cfg, 'nlgcl_debug', False),
         )
 
     # ─── Initialization (IDENTICAL to STAIR baseline) ───────────────────

@@ -15,22 +15,22 @@ Core Innovations:
      safeguarding the modality coordinate anchor.
 
 2. In-batch False Negative Attenuation (from DSCSC / CLID):
-   Calculates user-item semantic similarity matrix S in-batch:
-     S_{b, k} = Cosine(user_profile_{u_b}, item_modal_{i_k})
+   Supports two semantic similarity modes:
+   a) 'item_item' (Default):
+      S_{b, k} = Cosine(item_modal_{i_b}, item_modal_{i_k})
+      Directly captures near-duplicate/substitute products in the batch.
+   b) 'user_item':
+      S_{b, k} = Cosine(user_profile_{u_b}, item_modal_{i_k})
+      Measures semantic affinity between user interaction history and candidate item.
    Masks out false negatives where similarity > tau_thresh:
      M_{b, k} = 0 if S_{b, k} > tau_thresh else 1
    Prevents detrimental repulsive forces on semantically compatible unobserved items.
 
-3. Numerically Stable & Zero-Overhead:
+3. Diagnostic Logging & Zero-Overhead Stability:
+   - Tracks real-time mask counts and similarity distribution in early batches.
    - 100% vectorized (no per-element Python loops).
    - InfoNCE computed via logsumexp with masked fill (-1e9) to prevent NaN/overflow.
    - In-batch computation requires only O(B^2) memory (~16 MB for B=2048), eliminating OOM risks.
-
-References:
-  - STAIR: Forward Stepwise Convolution (FSC) & spectral decay beta3 (2024)
-  - NEGCL: Knowledge-Based Systems 2025 (sign-preserving noise injection)
-  - NLGCL / NLGCL-Plus: In-batch cross-entity contrastive learning
-  - DSCSC: False negative attenuation via similarity thresholds
 """
 
 from typing import List, Optional, Tuple
@@ -53,6 +53,8 @@ class STAIR_NE_NLGCL(nn.Module):
         alpha: float = 0.5,
         eps: float = 0.1,
         tau_thresh: float = 1.0,
+        fn_mode: str = 'item_item',
+        debug: bool = False,
     ):
         super().__init__()
         self.n_users = n_users
@@ -62,6 +64,9 @@ class STAIR_NE_NLGCL(nn.Module):
         self.alpha = alpha
         self.eps = eps
         self.tau_thresh = tau_thresh
+        self.fn_mode = fn_mode
+        self.debug = debug
+        self._debug_step = 0
 
     def inject_spectral_noise(self, h: torch.Tensor, beta: torch.Tensor) -> torch.Tensor:
         """
@@ -122,14 +127,44 @@ class STAIR_NE_NLGCL(nn.Module):
         # ─────────────────────────────────────────────────────────────────
         # 1. In-batch Semantic Attenuation Mask (Phase 2 False Negative Masking)
         # ─────────────────────────────────────────────────────────────────
-        if user_profiles is not None and item_modals is not None and self.tau_thresh < 1.0:
+        if self.tau_thresh < 1.0 and item_modals is not None:
             with torch.no_grad():
-                u_norm = F.normalize(user_profiles, p=2, dim=-1)
-                i_norm = F.normalize(item_modals, p=2, dim=-1)
-                # Cosine similarity matrix: (B, B) where S[b, k] = Cosine(u_b, i_k)
-                sim_matrix = torch.matmul(u_norm, i_norm.t())
+                if self.fn_mode == 'item_item':
+                    # Item-Item Cosine Similarity: S[b, k] = Cosine(i_b, i_k)
+                    # Directly masks near-duplicate items in batch
+                    i_norm = F.normalize(item_modals, p=2, dim=-1)
+                    sim_matrix = torch.matmul(i_norm, i_norm.t())
+                else:
+                    # User-Item Profile Similarity: S[b, k] = Cosine(u_b, i_k)
+                    if user_profiles is not None:
+                        u_norm = F.normalize(user_profiles, p=2, dim=-1)
+                        i_norm = F.normalize(item_modals, p=2, dim=-1)
+                        sim_matrix = torch.matmul(u_norm, i_norm.t())
+                    else:
+                        sim_matrix = torch.zeros((batch_size, batch_size), device=device)
+
                 # Mask: 0 if similarity > tau_thresh (suspected false negative), 1 otherwise
                 mask_u = (sim_matrix <= self.tau_thresh).float()
+
+                # Diagnostic logging for the first 3 batches
+                if (self.debug or self._debug_step < 3) and self.training:
+                    self._debug_step += 1
+                    off_mask = ~torch.eye(batch_size, dtype=torch.bool, device=device)
+                    off_sim = sim_matrix[off_mask]
+                    masked_cnt = (sim_matrix[off_mask] > self.tau_thresh).sum().item()
+                    total_off = off_mask.sum().item()
+                    masked_pct = (masked_cnt / total_off) * 100
+                    print(
+                        f"[DEBUG FNF Batch {self._debug_step}] Mode: {self.fn_mode} | "
+                        f"Sim Min={off_sim.min().item():.4f}, Max={off_sim.max().item():.4f}, "
+                        f"Mean={off_sim.mean().item():.4f}, Std={off_sim.std().item():.4f} | "
+                        f"Masked: {masked_cnt}/{total_off} ({masked_pct:.3f}%) at tau_thresh={self.tau_thresh}"
+                    )
+                    if masked_cnt == 0:
+                        print(
+                            f"  [WARNING] 0 negative pairs were masked! tau_thresh={self.tau_thresh} is higher than "
+                            f"Max={off_sim.max().item():.4f}. The mask is currently an identity matrix (no-op)."
+                        )
         else:
             # Phase 1: Keep all in-batch negatives
             mask_u = torch.ones((batch_size, batch_size), device=device)
