@@ -2,26 +2,44 @@
 
 \subsection{Bối cảnh}
 
-Hệ thống gợi ý giúp người dùng tìm được sản phẩm phù hợp từ một lượng lớn lựa chọn. Các phương pháp truyền thống chủ yếu dựa trên lịch sử tương tác giữa người dùng và sản phẩm. Tuy nhiên, dữ liệu tương tác trong thực tế thường rất thưa, đặc biệt đối với người dùng mới hoặc sản phẩm ít phổ biến. Điều này làm giảm khả năng học được sở thích và ảnh hưởng trực tiếp đến chất lượng gợi ý.
+Hệ thống gợi ý giúp người dùng tìm được sản phẩm phù hợp từ một lượng lớn lựa chọn. Các phương pháp dựa trên lịch sử tương tác gặp khó khăn khi dữ liệu thưa, đặc biệt đối với người dùng có ít tương tác hoặc sản phẩm ít phổ biến. Việc khai thác thêm hình ảnh và văn bản của sản phẩm giúp bổ sung tín hiệu ngữ nghĩa cho quá trình học biểu diễn người dùng--sản phẩm.
 
-Các mô hình gợi ý đa phương thức khắc phục hạn chế trên bằng cách khai thác thêm thông tin hình ảnh và văn bản của sản phẩm. Mặc dù mang lại nhiều tín hiệu hữu ích, việc kết hợp các phương thức cũng tạo ra những vấn đề mới như nhiễu đặc trưng, mất cân bằng giữa hình ảnh và văn bản, chi phí tính toán lớn và nguy cơ học quá khớp trên dữ liệu thưa. Vì vậy, cần khảo sát các mô hình tiêu biểu, tái lập kết quả và đánh giá khả năng cải tiến trong cùng một điều kiện thực nghiệm.
+Tuy nhiên, thông tin đa phương thức không phải lúc nào cũng nhất quán với hành vi người dùng. Đặc trưng dư thừa, liên kết đồ thị thiếu tin cậy và nhiễu trong học đối chiếu có thể làm suy giảm chất lượng gợi ý. Báo cáo vì vậy tập trung khảo sát STAIR và NEGCL, từ kết quả đối chứng đến các phương án cải tiến, đồng thời xem xét sự đánh đổi giữa độ chính xác và chi phí tính toán.
 
 \subsection{Mục tiêu và phạm vi}
 
-Báo cáo tập trung vào năm mô hình gợi ý đa phương thức gồm COHESION, STAIR, REARM, LOBSTER và NEGCL. Các mục tiêu chính bao gồm:
+Phạm vi thực nghiệm được tổ chức theo từng mô hình: \textbf{STAIR} trên các tập Amazon2014 \textbf{Baby, Sports và Electronics}; \textbf{NEGCL} cùng các phương án mở rộng trên \textbf{Baby, Sports và Clothing}. Các mục tiêu chính gồm:
 
 \begin{itemize}[leftmargin=*,labelsep=6pt]
-    \item Phân tích đầu vào, kiến trúc, hàm mục tiêu và luồng xử lý của từng mô hình;
-    \item Tái lập kết quả trên các tập dữ liệu Amazon Baby, Sports và Clothing;
-    \item So sánh Recall@10, Recall@20, NDCG@10 và NDCG@20 với baseline gốc;
-    \item Theo dõi thời gian huấn luyện, GPU VRAM và CPU RAM trong môi trường Kaggle;
-    \item Đề xuất, triển khai và đánh giá các hướng cải tiến phù hợp với từng kiến trúc.
+    \item Phân tích kiến trúc, cơ chế kết hợp thông tin đa phương thức và hàm mục tiêu của STAIR và NEGCL;
+    \item Tái lập baseline STAIR, đối chiếu với kết quả công bố và đánh giá các phiên bản cải tiến;
+    \item Khảo sát bốn hướng N1--N4 của NEGCL và phương pháp thống nhất AC-DNS, đối sánh với NEGCL gốc;
+    \item Đánh giá Recall@10, Recall@20, NDCG@10 và NDCG@20, phân tích độ nhạy siêu tham số và các trường hợp tăng, giảm hoặc giữ nguyên hiệu năng;
+    \item Tổng hợp số tham số bổ sung, thời gian huấn luyện, GPU VRAM và CPU RAM theo các phép đo được báo cáo trong môi trường Kaggle.
 \end{itemize}
 
-\subsection{Phương pháp thực hiện}
+Do phạm vi dữ liệu và cấu hình thực nghiệm không hoàn toàn giống nhau, báo cáo ưu tiên đối sánh trong từng mô hình và từng tập dữ liệu, thay vì suy ra một thứ hạng chung chỉ từ các giá trị chỉ số.
 
-Nhóm tiến hành khảo sát mã nguồn và tài liệu của từng mô hình, chuẩn hóa dữ liệu và cấu hình huấn luyện, sau đó chạy lại baseline trước khi can thiệp vào kiến trúc. Mỗi phương án cải tiến được thực nghiệm độc lập để xác định rõ tác động đến hiệu năng và số lượng tham số. Kết quả được trình bày bằng bảng và biểu đồ nhằm làm rõ cả những cải tiến thành công lẫn các trường hợp suy giảm.
+\subsection{Các hướng khảo sát và tiến độ hiện tại}
 
-Qua quá trình này, báo cáo hướng đến việc lựa chọn được kiến trúc có khả năng tái lập tốt, sử dụng tài nguyên hợp lý và có tiềm năng phát triển thành mô hình cải tiến chính cho khóa luận.
+\paragraph{STAIR:}
+Sau bước tái lập, báo cáo khảo sát năm phiên bản: STAIR-Enhanced v1 với bộ chiếu có cổng giảm dư thừa; v2a với bộ chiếu residual--whitening; STAIR-LIA v3 với căn chỉnh sở thích cục bộ và ZCA whitening; STAIR-NLGCL v4 với học đối chiếu đồ thị khai thác lân cận; và STAIR-NE-NLGCL v5 với tăng cường nhiễu có hướng dẫn phổ cùng lọc mẫu âm. Kết quả được tổng hợp theo các thí nghiệm đã có, không mặc định mọi phiên bản đều cải thiện baseline hoặc đã hoàn tất trên mọi tập dữ liệu.
+
+\paragraph{NEGCL và AC-DNS:}
+Bốn hướng N1--N4 lần lượt tập trung vào làm dày và cắt tỉa đồ thị theo độ tin cậy, điều tiết nhiễu theo node và phương thức, xử lý false negative trong hàm mất mát, và tinh chỉnh siêu đồ thị kép thưa. Phương pháp \textbf{AC-DNS} kết hợp làm dày đồ thị theo độ tin cậy thích ứng với bậc node và điều chế nhiễu thích ứng theo bậc node và tiến trình huấn luyện.
+
+Lịch sử dò siêu tham số AC-DNS hiện ghi nhận chín cấu hình Baby (B1--B9) và chín cấu hình Sports (S1--S9). Sáu cấu hình Clothing (C1--C6) của đợt khảo sát này đang chờ cập nhật kết quả; trạng thái đó không thay thế kết quả AC-DNS trên Clothing đã báo cáo trước đó.
+
+\subsection{Phương pháp thực hiện và nguyên tắc đánh giá}
+
+Nhóm khảo sát tài liệu, mã nguồn và cấu hình thực nghiệm, sau đó triển khai các phương án can thiệp phù hợp với từng kiến trúc. Với STAIR, báo cáo phân biệt kết quả công bố, baseline tái lập và các phiên bản cải tiến. Với NEGCL, bảng đối sánh tổng thể sử dụng kết quả NEGCL gốc làm mốc; riêng lịch sử dò siêu tham số sử dụng kết quả \textbf{AC-DNS chuẩn} đã báo cáo của cùng tập dữ liệu.
+
+Các bảng kết quả trình bày đồng thời bốn chỉ số để nhận diện sự đánh đổi giữa Recall và NDCG. Mức biến thiên tương đối được tính theo $(x-x_{\text{mốc}})/x_{\text{mốc}}\times100\%$. Khi nhiều siêu tham số cùng thay đổi, kết quả phản ánh tác động của cả cấu hình; cần thí nghiệm kiểm soát từng yếu tố và chạy lặp nhiều seed trước khi kết luận về đóng góp riêng hoặc độ ổn định của một thành phần.
+
+Trong thực nghiệm tái lập STAIR, checkpoint được chọn theo NDCG@20 trên tập validation trước khi đánh giá test. Nguyên tắc lựa chọn cấu hình là xác định tiêu chí trên validation, không chọn siêu tham số chỉ vì vượt các chỉ số test của mốc đối chứng. Chất lượng gợi ý được xem xét cùng chi phí tài nguyên để định hướng phát triển tiếp theo phù hợp với điều kiện tính toán.
+
+\subsection{Bố cục báo cáo}
+
+Chương 1 trình bày bối cảnh, mục tiêu và phạm vi khảo sát. Chương 2 trình bày kết quả tái lập STAIR, năm phiên bản cải tiến và đánh giá tổng hợp. Chương 3 trình bày các hướng N1--N4 của NEGCL, phương pháp AC-DNS, kết quả đối sánh, lịch sử dò siêu tham số, tài nguyên tính toán và hướng phát triển tiếp theo.
 
 \clearpage
