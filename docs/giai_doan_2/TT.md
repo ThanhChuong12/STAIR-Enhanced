@@ -198,22 +198,11 @@ Nhóm cải tiến đầu tiên xuất phát từ nhận định ban đầu: ph�
 > - Trên tập Sports, NDCG@10 cũng tăng +2.96% và Recall@10 tăng +2.42%.
 > Điều này chứng minh hàm mất mát tương phản có tác dụng cực kỳ mạnh trong việc tối ưu thứ hạng ranking ở top đầu danh sách gợi ý.
 >
-> **Đến Đợt 3: Khảo sát chuyên sâu hiện tượng trên tập Baby và hiện tượng vùng trũng:**
-> Khi soi kỹ vào tập Baby ở Đợt 2, em thấy một điểm lấn cấn: dù NDCG@10 tăng (+0.28%) nhưng Recall@20 lại hơi hụt một chút so với baseline (0.1028 vs 0.1042). Em tự đặt giả thuyết: có thể tập Baby quy mô nhỏ (chỉ 19k users) nên lambda = 0.01 bị hơi mạnh, cần một mức trung gian là lambda = 10^-3.
-> Vì vậy, em chạy thêm Đợt 3 để kiểm chứng mức lambda = 10^-3 trên Baby.
-> Kết quả thực nghiệm đã bác bỏ giả thuyết đó của em, và mang lại một phát hiện rất giá trị về động lực học InfoNCE:
-> Ở các mức lambda quá nhỏ như 10^-5 và 10^-3, tín hiệu đối chiếu chỉ đủ tạo ra một lực cản nhẹ lên hàm BPR chứ chưa đủ mạnh để phân tách không gian embedding, khiến mô hình rơi vào một 'vùng trũng' hiệu năng dưới baseline và dừng học sớm quanh epoch 175.
-> Chỉ khi nâng lên lambda = 0.01, gradient InfoNCE mới đủ lớn để vượt qua vùng trũng này, tạo lực đẩy thực sự trên mặt cầu đơn vị và giúp mô hình tối ưu ổn định đến epoch 365. Nhờ thực nghiệm này, em chốt luôn mức lambda = 0.01 cho toàn hệ thống mà không cần tinh chỉnh lắt nhắt theo từng tập.
+> **Đến Đợt 3 (Khảo sát tập Baby với lambda = 10^-3):**
+> Thấy Recall@20 trên Baby hơi hụt nhẹ, em thử giảm lambda xuống mức trung gian 10^-3 xem sao. Kết quả cho thấy mức 10^-3 cũng bị dừng sớm ở epoch 175 y hệt 10^-5 và thua xa mức 0.01. Hóa ra ở các mức lambda quá nhỏ, tín hiệu đối chiếu chỉ tạo lực cản làm vướng BPR loss chứ chưa đủ mạnh để tái cấu trúc không gian embedding, khiến mô hình rơi vào 'vùng trũng'. Phải nâng lên lambda = 0.01 thì gradient mới đủ lực bứt phá. Vì vậy, em chốt cứng mức 0.01 cho toàn bộ các tập dữ liệu.
 >
-> **Cuối cùng là Thử nghiệm mở rộng khoảng cách tầng đối chiếu G = 2:**
-> Sau khi chốt lambda = 0.01, em đặt câu hỏi: nếu mình đối chiếu cả tầng 0 với tầng 1, và tầng 1 với tầng 2 (tức G = 2) thì kết quả có tốt hơn không?
-> Trước khi chạy, em đã soi kỹ lại mã nguồn và phát hiện một điểm lỗi kỹ thuật rất quan trọng: code ban đầu bị thiếu phép chia trung bình cho G ở ngoài tổng loss InfoNCE. Nếu để nguyên, khi tăng G từ 1 lên 2 thì loss bị tự động nhân đôi, làm sai lệch biến số thực nghiệm. Em đã sửa đúng phép chia 1/G để cô lập hoàn toàn biến số kiến trúc.
-> Kết quả thực nghiệm trực diện giữa G=1 và G=2 trên Baby và Sports cho thấy: mức chênh lệch trung bình chỉ là +0.07% trên Baby và +0.08% trên Sports, các chỉ số dao động trái chiều quanh mức 0. Thực chất đây là một kết quả hòa do nhiễu ngẫu nhiên.
-> Em đối chiếu lại với lý thuyết thì thấy điều này hoàn toàn trùng khớp với 2 cơ sở khoa học:
-> 1. Theo Định lý 1 của NLGCL, tỷ số tín hiệu trên nhiễu của các cặp đối chiếu suy giảm theo hàm mũ khi lên tầng cao, nên tầng 2 chủ yếu mang đường đi ngẫu nhiên qua các item phổ biến.
-> 2. Theo phân tích phổ năng lượng của STAIR, hàm suy giảm beta khiến năng lượng đa phương thức ở tầng 2 chỉ còn vẻn vẹn 0.1%, dồn hơn 75% vào tần số thấp, nên tầng 2 không còn tín hiệu đa phương thức để đối chiếu nữa.
->
-> Nhờ đặt ra quy tắc dừng khoa học từ trước, vì G=2 không vượt trội trên Baby và Sports nên em quyết định dừng lại, không chạy G=2 trên tập Electronics để tiết kiệm hơn 5 giờ GPU, và chốt cấu hình G=1 là chuẩn tối ưu chính thức ạ."*
+> **Và Thử nghiệm mở rộng khoảng cách tầng đối chiếu G = 2:**
+> Em cũng thử đối chiếu sâu hơn lên tầng 2 (G = 2) xem có tăng thêm hiệu năng không. Trước khi chạy, em đã rà soát lại code và bổ sung phép chia tỷ lệ 1/G bị thiếu để cách ly đúng biến số. Kết quả thực nghiệm cho thấy G=2 chỉ hòa với G=1 (chênh lệch dưới 0.1% do nhiễu ngẫu nhiên), hoàn toàn khớp với lý thuyết của NLGCL là tỷ số tín hiệu trên nhiễu giảm theo hàm mũ, cộng với việc năng lượng đa phương thức ở tầng 2 của STAIR đã bị triệt tiêu gần hết (chỉ còn 0.1%). Vì vậy, em quyết định dừng lại, không chạy tiếp trên Electronics để tiết kiệm 5 giờ GPU, và chốt cấu hình tối ưu chính thức là G = 1 ạ."*
 
 ---
 
