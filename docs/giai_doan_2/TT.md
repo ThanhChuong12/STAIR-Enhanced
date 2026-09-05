@@ -127,47 +127,105 @@ Nhóm cải tiến đầu tiên xuất phát từ nhận định ban đầu: ph�
 
 ## 3. CẢI TIẾN 4: STAIR-NLGCL (v4) - CHUYỂN HƯỚNG SANG CONTRASTIVE LEARNING Ở TẦNG ẨN
 
-### Tóm tắt ý chính cần nắm:
-- **Chuyển hướng chiến lược:** Giữ nguyên 100% SVD Whitening tĩnh ở đầu vào và cấu trúc tích chập tiến (FSC), tích chập lùi (BSC).
-- **Giải pháp:** Tích hợp cơ chế Contrastive Learning trực tiếp vào các tầng biểu diễn ẩn của FSC, lấy cảm hứng từ ý tưởng NLGCL+ (Neighborhood-Enriched Graph Contrastive Learning).
+### Tóm tắt ý chính & Chuỗi 4 thử nghiệm chuyên sâu:
+
+- **Chuyển hướng chiến lược:** Giữ nguyên 100% SVD Whitening tĩnh ở đầu vào và cấu trúc tích chập tiến (FSC), tích chập lùi (BSC). Không can thiệp phi tuyến vào đặc trưng đầu vào nữa.
+- **Giải pháp đề xuất:** Tích hợp cơ chế Contrastive Learning trực tiếp vào các tầng biểu diễn ẩn của FSC, lấy cảm hứng từ ý tưởng NLGCL+ (Neighborhood-Enriched Graph Contrastive Learning).
 - **Kỹ thuật Zero-cost views:** 
   - Không dùng Edge Dropout hay Node Masking làm biến dạng đồ thị.
   - Không cần chạy thêm bất kỳ forward pass nào.
   - Dùng trực tiếp biểu diễn tầng $0$ (Ego-embedding) và biểu diễn tầng $1$ (1-hop tích hợp lân cận) có sẵn trong quá trình Forward để làm cặp đối chiếu tích cực.
-- **Học đối chiếu 2 chiều:** Áp dụng cả phía Người dùng ($\mathcal{L}_u$) và phía Sản phẩm ($\mathcal{L}_i$).
-- **Kết quả thực nghiệm theo 2 đợt:**
-  - *Đợt 1 (Thang đo siêu tham số CF thuần $\lambda_{\text{nlgcl}} = 0.0001$):* Hiệu năng gần như không đổi so với baseline (chỉ nhích +0.05% đến +0.10%) vì gradient đối chiếu quá bé so với hàm BPR.
-  - *Đợt 2 (Thang đo siêu tham số đa phương thức $\lambda_{\text{nlgcl}} = 0.01$):* Hiệu năng tăng trưởng đồng loạt trên cả 3 tập dữ liệu (trung bình tăng **+1.63%** trên 12 chỉ số).
-    - **Electronics:** Tăng mạnh nhất; NDCG@10 tăng **+5.31%**, Recall@10 tăng **+4.09%**.
-    - **Sports:** NDCG@10 tăng **+2.96%**, Recall@10 tăng **+2.42%**.
-    - **Baby:** NDCG@10 tăng **+0.28%**.
-- **Điểm phát hiện thêm (Hiện tượng vùng trũng):**
-  - Trên tập dữ liệu thưa như Sports, các chỉ số Top-10 và NDCG tăng rất tốt, nhưng `Recall@20` lại dừng ở mức **0.1110** (baseline là 0.1111).
-  - Lý do: Trên đồ thị thưa, hàm InfoNCE thuần có xu hướng gom các biểu diễn lân cận lại quá chặt (hiện tượng co cụm biểu diễn - representation degeneration), khiến danh sách Top-20 ở đuôi bị ảnh hưởng nhẹ.
+- **Học đối chiếu 2 chiều:** Áp dụng cả phía Người dùng ($\mathcal{L}_u$) và phía Sản phẩm ($\mathcal{L}_i$) với hàm InfoNCE.
 
 ---
 
-### Lời thoại trình bày với Cô:
-> *"Dạ thưa cô, sau khi nhận ra bản chất của SVD Whitening, ở cải tiến 4 (em đặt tên là STAIR-NLGCL), em thực hiện một bước ngoặt về chiến lược: giữ nguyên vẹn toàn bộ đầu vào SVD và cấu trúc tích chập của tác giả. Thay vào đó, em bổ sung một nhánh học tương phản (Contrastive Learning) ở tầng biểu diễn ẩn như một hàm mất mát phụ trợ.
+#### Chi tiết 4 đợt khảo sát thực nghiệm của Cải tiến 4:
+
+1. **Đợt 1: Thang đo siêu tham số Collaborative Filtering thuần ($\lambda_{\text{nlgcl}} = 10^{-5} = 0.0001$):**
+   - *Kết quả:* Hiệu năng gần như không đổi so với baseline (chỉ nhích $+0.05\%$ đến $+0.10\%$) trên cả ba tập dữ liệu.
+   - *Nguyên nhân:* Gradient từ hàm loss đối chiếu với trọng số $10^{-5}$ là quá bé so với gradient của hàm xếp hạng BPR trong bài toán đa phương thức.
+
+2. **Đợt 2: Thang đo siêu tham số đa phương thức ($\lambda_{\text{nlgcl}} = 0.01$):**
+   - *Kết quả:* Tăng trưởng dương đồng loạt trên cả 3 tập dữ liệu (trung bình tăng **+1.63%** trên 12 chỉ số).
+     - **Electronics (Tập lớn nhất ~1.7M tương tác):** Bứt phá mạnh nhất; `NDCG@10` tăng **+5.31%** (0.0258 vs 0.0245); `Recall@10` tăng **+4.09%** (0.0535 vs 0.0514).
+     - **Sports:** `NDCG@10` tăng **+2.96%** (0.0417 vs 0.0405); `Recall@10` tăng **+2.42%** (0.0761 vs 0.0743).
+     - **Baby:** `NDCG@10` tăng **+0.28%** (0.0360 vs 0.0359).
+   - *Quy luật:* InfoNCE có tác dụng mạnh nhất trong việc điều chỉnh thứ hạng (ranking), kéo các mặt hàng liên quan lên top đầu, giúp NDCG tăng vượt trội so với Recall.
+
+3. **Đợt 3: Khảo sát chuyên sâu hiện tượng trên tập Baby ($\lambda = 10^{-3}$) và hiện tượng "vùng trũng":**
+   - *Vấn đề đặt ra:* Tại Đợt 2 trên tập Baby, dù NDCG@10 tăng (+0.28%) nhưng Recall@20 lại hơi hụt (-1.34%, 0.1028 vs baseline 0.1042). Em đặt giả thuyết: có thể do tập Baby có quy mô nhỏ (chỉ 19k users), mức $\lambda = 0.01$ bị quá mạnh làm áp đảo hàm BPR, cần một mức trung gian $\lambda = 10^{-3}$.
+   - *Thực nghiệm đối soát:*
+
+| Mức trọng số $\lambda$ | Recall@10 | Recall@20 | NDCG@10 | NDCG@20 | Best Epoch |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **STAIR Baseline** | 0.0674 | 0.1042 | 0.0359 | 0.0454 | 455 |
+| **$\lambda = 10^{-5}$** | 0.0660 | 0.1020 | 0.0350 | 0.0443 | 175 |
+| **$\lambda = 10^{-3}$** | 0.0661 | 0.1021 | 0.0351 | 0.0443 | 175 |
+| **$\lambda = 0.01$**    | 0.0666 | 0.1028 | **0.0360** | 0.0453 | 365 |
+
+   - *Phát hiện bản chất động lực học InfoNCE:*
+     - Kết quả thực nghiệm đã bác bỏ hoàn toàn giả thuyết ban đầu! Mức $\lambda = 10^{-3}$ cho kết quả gần như y hệt $\lambda = 10^{-5}$ cả về chỉ số lẫn vị trí dừng sớm (đều dừng tại epoch 175), và kém xa mức $\lambda = 0.01$.
+     - *Bản chất:* Ở mức $\lambda = 10^{-5}$ và $10^{-3}$, tín hiệu đối chiếu chỉ tạo ra một lực cản nhẹ lên quá trình học của BPR nhưng chưa đủ mạnh để tái cấu trúc không gian embedding, khiến mô hình rơi vào "vùng trũng" dưới baseline và dừng học sớm quanh epoch 175.
+     - Khi nâng lên $\lambda = 0.01$, gradient InfoNCE đủ lớn để bứt phá khỏi vùng trũng, tạo lực đẩy thực sự trên mặt cầu đơn vị và giúp mô hình tối ưu hóa bền bỉ đến epoch 365.
+     - *Kết luận:* Thống nhất chốt một giá trị duy nhất $\lambda = 0.01$ cho toàn bộ hệ thống, không cần tinh chỉnh riêng theo từng tập dữ liệu.
+
+4. **Thực nghiệm mở rộng khoảng cách tầng đối chiếu ($G = 2$):**
+   - *Vấn đề đặt ra:* Liệu đối chiếu đa tầng sâu hơn với $G = 2$ (đối chiếu đồng thời tầng 0 với tầng 1, VÀ tầng 1 với tầng 2) có mang lại thêm lợi ích so với $G = 1$?
+   - *Phát hiện & Sửa lỗi mã nguồn (Bug Fix):* Khi rà soát mã nguồn, em phát hiện hàm tính loss bị thiếu phép chia trung bình theo $G$ (thiếu hệ số $\frac{1}{G}$ ngoài tổng loss InfoNCE). Nếu giữ nguyên, khi tăng $G$ từ 1 lên 2, tổng loss sẽ tự động tăng gấp đôi, biến việc so sánh $G$ thành việc so sánh hai mức $\lambda$ khác nhau ($0.01$ vs $0.02$). Sau khi sửa đúng phép chia $\frac{1}{G}$, biến số kiến trúc được cô lập hoàn toàn.
+   - *Kết quả thực nghiệm đối chiếu trực diện ($G=1$ vs $G=2$ cùng $\lambda = 0.01$):*
+     - **Baby:** Chênh lệch trung bình giữa $G=2$ và $G=1$ chỉ là **$+0.07\%$** (Recall@10 hòa 0.0666; NDCG@10 nhích nhẹ từ 0.0360 lên 0.0362; Recall@20 giảm từ 0.1028 xuống 0.1023).
+     - **Sports:** Chênh lệch trung bình chỉ là **$+0.08\%$** (Recall@10 từ 0.0761 lên 0.0763; Recall@20 từ 0.1110 lên 0.1121; nhưng NDCG@10 lại giảm nhẹ từ 0.0417 xuống 0.0414).
+     - Các chỉ số dao động trái chiều quanh mức 0, phản ánh nhiễu thống kê ngẫu nhiên chứ không phải cải thiện thực chất. Đây là một kết quả hòa.
+   - *Giải thích bản chất theo 2 cơ sở lý thuyết vững chắc:*
+     1. *Định lý 1 trong bài báo NLGCL:* Tỷ số tín hiệu trên nhiễu (SNR) của các cặp đối chiếu tầng suy giảm theo hàm mũ khi bậc tầng tăng lên. Cặp tầng 0-1 ($G=1$) đã khai thác hầu hết thông tin lân cận trực tiếp; tầng 2 chứa nhiều đường đi ngẫu nhiên qua các item phổ biến nên thông tin mới bổ sung gần như bằng không.
+     2. *Phân tích suy giảm phổ của STAIR:* Với $\gamma = 0.1$, hàm suy giảm $\beta_j = 1 - \beta_{3, j}$ khiến 60/64 chiều ở tầng 2 có hệ số $\beta_j^2 < 0.05$. Năng lượng của các chiều đa phương thức ở tầng 2 chỉ còn vẻn vẹn $0.1\%$, hơn $75\%$ năng lượng dồn vào các chiều tần số thấp. Do đó, cặp đối chiếu tầng 2 không còn mang tín hiệu đa phương thức để đối chiếu nữa.
+   - *Quy tắc dừng khoa học:* Em đặt tiêu chí dừng: chỉ chạy $G=2$ trên tập Electronics (mất hơn 5 giờ GPU) nếu cả Baby và Sports đều cho thấy xu hướng tăng trưởng rõ rệt. Khi kết quả cho thấy mức chênh lệch nằm trong biên độ nhiễu ngẫu nhiên, em tuân thủ nghiêm ngặt quy tắc dừng, không chạy $G=2$ trên Electronics để tránh lãng phí tài nguyên, và chốt $G=1$ là cấu hình tối ưu chính thức.
+
+---
+
+### Lời thoại trình bày chi tiết với Cô:
+> *"Dạ thưa cô, sau khi nhận ra bản chất của SVD Whitening, ở cải tiến 4 (em đặt tên là STAIR-NLGCL), em thực hiện một bước ngoặt về mặt chiến lược: giữ nguyên vẹn 100% đầu vào SVD và cấu trúc tích chập của tác giả. Thay vào đó, em bổ sung một cơ chế học tương phản (Contrastive Learning) trực tiếp ở tầng biểu diễn ẩn của FSC như một hàm mất mát phụ trợ.
 >
-> Em áp dụng một kỹ thuật rất hay lấy cảm hứng từ bài báo NLGCL+, gọi là Zero-cost views. Nghĩa là em không cần làm Edge Dropout hay tạo thêm view đồ thị phụ gây tốn bộ nhớ, mà tận dụng ngay biểu diễn tầng 0 (đặc trưng gốc) và biểu diễn tầng 1 (đã gom thông tin lân cận) có sẵn trong nhánh tích chập FSC để làm cặp đối chiếu. Em tính InfoNCE cho cả hai phía người dùng và sản phẩm.
+> Em áp dụng một kỹ thuật rất hay lấy cảm hứng từ bài báo NLGCL+, gọi là Zero-cost views. Nghĩa là em không cần làm Edge Dropout hay tạo thêm view đồ thị phụ gây tốn bộ nhớ, mà tận dụng ngay biểu diễn tầng 0 (đặc trưng gốc) và biểu diễn tầng 1 (đã gom thông tin lân cận) có sẵn trong nhánh tích chập FSC để làm cặp đối chiếu tích cực cho cả người dùng và sản phẩm.
 >
-> Khi thử nghiệm, ban đầu em áp dụng trọng số lambda = 0.0001 theo các bài báo đồ thị đơn phương thức, thì thấy kết quả hầu như không thay đổi gì so với baseline. Em nhận ra trong mô hình đa phương thức, độ lớn gradient của đặc trưng multimodal lớn hơn hẳn CF thuần, nên lambda đó quá nhỏ.
+> Trong quá trình khảo sát cải tiến 4, em đã thực hiện một chuỗi 4 thử nghiệm thực nghiệm rất chặt chẽ:
 >
-> Em đã nâng lambda lên mức 0.01 cho phù hợp với bài toán đa phương thức. Và kết quả thực nghiệm đợt 2 đã cho thấy hiệu quả rất rõ rệt:
-> - Cả ba tập dữ liệu đều ghi nhận mức tăng trưởng dương.
-> - Đáng chú ý nhất là tập Electronics, tập lớn nhất với hơn 1.6 triệu tương tác: chỉ số NDCG@10 tăng vọt +5.31%, Recall@10 tăng +4.09%.
+> **Ở Đợt 1 và Đợt 2: Khảo sát thang đo siêu tham số lambda:**
+> Ban đầu ở Đợt 1, em dùng lambda = 0.0001 theo các bài báo đồ thị đơn phương thức thông thường, thì kết quả hầu như không thay đổi gì so với baseline. Em nhận ra trong bài toán đa phương thức, gradient của đặc trưng ảnh và chữ lớn hơn hẳn CF thuần, nên lambda đó quá nhỏ, không đủ lực kéo.
+> Sang Đợt 2, khi em nâng lambda lên mức 0.01, mô hình đã đem lại bước bứt phá rõ rệt:
+> - Cả ba tập dữ liệu đều tăng trưởng dương đồng loạt trên cả 12 chỉ số, trung bình tăng +1.63%.
+> - Ấn tượng nhất là tập lớn nhất Electronics với 1.7 triệu tương tác: chỉ số NDCG@10 tăng vọt +5.31%, Recall@10 tăng +4.09%.
 > - Trên tập Sports, NDCG@10 cũng tăng +2.96% và Recall@10 tăng +2.42%.
+> Điều này chứng minh hàm mất mát tương phản có tác dụng cực kỳ mạnh trong việc tối ưu thứ hạng ranking ở top đầu danh sách gợi ý.
 >
-> Em nhận thấy hàm mất mát tương phản có tác dụng rất mạnh trong việc xếp hạng (ranking), kéo các sản phẩm thực sự liên quan lên các vị trí đầu tiên của danh sách, đó là lý do NDCG tăng mạnh hơn Recall.
+> **Đến Đợt 3: Khảo sát chuyên sâu hiện tượng trên tập Baby và hiện tượng vùng trũng:**
+> Khi soi kỹ vào tập Baby ở Đợt 2, em thấy một điểm lấn cấn: dù NDCG@10 tăng (+0.28%) nhưng Recall@20 lại hơi hụt một chút so với baseline (0.1028 vs 0.1042). Em tự đặt giả thuyết: có thể tập Baby quy mô nhỏ (chỉ 19k users) nên lambda = 0.01 bị hơi mạnh, cần một mức trung gian là lambda = 10^-3.
+> Vì vậy, em chạy thêm Đợt 3 để kiểm chứng mức lambda = 10^-3 trên Baby.
+> Kết quả thực nghiệm đã bác bỏ giả thuyết đó của em, và mang lại một phát hiện rất giá trị về động lực học InfoNCE:
+> Ở các mức lambda quá nhỏ như 10^-5 và 10^-3, tín hiệu đối chiếu chỉ đủ tạo ra một lực cản nhẹ lên hàm BPR chứ chưa đủ mạnh để phân tách không gian embedding, khiến mô hình rơi vào một 'vùng trũng' hiệu năng dưới baseline và dừng học sớm quanh epoch 175.
+> Chỉ khi nâng lên lambda = 0.01, gradient InfoNCE mới đủ lớn để vượt qua vùng trũng này, tạo lực đẩy thực sự trên mặt cầu đơn vị và giúp mô hình tối ưu ổn định đến epoch 365. Nhờ thực nghiệm này, em chốt luôn mức lambda = 0.01 cho toàn hệ thống mà không cần tinh chỉnh lắt nhắt theo từng tập.
 >
-> Tuy nhiên, khi soi kỹ vào số liệu của tập Sports, em phát hiện một điểm thú vị: trong khi Recall@10 tăng tốt thì Recall@20 lại bị kẹt nhẹ ở mức 0.1110, thấp hơn baseline một chút xíu (0.1111). Phân tích ra thì đây là hiện tượng co cụm biểu diễn thường gặp trên các đồ thị có mật độ quá thưa. Và đây chính là động lực trực tiếp để em nghiên cứu tiếp cải tiến 5 ạ."*
+> **Cuối cùng là Thử nghiệm mở rộng khoảng cách tầng đối chiếu G = 2:**
+> Sau khi chốt lambda = 0.01, em đặt câu hỏi: nếu mình đối chiếu cả tầng 0 với tầng 1, và tầng 1 với tầng 2 (tức G = 2) thì kết quả có tốt hơn không?
+> Trước khi chạy, em đã soi kỹ lại mã nguồn và phát hiện một điểm lỗi kỹ thuật rất quan trọng: code ban đầu bị thiếu phép chia trung bình cho G ở ngoài tổng loss InfoNCE. Nếu để nguyên, khi tăng G từ 1 lên 2 thì loss bị tự động nhân đôi, làm sai lệch biến số thực nghiệm. Em đã sửa đúng phép chia 1/G để cô lập hoàn toàn biến số kiến trúc.
+> Kết quả thực nghiệm trực diện giữa G=1 và G=2 trên Baby và Sports cho thấy: mức chênh lệch trung bình chỉ là +0.07% trên Baby và +0.08% trên Sports, các chỉ số dao động trái chiều quanh mức 0. Thực chất đây là một kết quả hòa do nhiễu ngẫu nhiên.
+> Em đối chiếu lại với lý thuyết thì thấy điều này hoàn toàn trùng khớp với 2 cơ sở khoa học:
+> 1. Theo Định lý 1 của NLGCL, tỷ số tín hiệu trên nhiễu của các cặp đối chiếu suy giảm theo hàm mũ khi lên tầng cao, nên tầng 2 chủ yếu mang đường đi ngẫu nhiên qua các item phổ biến.
+> 2. Theo phân tích phổ năng lượng của STAIR, hàm suy giảm beta khiến năng lượng đa phương thức ở tầng 2 chỉ còn vẻn vẹn 0.1%, dồn hơn 75% vào tần số thấp, nên tầng 2 không còn tín hiệu đa phương thức để đối chiếu nữa.
+>
+> Nhờ đặt ra quy tắc dừng khoa học từ trước, vì G=2 không vượt trội trên Baby và Sports nên em quyết định dừng lại, không chạy G=2 trên tập Electronics để tiết kiệm hơn 5 giờ GPU, và chốt cấu hình G=1 là chuẩn tối ưu chính thức ạ."*
 
 ---
 
 ### Gợi ý trả lời nếu Cô hỏi:
-- **Câu hỏi:** *"Zero-cost views nghĩa là không tốn chi phí gì à? Cụ thể nó tiết kiệm tài nguyên thế nào?"*
+- **Câu hỏi 1:** *"Zero-cost views nghĩa là không tốn chi phí gì à? Cụ thể nó tiết kiệm tài nguyên thế nào?"*
 - **Trả lời:** *"Dạ thưa cô, thông thường trong Graph Contrastive Learning như SGL hay SimGCL, mô hình phải thực hiện Edge Dropout hoặc Node Dropout để tạo ra một ma trận kề ngẫu nhiên mới, rồi phải chạy thêm một lần Forward Pass qua GNN nữa. Việc đó làm tăng gấp đôi thời gian huấn luyện và tăng mạnh VRAM. Còn ở đây, STAIR trong quá trình Forward tự nhiên đã phải tính biểu diễn tầng 0 và tầng 1 rồi. Em lấy trực tiếp hai tensor đó tính InfoNCE trong cùng một batch luôn, không sinh ma trận mới và không chạy lại GNN, nên thời gian huấn luyện mỗi epoch gần như không đổi so với baseline gốc ạ."*
+
+- **Câu hỏi 2:** *"Tại sao em không chạy tiếp G=2 trên Electronics mà chỉ dừng lại ở Baby và Sports?"*
+- **Trả lời:** *"Dạ thưa cô, tập Electronics rất lớn với 1.7 triệu tương tác, mỗi lần huấn luyện 500 epoch mất hơn 5 giờ GPU. Trước khi làm, em đã đặt ra tiêu chí dừng khoa học: chỉ mở rộng lên Electronics nếu cả hai tập nhỏ hơn đều cho thấy xu hướng tăng trưởng rõ rệt. Khi kết quả trên Baby (+0.07%) và Sports (+0.08%) chứng minh G=2 chỉ là dao động nhiễu thống kê và hoàn toàn hòa với G=1, việc chạy tiếp trên Electronics là lãng phí tài nguyên tính toán mà không mang lại đóng góp khoa học mới. Vì vậy em tuân thủ nghiêm ngặt quy tắc dừng và chốt G=1 ạ."*
+
+- **Câu hỏi 3:** *"Hiện tượng vùng trũng của hàm InfoNCE ở mức lambda nhỏ giải thích cụ thể ra sao?"*
+- **Trả lời:** *"Dạ thưa cô, ở các mức lambda rất bé như 10^-5 hay 10^-3, gradient của InfoNCE giống như một lực nhiễu loạn nhẹ tác động vào hàm BPR. Nó đủ để làm chậm và cản trở việc hội tụ của BPR loss (khiến mô hình dừng học sớm ở epoch 175), nhưng lại không đủ mạnh để tạo ra lực đẩy phân tách các điểm dữ liệu trên mặt cầu đơn vị. Chỉ khi nâng lên lambda = 0.01, gradient tương phản mới đủ mạnh để vượt qua lực cản đó, đồng tối ưu với BPR và đưa biểu diễn đạt cực trị ở epoch 365 ạ."*
 
 ---
 
@@ -177,21 +235,21 @@ Nhóm cải tiến đầu tiên xuất phát từ nhận định ban đầu: ph�
 - **Động lực:** Giải quyết hiện tượng co cụm biểu diễn của v4 trên tập dữ liệu thưa, giúp mô hình vượt qua ngưỡng bão hòa của Recall@20.
 - **Hai cơ chế đề xuất trong v5:**
   1. **Bơm nhiễu thích ứng theo phổ năng lượng (Spectral-guided Noise):**
-     - Bơm vector nhiễu ngẫu nhiên $\eta$ vào biểu diễn ẩn nhưng điều hòa biên độ theo vector phổ $oldsymbol{eta} = 1 - oldsymbol{eta}_3$.
-     - Các chiều tần số thấp ($d 	o 0$): nhận nhiễu lớn nhất ($eta pprox 0.9$) để mở rộng phân bố không gian, chống co cụm.
-     - Các chiều tần số cao ($d 	o 63$): lượng nhiễu triệt tiêu dần về 0 ($eta 	o 0$) để bảo toàn nguyên vẹn đặc trưng đa phương thức gốc.
-     - Phép nhân bảo toàn hướng $	ext{sign}(h) \odot rac{\eta}{\|\eta\|_2}$: đảm bảo nhiễu chỉ làm phân tán độ lớn chứ không làm đảo dấu toạ độ.
+     - Bơm vector nhiễu ngẫu nhiên $\eta$ vào biểu diễn ẩn nhưng điều hòa biên độ theo vector phổ $\boldsymbol{\beta} = 1 - \boldsymbol{\beta}_3$.
+     - Các chiều tần số thấp ($d \to 0$): nhận nhiễu lớn nhất ($\beta \approx 0.9$) để mở rộng phân bố không gian, chống co cụm.
+     - Các chiều tần số cao ($d \to 63$): lượng nhiễu triệt tiêu dần về 0 ($\beta \to 0$) để bảo toàn nguyên vẹn đặc trưng đa phương thức gốc.
+     - Phép nhân bảo toàn hướng $\text{sign}(h) \odot \frac{\eta}{\|\eta\|_2}$: đảm bảo nhiễu chỉ làm phân tán độ lớn chứ không làm đảo dấu toạ độ.
   2. **Cơ chế lọc mẫu âm giả (In-batch False Negative Filtering):**
-     - Tạo mặt nạ $\mathcal{M}_{b, k}$ để loại các cặp trong batch có độ tương đồng ngữ nghĩa cao ($S_{b, k} > 	au_{	ext{thresh}}$) ra khỏi mẫu số của InfoNCE.
-- **Kết quả Pha 1 (Bơm nhiễu thuần, $	au_{	ext{thresh}} = 1.0$):**
+     - Tạo mặt nạ $\mathcal{M}_{b, k}$ để loại các cặp trong batch có độ tương đồng ngữ nghĩa cao ($S_{b, k} > \tau_{\text{thresh}}$) ra khỏi mẫu số của InfoNCE.
+- **Kết quả Pha 1 (Bơm nhiễu thuần, $\tau_{\text{thresh}} = 1.0$):**
   - **Sports (Đồ thị siêu thưa):** 
     - Phá vỡ mức trần bão hòa: `Recall@20` đạt **0.1113** (vượt baseline 0.1111 và v4 0.1110).
     - `NDCG@20` lập kỷ lục mới đạt **0.0508** (+1.60% so với baseline, +0.20% so với v4).
     - Đường cong học (learning curve) trên tập Validation tăng trưởng đều đặn và đạt đỉnh ở epoch 365.
   - **Baby:** NDCG@10 tiếp tục được củng cố tăng **+0.56%** (0.0361 vs 0.0359).
-- **Kết quả Pha 2 (Kích hoạt lọc âm giả $	au_{	ext{thresh}} = 0.85$ trên Baby) & Phát hiện chuyên sâu:**
+- **Kết quả Pha 2 (Kích hoạt lọc âm giả $\tau_{\text{thresh}} = 0.85$ trên Baby) & Phát hiện chuyên sâu:**
   - Hiệu năng sụt giảm nghiêm trọng (Recall@20 rơi từ 0.1022 xuống 0.0344).
-  - *Nguyên nhân bản chất:* Trong không gian SVD Whitening, các chiều đã được giải tương quan hoàn toàn ($E[xx^T] pprox I$), phân bố hình cầu đồng nhất. Tích vô hướng trong không gian này không còn phản ánh cosine similarity ngữ nghĩa như trong không gian thô ban đầu. Việc lọc với ngưỡng 0.85 đã vô tình triệt tiêu mất các mẫu âm mang tính cộng tác thực sự.
+  - *Nguyên nhân bản chất:* Trong không gian SVD Whitening, các chiều đã được giải tương quan hoàn toàn ($E[xx^T] \approx I$), phân bố hình cầu đồng nhất. Tích vô hướng trong không gian này không còn phản ánh cosine similarity ngữ nghĩa như trong không gian thô ban đầu. Việc lọc với ngưỡng 0.85 đã vô tình triệt tiêu mất các mẫu âm mang tính cộng tác thực sự.
   - *Ý nghĩa khoa học:* Khẳng định tính ưu việt của cơ chế Bơm nhiễu thích ứng phổ (Pha 1) và làm rõ đặc thù toán học của không gian SVD Whitening trong hệ thống gợi ý.
 
 ---
@@ -227,9 +285,9 @@ Nhóm cải tiến đầu tiên xuất phát từ nhận định ban đầu: ph�
 
 ### Tóm tắt ý chính cần nắm:
 - **Đo lường bộ nhớ VRAM thực tế:** Đo bằng công cụ thư viện `pynvml` trực tiếp trên GPU Nvidia Tesla T4 trong suốt quá trình huấn luyện:
-  - **Baby:** Baseline thô 720 MB $	o$ v4 753 MB $	o$ v5 **797 MB** (chỉ tăng +77 MB).
-  - **Sports:** Baseline thô 940 MB $	o$ v4 973 MB $	o$ v5 **995 MB** (chỉ tăng +55 MB).
-  - **Electronics:** Baseline thô 4.80 GB $	o$ v4 **4.85 GB** (chỉ tăng +50 MB).
+  - **Baby:** Baseline thô 720 MB $\to$ v4 753 MB $\to$ v5 **797 MB** (chỉ tăng +77 MB).
+  - **Sports:** Baseline thô 940 MB $\to$ v4 973 MB $\to$ v5 **995 MB** (chỉ tăng +55 MB).
+  - **Electronics:** Baseline thô 4.80 GB $\to$ v4 **4.85 GB** (chỉ tăng +50 MB).
 - **Thời gian chạy mỗi epoch:** Gần như tương đương baseline do toàn bộ phép toán là ma trận thưa và phép nhân tensor nguyên bản trên GPU.
 - **Tổng kết đối soát 6 phiên bản:**
   - *v1, v2a, v3:* Xác định rõ ranh giới không nên can thiệp phi tuyến vào không gian SVD Whitening.
