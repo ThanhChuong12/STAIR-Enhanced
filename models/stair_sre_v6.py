@@ -1,33 +1,34 @@
 """
-models/stair_sre_v6.py -- STAIR-SRE v6 Module
+models/stair_sre_v6.py — STAIR-SRE v6 Module
 ==============================================
 Stepwise Spectral-Refined Contrastive Learning
 
-Phase 3 -- Dot 1: Core Architecture with 4 Pillars
+Phase 3 — Dot 1: Core Architecture with 4 Pillars
 
 Pillar 1: Diagonal Spectral-scaling Projector (0-rotation)
-   E_proj = E_svd * w   where w in R^D is a learnable parameter.
-   Equivalent to diag(w) -- only rescales per-dimension variance,
+   E_proj = E_svd ⊙ w   where w ∈ ℝᴰ is a learnable parameter.
+   Equivalent to diag(w) — only rescales per-dimension variance,
    absolutely NO rotation of the SVD spectral coordinate system.
    Initialised as ones so epoch 0 is identical to baseline.
 
 Pillar 2: Soft Spectral Swapping (Hard Negative Generation)
    Instead of hard-splitting [0:32] / [32:64], we draw a per-dimension
-   Bernoulli swap mask with probability p_swap[j] = 1 - beta[j]:
-     - Low-freq CF dims (j~0, beta~0.9) -> p_swap ~ 0.1 (almost never swapped)
-     - High-freq MM dims (j~63, beta~0.0) -> p_swap ~ 1.0 (almost always swapped)
-   Hard negative: i_hard = i+ * (1-m) + i_rolled * m
+   Bernoulli swap mask with probability p_swap[j] = 1 - β[j]:
+     - Low-freq CF dims (j~0, β~0.9) -> p_swap ~ 0.1 (almost never swapped)
+     - High-freq MM dims (j~63, β~0.0) -> p_swap ~ 1.0 (almost always swapped)
+   Hard negative: i_hard = i⁺ ⊙ (1 - m) + i_rolled ⊙ m
 
 Pillar 3: Adaptive False Negative Attenuation
    Replaces v5 binary hard mask with smooth attenuation coefficient
    placed OUTSIDE the exp() in the InfoNCE denominator:
-     (1 - W_{u,k}) * exp(sim(u, i_k) / tau)
+     (1 - W_{u,k}) · exp(sim(u, i_k) / τ)
+   Supports optional threshold τ_atten (default: 0.0 = pure 1-W, 0.35 = selective).
    When W -> 1 (false negative), attenuation -> 0 (no repulsion).
    When W -> 0 (true negative), attenuation -> 1 (full repulsion).
 
 Pillar 4: Hierarchical Layer-wise Contrastive Alignment
    Preserves the NLGCL multi-layer natural contrastive framework from v4/v5.
-   Contrasts layer g (user) <-> layer g+1 (item) for g in {0, ..., G-1}.
+   Contrasts layer g (user) <-> layer g+1 (item) for g ∈ {0, ..., G-1}.
 """
 
 from typing import List, Optional
@@ -35,13 +36,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+__all__ = ['DiagonalSpectralProjector', 'StepwiseSRELoss', 'StepwiseSREv2Loss']
+
 
 class DiagonalSpectralProjector(nn.Module):
     """
     Zero-rotation spectral projector.
 
     Applies element-wise learned scaling to the SVD-whitened embeddings:
-        E_proj = E_svd * w
+        E_proj = E_svd ⊙ w
 
     The Jacobian is strictly diagonal: J_{jk} = 0 for j != k.
     This preserves the monotonic spectral ordering of STAIR's FSC/BSC filters.
@@ -52,11 +55,11 @@ class DiagonalSpectralProjector(nn.Module):
 
     def __init__(self, dim: int = 64):
         super().__init__()
-        # Initialise as identity scaling -- epoch 0 matches baseline exactly
+        # Initialise as identity scaling — epoch 0 matches baseline exactly
         self.w = nn.Parameter(torch.ones(dim, dtype=torch.float32))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Hadamard product: E_proj = E_svd * w"""
+        """Hadamard product: E_proj = E_svd ⊙ w"""
         return x * self.w
 
 
@@ -78,6 +81,7 @@ class StepwiseSRELoss(nn.Module):
         tau:        InfoNCE temperature (default: 0.2).
         alpha:      Balance between user-CL and item-CL (default: 0.5).
         eps:        Spectral noise amplitude epsilon (default: 0.1).
+        tau_atten:  Attenuation threshold (default: 0.0 = pure 1-W, 0.35 = selective).
         debug:      Enable diagnostic logging for first few batches.
     """
 
@@ -90,6 +94,7 @@ class StepwiseSRELoss(nn.Module):
         tau: float = 0.2,
         alpha: float = 0.5,
         eps: float = 0.1,
+        tau_atten: float = 0.0,
         debug: bool = False,
     ):
         super().__init__()
@@ -99,6 +104,7 @@ class StepwiseSRELoss(nn.Module):
         self.tau = tau
         self.alpha = alpha
         self.eps = eps
+        self.tau_atten = tau_atten
         self.debug = debug
         self._debug_step = 0
 
@@ -120,13 +126,14 @@ class StepwiseSRELoss(nn.Module):
             return h
         noise = torch.randn_like(h)
         noise = F.normalize(noise, p=2, dim=-1)
-        beta_w = beta.unsqueeze(0) if beta.dim() == 1 else beta
+        beta_w = beta.to(h.device)
+        beta_w = beta_w.unsqueeze(0) if beta_w.dim() == 1 else beta_w
         return h + self.eps * (beta_w * torch.sign(h) * noise)
 
     # --- Soft Spectral Swapping ---
 
     def create_spectral_hard_negatives(
-        self, i_norm: torch.Tensor
+        self, i_norm: torch.Tensor, beta: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """
         Generate hard negatives via Soft Spectral Swapping.
@@ -138,16 +145,25 @@ class StepwiseSRELoss(nn.Module):
 
         Args:
             i_norm: (B, D) L2-normalised item representations
+            beta:   Optional (D,) spectral propagation vector
         Returns:
             i_hard_neg: (B, D) hard negative representations (re-normalised)
         """
+        if i_norm.size(0) <= 1:
+            return i_norm
+
         # Circular shift to obtain a different item for each position
         i_rolled = torch.roll(i_norm, shifts=1, dims=0)
 
         # Draw per-dimension Bernoulli mask from spectral swap probabilities
         # prob_swap[j] = 1 - beta[j]: high for multimodal dims, low for CF dims
+        if beta is not None:
+            prob_swap = torch.clamp(1.0 - beta, 0.0, 1.0).to(i_norm.device)
+        else:
+            prob_swap = self.prob_swap.to(i_norm.device)
+
         swap_mask = torch.bernoulli(
-            self.prob_swap.expand(i_norm.size(0), -1)
+            prob_swap.expand(i_norm.size(0), -1)
         )  # (B, D)
 
         # Composite: keep CF dims from i+, swap MM dims from i_rolled
@@ -196,7 +212,11 @@ class StepwiseSRELoss(nn.Module):
         # 1. Compute Adaptive False Negative Attenuation Weights
         # -----------------------------------------------------------------
         # W_multi[b, k] = cosine(user_profile_b, item_modal_k)
-        # Attenuation[b, k] = 1 - clamp(W_multi[b, k], 0, 1)
+        # If tau_atten > 0:
+        #   W_eff = clamp((W_multi - tau_atten) / (1 - tau_atten), 0, 1)
+        # Else:
+        #   W_eff = clamp(W_multi, 0, 1)
+        # Attenuation[b, k] = 1 - W_eff
         #   -> 0 for false negatives (W->1): suppress repulsion
         #   -> 1 for true negatives  (W->0): full repulsion
 
@@ -205,28 +225,35 @@ class StepwiseSRELoss(nn.Module):
                 u_prof_norm = F.normalize(user_profiles, p=2, dim=-1)
                 i_mod_norm = F.normalize(item_modals, p=2, dim=-1)
                 W_multi = torch.matmul(u_prof_norm, i_mod_norm.t())  # (B, B)
-                W_multi = torch.clamp(W_multi, 0.0, 1.0)
-                attenuation = 1.0 - W_multi  # (B, B)
+                if self.tau_atten > 0.0:
+                    W_eff = torch.clamp(
+                        (W_multi - self.tau_atten) / (1.0 - self.tau_atten + 1e-8),
+                        0.0, 1.0
+                    )
+                else:
+                    W_eff = torch.clamp(W_multi, 0.0, 1.0)
+                attenuation = 1.0 - W_eff  # (B, B)
 
                 # Diagnostic logging
-                if (self.debug or self._debug_step < 3) and self.training:
+                if self.debug and self._debug_step < 3 and self.training:
                     self._debug_step += 1
                     off_diag = ~torch.eye(
                         batch_size, dtype=torch.bool, device=device
                     )
                     off_w = W_multi[off_diag]
-                    high_w_cnt = (off_w > 0.35).sum().item()
+                    thresh_val = self.tau_atten if self.tau_atten > 0.0 else 0.35
+                    high_w_cnt = (off_w > thresh_val).sum().item()
                     total_off = off_diag.sum().item()
                     print(
                         f"[SRE Debug Batch {self._debug_step}] "
                         f"W_multi: min={off_w.min():.4f}, "
                         f"max={off_w.max():.4f}, "
                         f"mean={off_w.mean():.4f} | "
-                        f"High-W (>0.35): {high_w_cnt}/{total_off} "
-                        f"({high_w_cnt/total_off*100:.3f}%)"
+                        f"High-W (>{thresh_val:.2f}): {high_w_cnt}/{total_off} "
+                        f"({high_w_cnt/max(total_off, 1)*100:.3f}%)"
                     )
         else:
-            # No FN attenuation -- all negatives treated equally
+            # No FN attenuation — all negatives treated equally
             attenuation = torch.ones(
                 (batch_size, batch_size), device=device
             )
@@ -263,7 +290,7 @@ class StepwiseSRELoss(nn.Module):
             pos_exp_u = torch.exp(pos_sim_u)
 
             # Hard negative via Soft Spectral Swapping: (B, D)
-            i_hard_neg = self.create_spectral_hard_negatives(i_g1_norm)
+            i_hard_neg = self.create_spectral_hard_negatives(i_g1_norm, beta)
             hard_sim_u = (u_g_norm * i_hard_neg).sum(dim=-1) / self.tau
             hard_exp_u = torch.exp(hard_sim_u)
 
@@ -289,7 +316,7 @@ class StepwiseSRELoss(nn.Module):
             pos_exp_i = torch.exp(pos_sim_i)
 
             # Hard negative for item-side (swap user dims)
-            u_hard_neg = self.create_spectral_hard_negatives(u_g1_norm)
+            u_hard_neg = self.create_spectral_hard_negatives(u_g1_norm, beta)
             hard_sim_i = (i_g_norm * u_hard_neg).sum(dim=-1) / self.tau
             hard_exp_i = torch.exp(hard_sim_i)
 
@@ -307,3 +334,7 @@ class StepwiseSRELoss(nn.Module):
 
         # Normalise by number of layer gaps
         return total_loss / float(num_gaps)
+
+
+# Alias for compatibility with STAIR3_v1_Report naming convention
+StepwiseSREv2Loss = StepwiseSRELoss

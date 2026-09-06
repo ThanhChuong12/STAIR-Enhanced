@@ -1,104 +1,27 @@
 """
-main_stair_sre_v6.py -- STAIR-SRE v6 Training Script
+main_stair_sre_v6.py — STAIR-SRE v6 Training Script
 ======================================================
-Stepwise Spectral-Refined Contrastive Learning (Phase 3 -- Dot 1)
+Stepwise Spectral-Refined Contrastive Learning
 
-Usage:
-    python main_stair_sre_v6.py --config configs/Amazon2014Baby_550_MMRec.yaml
-    python main_stair_sre_v6.py --config configs/Amazon2014Baby_550_MMRec.yaml \
-        --sre-eps 0.1 --sre-tau 0.2 --lambda-sre 1e-4
+Phase 3 — Dot 1: Core Architecture with 4 Pillars
+  Pillar 1: Diagonal Spectral-scaling Projector (0-rotation)
+  Pillar 2: Soft Spectral Swapping (Bernoulli hard negative generation)
+  Pillar 3: Adaptive False Negative Attenuation (smooth, outside exp)
+  Pillar 4: Hierarchical Layer-wise Contrastive Alignment (NLGCL heritage)
 
-Core Arguments (Phase 3 / SRE-specific):
-    --lambda-sre         : Weight for SRE contrastive loss term (default: 1e-4)
-    --sre-tau            : Temperature tau for InfoNCE softmax (default: 0.2)
-    --sre-G              : Number of contrastive layer gaps (default: 1)
-    --sre-alpha          : Balance alpha*L_user + (1-alpha)*L_item (default: 0.5)
-    --sre-eps            : Spectral noise amplitude epsilon (default: 0.1)
-    --sre-debug          : Enable diagnostic debugging for FN attenuation
-
-Inherited Arguments (STAIR baseline):
-    --embedding-dim      : Embedding dimension (default: 64)
-    --num-layers         : Number of FSC/BSC layers (default: 3)
-    --gamma              : Spectral decay exponent (default: 0.2)
-    --mfiles             : Comma-separated modality feature files
-    --num-neighbors      : kNN per modality, e.g. '5-1'
+Target: Breakout ≥ +5.0% synchronously across all 3 datasets:
+  Amazon Baby:        Recall@20 ≥ 0.1095  (+5.09%) | NDCG@20 ≥ 0.0480  (+5.73%)
+  Amazon Sports:      Recall@20 ≥ 0.1168  (+5.13%) | NDCG@20 ≥ 0.0530  (+6.00%)
+  Amazon Electronics: Recall@20 ≥ 0.0705  (+6.02%) | NDCG@20 ≥ 0.0325  (+7.26%)
 """
 
-import math
+from typing import Dict, Tuple, List
 import os
-import sys
-import types
-from typing import Dict, List, Tuple
-
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.utils.data
-
-# == Compatibility Patch for torchdata in PyTorch 2.x / Python 3.12 / Kaggle ==
-try:
-    import torchdata
-    import torchdata.datapipes as dp
-except Exception:
-    dp = None
-
-if dp is None or 'torchdata.datapipes' not in sys.modules:
-    if 'torchdata' not in sys.modules:
-        td = types.ModuleType('torchdata')
-        sys.modules['torchdata'] = td
-    else:
-        td = sys.modules['torchdata']
-
-    dp = types.ModuleType('torchdata.datapipes')
-    td.datapipes = dp
-    sys.modules['torchdata.datapipes'] = dp
-
-# Ensure dp.iter and IterDataPipe exist
-if not hasattr(dp, 'iter'):
-    iter_mod = types.ModuleType('torchdata.datapipes.iter')
-    dp.iter = iter_mod
-    sys.modules['torchdata.datapipes.iter'] = iter_mod
-if not hasattr(dp.iter, 'IterDataPipe'):
-    class IterDataPipe(torch.utils.data.IterableDataset):
-        def __iter__(self):
-            return iter([])
-    dp.iter.IterDataPipe = IterDataPipe
-
-# Ensure dp.map and MapDataPipe exist
-if not hasattr(dp, 'map'):
-    map_mod = types.ModuleType('torchdata.datapipes.map')
-    dp.map = map_mod
-    sys.modules['torchdata.datapipes.map'] = map_mod
-if not hasattr(dp.map, 'MapDataPipe'):
-    class MapDataPipe(torch.utils.data.Dataset):
-        def __getitem__(self, idx):
-            raise NotImplementedError
-        def __len__(self):
-            return 0
-    dp.map.MapDataPipe = MapDataPipe
-
-# Ensure functional_datapipe decorator exists on dp
-if not hasattr(dp, 'functional_datapipe'):
-    def functional_datapipe(name, enable_df_datapipes_support=False):
-        def decorator(cls):
-            def method(self, *args, **kwargs):
-                return cls(self, *args, **kwargs)
-            if hasattr(dp, 'iter') and hasattr(dp.iter, 'IterDataPipe'):
-                setattr(dp.iter.IterDataPipe, name, method)
-            if hasattr(dp, 'map') and hasattr(dp.map, 'MapDataPipe'):
-                setattr(dp.map.MapDataPipe, name, method)
-            try:
-                if hasattr(torch.utils.data, 'IterDataPipe'):
-                    setattr(torch.utils.data.IterDataPipe, name, method)
-                if hasattr(torch.utils.data, 'MapDataPipe'):
-                    setattr(torch.utils.data.MapDataPipe, name, method)
-            except Exception:
-                pass
-            return cls
-        return decorator
-    dp.functional_datapipe = functional_datapipe
 
 import freerec
+from freerec.data.tags import USER, ITEM, ID
 
 from optimizers.Adam import AdamSEvo
 from optimizers.AdamW import AdamWSEvo
@@ -129,35 +52,32 @@ cfg.add_argument("--gamma", type=float, default=0.2,
 cfg.add_argument("--lambda-sre", type=float, default=1e-4,
                  help="Weight for SRE contrastive loss (0.0 = disabled)")
 cfg.add_argument("--sre-tau", type=float, default=0.2,
-                 help="Temperature tau for InfoNCE softmax")
+                 help="Temperature for SRE InfoNCE loss")
 cfg.add_argument("--sre-G", type=int, default=1,
-                 help="Number of contrastive gaps G (contrast layer g vs g+1)")
+                 help="Number of FSC layer gaps to contrast")
 cfg.add_argument("--sre-alpha", type=float, default=0.5,
-                 help="Balance: alpha*L_user + (1-alpha)*L_item")
+                 help="Balance between user-side and item-side CL")
 cfg.add_argument("--sre-eps", type=float, default=0.1,
-                 help="Spectral-decayed noise amplitude epsilon (default: 0.1)")
+                 help="Spectral noise amplitude epsilon")
+cfg.add_argument("--sre-tau-atten", type=float, default=0.0,
+                 help="Threshold above which false negative attenuation is activated (0.0 = linear 1-W, 0.35 = selective)")
 cfg.add_argument("--sre-raw-hop", action="store_true", default=False,
-                 help="Use raw graph hops (A^l E) for layer embeds instead of beta-damped FSC intermediates")
+                 help="Use raw A^g instead of smoothed for CL")
 cfg.add_argument("--sre-debug", action="store_true", default=False,
-                 help="Enable diagnostic debugging for FN attenuation weights")
+                 help="Enable diagnostic logging for first few batches")
 
-cfg.set_defaults(
-    description="STAIR-SRE-v6",
-    root="../../data",
-    dataset='Amazon2014Baby_550_MMRec',
-    epochs=500,
-    batch_size=1024,
-    optimizer='adamwsevo',
-    lr=1e-3,
-    weight_decay=0.1,
-    seed=1,
-    monitors=["Recall@10", "Recall@20", "NDCG@10", "NDCG@20"],
-    which4best="NDCG@20",
-)
+# Parse configurations
 cfg.compile()
 
-cfg.mfiles        = cfg.mfiles.split(',')
-cfg.num_neighbors = list(map(int, cfg.num_neighbors.split('-')))
+# Parse list fields
+cfg.mfiles = cfg.mfiles.split(',')
+cfg.num_neighbors = [int(k) for k in cfg.num_neighbors.split('-')]
+
+if len(cfg.mfiles) != len(cfg.num_neighbors):
+    raise ValueError(
+        f"Length of mfiles ({len(cfg.mfiles)}) must match "
+        f"num_neighbors ({len(cfg.num_neighbors)})"
+    )
 
 # BSC Smoother spectral decay beta3
 cfg.beta3 = (
@@ -175,7 +95,7 @@ class STAIR_SRE_Model(freerec.models.GenRecArch):
       1. Diagonal Spectral-scaling Projector (0-rotation Hadamard scaling)
       2. Soft Spectral Swapping (Bernoulli-based hard negative generation)
       3. Adaptive False Negative Attenuation (smooth (1-W) outside exp)
-      4. Layer-wise Natural Contrastive Alignment (NLGCL heritage)
+      4. Hierarchical Layer-wise Natural Contrastive Alignment (NLGCL heritage)
     """
 
     def __init__(self, dataset: freerec.data.datasets.RecDataSet) -> None:
@@ -207,28 +127,21 @@ class STAIR_SRE_Model(freerec.models.GenRecArch):
         # -- Pillars 2-4: StepwiseSRELoss --
         beta_for_sre = (1.0 - cfg.beta3).to(cfg.device)
         self.sre_loss = StepwiseSRELoss(
-            n_users = self.User.count,
-            n_items = self.Item.count,
-            beta    = beta_for_sre,
-            G       = cfg.sre_G,
-            tau     = cfg.sre_tau,
-            alpha   = cfg.sre_alpha,
-            eps     = cfg.sre_eps,
-            debug   = getattr(cfg, 'sre_debug', False),
+            n_users   = self.User.count,
+            n_items   = self.Item.count,
+            beta      = beta_for_sre,
+            G         = cfg.sre_G,
+            tau       = cfg.sre_tau,
+            alpha     = cfg.sre_alpha,
+            eps       = cfg.sre_eps,
+            tau_atten = cfg.sre_tau_atten,
+            debug     = cfg.sre_debug,
         )
 
-    # --- Initialization (IDENTICAL to STAIR baseline) ---
-    def reset_parameters(self):
+    def reset_parameters(self) -> None:
         for m in self.modules():
-            if isinstance(m, nn.Linear):
+            if isinstance(m, nn.Embedding):
                 nn.init.xavier_normal_(m.weight)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0.)
-            elif isinstance(m, nn.Embedding):
-                nn.init.normal_(m.weight, std=1.e-4)
-            elif isinstance(m, (nn.BatchNorm1d, nn.BatchNorm2d)):
-                nn.init.constant_(m.weight, 1.)
-                nn.init.constant_(m.bias, 0.)
 
     def marked_params(self):
         return [
@@ -245,16 +158,13 @@ class STAIR_SRE_Model(freerec.models.GenRecArch):
         ]
 
     def whitening(self, feats: torch.Tensor):
-        """SVD Whitening -- identical to STAIR baseline."""
+        """SVD Whitening — identical to STAIR baseline."""
         feats = feats - feats.mean(0, keepdim=True)
-        feats, _, _ = torch.linalg.svd(feats, full_matrices=False)
-        return feats[:, :cfg.embedding_dim] * math.sqrt(
-            self.Item.count / cfg.embedding_dim
-        )
+        _, S, V = torch.pca_lowrank(feats, q=cfg.embedding_dim, center=False)
+        return feats @ V @ torch.diag(S.pow(-1))
 
     def get_knn_graph(self, features: torch.Tensor, k: int = 5):
-        """kNN graph -- identical to STAIR baseline."""
-        features = F.normalize(features, dim=-1)
+        features = F.normalize(features, p=2, dim=-1)
         sim = features @ features.t()
         sim.fill_diagonal_(-10.)
         edge_index, _ = freerec.graph.get_knn_graph(sim, k, symmetric=False)
