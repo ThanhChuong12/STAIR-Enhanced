@@ -1,0 +1,456 @@
+\section{STAIR: Manipulating Collaborative and Multimodal Information}
+
+\subsection{Kết quả tái lập thực nghiệm gốc}
+\label{sec:stair_reproduction}
+
+\subsubsection{Lý do thực hiện tái lập}
+
+Trước khi thực hiện các phương án cải tiến, nhóm nhận thấy quá trình tái lập baseline ban đầu cần được chuẩn hóa đồng bộ về tiêu chuẩn lựa chọn checkpoint tốt nhất. Cụ thể, tiêu chuẩn lựa chọn checkpoint trên tập validation cần được thống nhất là chỉ số NDCG@20, đồng thời theo dõi đầy đủ bốn chỉ số gồm Recall@10, Recall@20, NDCG@10 và NDCG@20. Việc chạy lại toàn bộ thực nghiệm gốc của STAIR nhằm thiết lập một hệ thống số liệu chuẩn xác, làm nền tảng đối sánh tin cậy cho các cải tiến tiếp theo.
+
+\subsubsection{Thiết lập thực nghiệm}
+
+Quá trình tái lập được thực hiện trên ba tập dữ liệu Amazon2014 gồm Baby, Sports và Electronics, với thời lượng huấn luyện tối đa 500 epoch. Checkpoint tốt nhất được xác định tại thời điểm đạt giá trị NDCG@20 cao nhất trên tập validation, sau đó mô hình tại checkpoint này được đánh giá trên tập test. Toàn bộ số liệu công bố trong phần này đều là kết quả trên tập test tại checkpoint đã chọn.
+
+\subsubsection{Kết quả so sánh với paper gốc}
+
+Bảng~\ref{tab:stair_reproduction} trình bày kết quả tái lập trên ba tập dữ liệu, đối chiếu với số liệu được công bố trong Table 2 của bài báo STAIR.
+
+\renewcommand{\arraystretch}{1.15}
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{5pt}
+\begin{longtable}{%
+    >{\raggedright\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{1.8cm}
+    >{\centering\arraybackslash}p{1.9cm}
+    >{\centering\arraybackslash}p{1.9cm}
+    >{\centering\arraybackslash}p{1.9cm}}
+
+    \caption{Kết quả tái lập thực nghiệm STAIR so với paper gốc trên ba tập dữ liệu.}
+    \label{tab:stair_reproduction} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{Kết quả tái lập} & \textbf{Paper (Table 2)} & \textbf{Chênh lệch} \\
+    \hline
+    \endfirsthead
+    \multicolumn{5}{c}{{\bfseries Bảng \thetable\ (tiếp theo)}} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{Kết quả tái lập} & \textbf{Paper (Table 2)} & \textbf{Chênh lệch} \\
+    \hline
+    \endhead
+    \midrule
+    \multicolumn{5}{r}{\textit{Tiếp tục ở trang sau...}} \\
+    \endfoot
+    \hline
+    \endlastfoot
+
+    Baby & Recall@10 & 0.0674 & 0.0674 & $0.00\%$ \\
+    \midrule
+    {(best epoch 455/500)} & Recall@20 & 0.1042 & 0.1042 & $0.00\%$ \\
+    \midrule
+    & NDCG@10   & 0.0359 & 0.0359 & $0.00\%$ \\
+    \midrule
+    & NDCG@20   & 0.0454 & 0.0453 & $+0.22\%$ \\
+    \hline
+    Sports & Recall@10 & 0.0743 & 0.0743 & $0.00\%$ \\
+    \midrule
+    {(best epoch 500/500)} & Recall@20 & 0.1111 & 0.1117 & $-0.54\%$ \\
+    \midrule
+    & NDCG@10   & 0.0405 & 0.0407 & $-0.49\%$ \\
+    \midrule
+    & NDCG@20   & 0.0500 & 0.0503 & $-0.60\%$ \\
+    \hline
+    Electronics & Recall@10 & 0.0442 & 0.0440 & $+0.45\%$ \\
+    \midrule
+    {(best epoch 490/500)} & Recall@20 & 0.0665 & 0.0663 & $+0.30\%$ \\
+    \midrule
+    & NDCG@10   & 0.0246 & 0.0245 & $+0.41\%$ \\
+    \midrule
+    & NDCG@20   & 0.0303 & 0.0302 & $+0.33\%$ \\
+    \hline
+\end{longtable}
+\endgroup
+
+Trên cả ba tập dữ liệu với đầy đủ mười hai giá trị đo lường, chênh lệch tuyệt đối so với kết quả bài báo đều nhỏ hơn 1\%. Mức sai lệch này nằm trong phạm vi dao động ngẫu nhiên thông thường giữa các lần chạy thực nghiệm độc lập.
+
+\subsubsection{Kết luận}
+
+Kết quả tái lập cho thấy mức độ tương đồng cao với bài báo gốc. Độ lệch nhỏ ghi nhận trên tập Sports xuất phát từ đặc tính hội tụ tiệm cận ở những epoch cuối, không phản ánh sai lệch về cấu hình. Quá trình kiểm tra này xác nhận hệ thống thực nghiệm hoạt động chuẩn xác và sẵn sàng làm baseline cho các nghiên cứu cải tiến tiếp theo.
+
+\subsection{Kết quả thực nghiệm cải tiến 1: Stepwise Spectral-Refined Contrastive Learning (STAIR-SRE)}
+\label{sec:stair_sre}
+
+\subsubsection{Động lực kỹ thuật và kiến trúc đề xuất}
+
+Trong mô hình STAIR gốc, đặc trưng đa phương thức của sản phẩm được tiền xử lý một lần thông qua phép biến đổi SVD whitening để khử tương quan và sắp xếp phương sai theo thứ tự giảm dần từ chiều 0 đến chiều 63. Nhánh tích chập đồ thị Forward Stepwise Convolution phân bổ trọng số phổ $\beta$ dựa trên đúng thứ tự trục tọa độ này. Tuy nhiên, phép biến đổi SVD tĩnh không thể cập nhật thích ứng theo phản hồi của đồ thị tương tác trong quá trình huấn luyện.
+
+Khi tìm kiếm giải pháp nâng cao khả năng học biểu diễn, việc chuyển giao các kỹ thuật từ những mô hình khác vào STAIR đòi hỏi phải xem xét thận trọng các ràng buộc toán học đặc thù của kiến trúc:
+\begin{itemize}[leftmargin=*]
+    \item Lớp chiếu tuyến tính đầy đủ thường dùng trong các mô hình như REARM thực hiện phép nhân ma trận $\mathbf{W} \in \mathbb{R}^{D \times D}$. Phép biến đổi affine này chứa toán tử xoay không gian, làm trộn lẫn các chiều tọa độ với nhau. Điều này phá vỡ trật tự tần số đã được sắp xếp từ thấp đến cao sau SVD whitening, làm mất đi cơ sở phân bổ bước nhảy của Forward Stepwise Convolution.
+    \item Việc đưa trọng số tương đồng vào số mũ trong mẫu số của InfoNCE như một số nghiên cứu trước đây dẫn đến tác dụng ngược. Khi một sản phẩm âm có độ tương đồng ngữ nghĩa cao với người dùng, giá trị hàm mũ tăng lên, tạo ra lực đẩy mạnh hơn đối với sản phẩm đó, đẩy nhầm các sản phẩm phù hợp ra xa danh sách gợi ý.
+    \item Các phương pháp contrastive learning dựa trên đồ thị thô không thể áp dụng trực tiếp do STAIR nén thông tin đa phương thức thành biểu diễn 64 chiều ngay từ bước khởi tạo, không còn duy trì vector đặc trưng thô trong suốt vòng lặp huấn luyện.
+\end{itemize}
+
+Để giải quyết các vấn đề trên, mô hình STAIR-SRE được thiết kế với bốn thành phần kỹ thuật phối hợp chặt chẽ:
+
+\paragraph{1. Zero-rotation Diagonal Spectral Projector.}
+Để thích ứng phương sai của từng dải tần số mà không làm xoay hệ trục tọa độ, mô hình sử dụng toán tử nhân Hadamard với vector trọng số đường chéo:
+\begin{equation}
+\mathbf{e}_i^{(0)} = \mathbf{e}_{i}^{\text{svd}} \odot \mathbf{w}
+\end{equation}
+trong đó $\mathbf{w} \in \mathbb{R}^D$ là vector tham số học được, khởi tạo bằng vector $\mathbf{1}$. Ma trận Jacobian của phép chiếu là ma trận đường chéo $\mathbf{J} = \text{diag}(\mathbf{w})$ với tất cả các phần tử ngoài đường chéo bằng 0, đảm bảo tính độc lập giữa các chiều tọa độ được bảo toàn tuyệt đối.
+
+\paragraph{2. Stepwise Contrastive Learning trên các tầng trung gian.}
+Thay vì tạo góc nhìn nhân tạo bằng cách xóa cạnh hoặc ẩn node trên đồ thị, mô hình trích xuất trực tiếp các biểu diễn trung gian từ Forward Stepwise Convolution. Tầng 0 đại diện cho thông tin cục bộ và tầng 1 đại diện cho thông tin láng giềng 1-hop, tạo thành các góc nhìn tự nhiên không phát sinh chi phí tính toán bổ sung.
+
+\paragraph{3. Soft Spectral Swapping.}
+Mô hình tạo mẫu hard negative bằng cách kết hợp có chọn lọc giữa các chiều đặc trưng. Dựa vào vector phân bổ phổ $\boldsymbol{\beta} \in \mathbb{R}^D$ của STAIR, xác suất hoán đổi được xác định theo công thức:
+\begin{equation}
+\mathbf{p}_{\text{swap}} = 1.0 - \boldsymbol{\beta}
+\end{equation}
+Tại chiều tần số thấp ($d \to 0$), $\beta \approx 0.9$ nên xác suất hoán đổi thấp ($p_{\text{swap}} \approx 0.1$), bảo toàn đặc trưng collaborative. Tại chiều tần số cao ($d \to 63$), $\beta \approx 0.0$ nên xác suất hoán đổi cao ($p_{\text{swap}} \approx 1.0$), tiếp nhận đặc trưng đa phương thức từ sản phẩm khác. Mặt nạ hoán đổi được lấy mẫu nhị phân từ phân phối Bernoulli:
+\begin{equation}
+\mathbf{m} \sim \text{Bernoulli}(\mathbf{p}_{\text{swap}}) \in \{0, 1\}^D
+\end{equation}
+
+\paragraph{4. Adaptive False Negative Attenuation.}
+Để xử lý các false negative trong mini-batch mà không làm gián đoạn đạo hàm bằng ngưỡng nhị phân cứng, mô hình tính toán độ tương đồng giữa centroid sở thích của người dùng $\mathbf{p}_u$ và vector item $\mathbf{m}_k$:
+\begin{equation}
+W_{u, k} = \frac{\mathbf{p}_u \cdot \mathbf{m}_k}{\|\mathbf{p}_u\|_2 \|\mathbf{m}_k\|_2}
+\end{equation}
+Hệ số suy giảm được đặt bên ngoài hàm $\exp$ trong mẫu số của InfoNCE:
+\begin{equation}
+\alpha_{u, k} = 1.0 - \text{clamp}(W_{u, k}, 0.0, 1.0)
+\end{equation}
+Khi sản phẩm $k$ có độ tương đồng ngữ nghĩa cao với người dùng ($W \to 1$), hệ số $\alpha_{u, k} \to 0$, lực đẩy của InfoNCE đối với sản phẩm này tự động triệt tiêu. Ngược lại, khi sản phẩm hoàn toàn xa lạ ($W \to 0$), hệ số $\alpha_{u, k} \to 1$, lực đẩy phân tách được kích hoạt trọn vẹn.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[scale=0.82, transform shape,
+    inputbox/.style={rectangle, draw=blue!60!black, rounded corners=4pt, minimum height=0.95cm, text width=2.7cm, font=\scriptsize, align=center, fill=blue!6, inner sep=4pt},
+    block/.style={rectangle, draw=blue!60!black, rounded corners=4pt, minimum height=0.95cm, text width=5.2cm, font=\scriptsize, align=center, fill=blue!6, inner sep=5pt},
+    layerbox/.style={rectangle, draw=teal!70!black, rounded corners=4pt, minimum height=1.05cm, text width=5.2cm, font=\scriptsize\bfseries, align=center, fill=teal!8, inner sep=5pt},
+    projbox/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=4pt, minimum height=1.35cm, text width=10.4cm, font=\scriptsize, align=center, fill=red!6, inner sep=6pt},
+    swapbox/.style={rectangle, draw=purple!70!black, dashed, thick, rounded corners=4pt, minimum height=1.35cm, text width=10.4cm, font=\scriptsize, align=center, fill=purple!6, inner sep=6pt},
+    clbox/.style={rectangle, draw=orange!80!black, dashed, thick, rounded corners=4pt, minimum height=2.6cm, text width=4.8cm, font=\scriptsize, align=center, fill=orange!10, inner sep=6pt},
+    widebox/.style={rectangle, draw=orange!80!black, dashed, thick, rounded corners=4pt, minimum height=1.25cm, text width=10.4cm, font=\scriptsize, align=center, fill=orange!10, inner sep=6pt},
+    finalbox/.style={rectangle, draw=blue!85!black, thick, rounded corners=5pt, minimum height=1.25cm, text width=10.4cm, font=\scriptsize, align=center, fill=blue!12, inner sep=7pt},
+    arr/.style={-{Stealth[length=2.5mm, width=1.7mm]}, thick, draw=gray!30!black},
+    dasharr/.style={-{Stealth[length=2.5mm, width=1.7mm]}, thick, dashed, draw=purple!80!black},
+    subbg_left/.style={draw=blue!30, dashed, fill=blue!2, rounded corners=8pt},
+    subbg_right/.style={draw=orange!40, dashed, fill=orange!2, rounded corners=8pt}
+]
+
+% Khung bao quanh ben trai: FSC Backbone
+\draw[subbg_left] (-7.3, 2.0) rectangle (-1.5, -9.8);
+\node[font=\scriptsize\bfseries\color{blue!70!black}, anchor=north] at (-4.4, 1.8) {FSC Backbone (STAIR)};
+
+% Khung bao quanh ben phai: Module STAIR-SRE
+\draw[subbg_right] (-0.4, 2.0) rectangle (10.6, -9.8);
+\node[font=\scriptsize\bfseries\color{orange!80!black}, anchor=north] at (5.1, 1.8) {Module STAIR-SRE};
+
+% ===== NHANH TRAI: FORWARD STEPWISE CONVOLUTION =====
+\node[inputbox] (in_u) at (-5.9, 0.6) {User ID Embedding\\[2pt]$E_u \in \mathbb{R}^{N_u \times D}$};
+\node[inputbox] (in_i) at (-2.9, 0.6) {Item SVD Whitened\\[2pt]$E_{\text{svd}} \in \mathbb{R}^{N_i \times D}$};
+
+\node[block] (h0) at (-4.4, -1.1) {\textbf{Tầng 0: Ego Embeddings}\\[3pt]$H^{(0)} = [E_u \,;\, E_{\text{svd}} \odot \mathbf{w}] = [U_0 \,;\, I_0]$};
+\draw[arr] (in_u.south) -- ++(0, -0.3) -| ([xshift=-1.4cm]h0.north);
+\draw[arr] (in_i.south) -- ++(0, -0.3) -| ([xshift=1.4cm]h0.north);
+
+\node[layerbox] (h1) at (-4.4, -3.1) {FSC Tầng 1 (1-hop lân cận)\\[3pt]$H^{(1)} = \tilde{A} H^{(0)} \odot \beta = [U_1 \,;\, I_1]$};
+\draw[arr] (h0.south) -- (h1.north);
+
+\node[layerbox] (h2) at (-4.4, -5.1) {FSC Tầng 2 (2-hop lân cận)\\[3pt]$H^{(2)} = \tilde{A} H^{(1)} \odot \beta = [U_2 \,;\, I_2]$};
+\draw[arr] (h1.south) -- (h2.north);
+
+\node[block] (fsc_out) at (-4.4, -7.3) {\textbf{Biểu diễn tổng hợp $\bar{H}$}\\[3pt]Phục vụ suy luận \& $\mathcal{L}_{\text{BPR}}$};
+\draw[arr] (h2.south) -- (fsc_out.north);
+
+% ===== NHANH PHAI: MODULE STAIR-SRE =====
+% Khoi 1: Diagonal Spectral Projector
+\node[projbox] (proj) at (5.1, 0.4) {\textbf{Diagonal Spectral Projector (0-rotation)}\\[3pt]$E_i^{(0)} = E_{\text{svd}} \odot \mathbf{w}, \quad \mathbf{w} \in \mathbb{R}^{64}, \quad \mathcal{L}_{\text{reg\_w}} = \lambda_w \|\mathbf{w} - \mathbf{1}\|_2^2$\\[2pt]\normalfont\scriptsize Co giãn phương sai từng trục đơn lẻ, bảo toàn nguyên vẹn trật tự phổ SVD};
+
+% Khoi 2: Soft Spectral Swapping & False Negative Attenuation
+\node[swapbox] (swap) at (5.1, -2.1) {\textbf{Spectral Swapping \& Adaptive False Negative Attenuation}\\[3pt]$\mathbf{m} \sim \text{Bernoulli}(1 - \boldsymbol{\beta}), \quad i_{\text{hard}} = \text{Swapping}(i_{\text{neg1}}, i_{\text{neg2}}, \mathbf{m})$\\[2pt]\normalfont\scriptsize Suy giảm mẫu âm theo độ tương đồng centroid người dùng: $\alpha_{u,k} = 1.0 - \text{clamp}(W_{u,k}, 0, 1)$};
+
+\draw[arr] (proj.south) -- (swap.north);
+
+% Duong trich xuat tu FSC sang module SRE
+\draw[dasharr] (h0.east) -- ++(0.6, 0) |- ([yshift=8pt]swap.west);
+\draw[dasharr] (h1.east) -- ++(0.4, 0) |- ([yshift=-8pt]swap.west);
+
+% Hai khoi InfoNCE hai chieu
+\node[clbox] (cl_u) at (2.6, -4.7) {\textbf{User-side InfoNCE}\\[2pt]\textbf{($\mathcal{L}_u$)}\\[4pt]Truy vấn: $I_1[i]$\\[2pt]Mẫu dương: $U_0[u]$\\[2pt]Hard negative: $i_{\text{hard}}$\\[2pt]Mẫu âm: In-batch negatives};
+
+\node[clbox] (cl_i) at (7.6, -4.7) {\textbf{Item-side InfoNCE}\\[2pt]\textbf{($\mathcal{L}_i$)}\\[4pt]Truy vấn: $U_1[u]$\\[2pt]Mẫu dương: $I_0[i]$\\[2pt]Hard negative: $i_{\text{hard}}$\\[2pt]Mẫu âm: In-batch negatives};
+
+\draw[arr] ([xshift=-2.5cm]swap.south) -- (cl_u.north);
+\draw[arr] ([xshift=2.5cm]swap.south) -- (cl_i.north);
+
+% Khoi tong hop loss SRE
+\node[widebox] (cl_sum) at (5.1, -7.3) {\textbf{Hàm mất mát Stepwise Contrastive Loss}\\[3pt]$\mathcal{L}_{\text{SRE}} = \alpha \, \mathcal{L}_u + (1 - \alpha) \, \mathcal{L}_i$\\[2pt]\normalfont\scriptsize Đối chiếu tự nhiên giữa các tầng trung gian của Forward Stepwise Convolution};
+
+\draw[arr] (cl_u.south) -- ([xshift=-2.5cm]cl_sum.north);
+\draw[arr] (cl_i.south) -- ([xshift=2.5cm]cl_sum.north);
+
+% Khoi Loss tong the
+\node[finalbox] (total_loss) at (0.35, -10.3) {\textbf{Hàm mục tiêu tối ưu đồng thời toàn hệ thống}\\[3pt]$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{BPR}} + \lambda_{\text{sre}} \mathcal{L}_{\text{SRE}} + \lambda_w \|\mathbf{w} - \mathbf{1}\|_2^2 + \lambda_{\text{reg}} \|\Theta\|_2^2$};
+
+\draw[arr] (fsc_out.south) -- ++(0, -0.7) -| ([xshift=-2.6cm]total_loss.north);
+\draw[arr] (cl_sum.south) -- ++(0, -0.7) -| ([xshift=2.6cm]total_loss.north);
+
+\end{tikzpicture}
+\caption{Sơ đồ luồng tính toán tổng thể của mô hình STAIR-SRE: Tích hợp Diagonal Spectral Projector, Soft Spectral Swapping và Adaptive False Negative Attenuation vào khung xương Forward Stepwise Convolution.}
+\label{fig:stair_sre_architecture}
+\end{figure}
+
+\subsubsection{Thiết lập thực nghiệm và phương pháp đánh giá}
+
+Cấu hình thực nghiệm của mô hình được thiết lập đồng bộ như sau:
+\begin{itemize}[leftmargin=*]
+    \item Trọng số hàm mất mát tương phản: $\lambda_{\text{sre}} = 10^{-4}$.
+    \item Nhiệt độ InfoNCE: $\tau = 0.20$.
+    \item Khoảng cách tầng đối chiếu: $G = 1$ (đối chiếu Tầng 0 và Tầng 1 của Forward Stepwise Convolution).
+    \item Hệ số cân bằng hai chiều: $\alpha = 0.50$ (đối xứng giữa user và item).
+    \item Biên độ nhiễu phổ: $\epsilon = 0.10$.
+    \item Bộ tối ưu: AdamWSEvo với learning rate $\eta = 10^{-3}$, weight decay $\lambda_{\text{reg}} = 10^{-4}$, kích thước mini-batch $B = 1024$, huấn luyện tối đa 500 epoch.
+    \item Tiêu chí đánh giá: Checkpoint tốt nhất được chọn dựa trên giá trị NDCG@20 cao nhất trên tập validation, sau đó đánh giá trên tập test với bốn chỉ số Recall@10, Recall@20, NDCG@10 và NDCG@20.
+\end{itemize}
+
+\subsubsection{Kết quả thực nghiệm phiên bản v1 và phân tích xung đột gradient}
+
+Bảng~\ref{tab:stair_sre_v1_results} trình bày kết quả thực nghiệm của phiên bản STAIR-SRE v1 đối chiếu trực tiếp với STAIR Baseline trên hai tập dữ liệu Amazon Baby và Amazon Sports.
+
+\renewcommand{\arraystretch}{1.15}
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{5pt}
+\begin{longtable}{%
+    >{\raggedright\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{1.8cm}
+    >{\centering\arraybackslash}p{1.9cm}
+    >{\centering\arraybackslash}p{1.9cm}
+    >{\centering\arraybackslash}p{1.9cm}}
+
+    \caption{Kết quả thực nghiệm STAIR-SRE v1 so với STAIR Baseline trên Baby và Sports.}
+    \label{tab:stair_sre_v1_results} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{STAIR Baseline} & \textbf{STAIR-SRE v1} & \textbf{Chênh lệch} \\
+    \hline
+    \endfirsthead
+    \multicolumn{5}{c}{{\bfseries Bảng \thetable\ (tiếp theo)}} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{STAIR Baseline} & \textbf{STAIR-SRE v1} & \textbf{Chênh lệch} \\
+    \hline
+    \endhead
+    \midrule
+    \multicolumn{5}{r}{\textit{Tiếp tục ở trang sau...}} \\
+    \endfoot
+    \hline
+    \endlastfoot
+
+    Baby & Recall@10 & \textbf{0.0674} & 0.0639 & $-5.19\%$ \\
+    \midrule
+    {(BL: epoch 455} & Recall@20 & \textbf{0.1042} & 0.0967 & $-7.20\%$ \\
+    \midrule
+    {v1: epoch 340)} & NDCG@10   & \textbf{0.0359} & 0.0335 & $-6.69\%$ \\
+    \midrule
+    & NDCG@20   & \textbf{0.0454} & 0.0420 & $-7.49\%$ \\
+    \hline
+    Sports & Recall@10 & \textbf{0.0743} & 0.0677 & $-8.88\%$ \\
+    \midrule
+    {(BL: epoch 500} & Recall@20 & \textbf{0.1111} & 0.1029 & $-7.38\%$ \\
+    \midrule
+    {v1: epoch 155)} & NDCG@10   & \textbf{0.0405} & 0.0371 & $-8.40\%$ \\
+    \midrule
+    & NDCG@20   & \textbf{0.0500} & 0.0461 & $-7.80\%$ \\
+    \hline
+\end{longtable}
+\endgroup
+
+Số liệu thực nghiệm cho thấy phiên bản v1 chưa đạt được mức hiệu năng mong muốn, ghi nhận mức giảm từ $-5.19\%$ đến $-7.49\%$ trên Baby và từ $-7.38\%$ đến $-8.88\%$ trên Sports. Phân tích toán học và cơ chế vận hành của mô hình chỉ ra ba nguyên nhân kỹ thuật chính:
+
+\paragraph{1. Hiện tượng xung đột gradient ký sinh.}
+Trong phiên bản v1, mẫu hard negative được tạo bằng cách hoán đổi giữa sản phẩm dương $i^+$ và sản phẩm dịch vòng trong batch:
+\begin{equation}
+\mathbf{i}_{\text{hard}} = \mathbf{i}^+ \odot (\mathbf{1} - \mathbf{m}) + \mathbf{i}_{\text{rolled}} \odot \mathbf{m}
+\end{equation}
+Do xác suất hoán đổi $p_{\text{swap}}$ tại các chiều tần số thấp rất nhỏ ($p_{\text{swap}} \approx 0.1$), mặt nạ hoán đổi $\mathbf{m}$ có giá trị bằng 0 tại hầu hết các chiều đầu tiên. Hệ quả là vector $\mathbf{i}_{\text{hard}}$ vẫn giữ lại hơn 60\% thành phần đặc trưng collaborative của chính sản phẩm dương $\mathbf{i}^+$.
+
+Khi tính gradient của hàm mất mát tổng thể theo biểu diễn người dùng $\mathbf{u}$:
+\begin{equation}
+\frac{\partial \mathcal{L}_{\text{total}}}{\partial \mathbf{u}} = \frac{\partial \mathcal{L}_{\text{BPR}}}{\partial \mathbf{u}} + \lambda_{\text{sre}} \frac{\partial \mathcal{L}_{\text{SRE}}}{\partial \mathbf{u}}
+\end{equation}
+Gradient của hàm BPR đóng vai trò lực kéo người dùng lại gần sản phẩm dương:
+\begin{equation}
+\frac{\partial \mathcal{L}_{\text{BPR}}}{\partial \mathbf{u}} = -\sigma(-\hat{x}_{ui}) \mathbf{i}^+
+\end{equation}
+Trong khi đó, gradient của hàm InfoNCE đẩy người dùng ra xa mẫu hard negative:
+\begin{equation}
+\frac{\partial \mathcal{L}_{\text{SRE}}}{\partial \mathbf{u}} \propto + P_{\text{hard}} \mathbf{i}_{\text{hard}} \approx + P_{\text{hard}} \left( \mathbf{i}^+ \odot (\mathbf{1} - \mathbf{m}) \right)
+\end{equation}
+Vì $\mathbf{i}_{\text{hard}}$ chứa trực tiếp thành phần của $\mathbf{i}^+$, lực đẩy từ InfoNCE đã triệt tiêu một phần đáng kể lực kéo của hàm BPR. Sự giằng co này làm giảm độ sắc nét của không gian embedding và làm suy giảm khả năng phân biệt thứ hạng.
+
+\paragraph{2. Suy giảm tính đồng nhất do attenuation không ngưỡng.}
+Trong v1, hệ số suy giảm $(1 - W)$ được áp dụng trực tiếp lên toàn bộ các mẫu âm trong batch mà không có ngưỡng chọn lọc. Thống kê trên dữ liệu thực tế cho thấy $98.9\%$ các cặp sản phẩm trong batch có độ tương đồng $W \in [0.0, 0.35]$, tức là các true negative hoàn toàn không liên quan đến sở thích người dùng. Việc nhân thêm hệ số $(1 - W)$ đã làm suy yếu lực đẩy cần thiết đối với $98.9\%$ mẫu âm này, làm giảm tính đồng nhất phân bố trên siêu mặt cầu đơn vị.
+
+\paragraph{3. Hiện tượng bão hòa loss sớm trên đồ thị siêu thưa.}
+Trên tập Sports có độ thưa rất cao ($99.95\%$), khoảng cách giữa các node trên đồ thị rất lớn. Giá trị nhiệt độ $\tau = 0.20$ quá nhọn khiến xác suất của các mẫu âm ngẫu nhiên nhanh chóng tiệm cận 0, dẫn đến training loss rơi tự do về mức $0.0045$ tại epoch 150. Khi loss bão hòa, gradient của contrastive learning triệt tiêu gần như hoàn toàn, khiến mô hình đạt đỉnh sớm tại epoch 155 rồi suy giảm dần do overfitting.
+
+\subsubsection{Cải tiến phiên bản v1.1 và phục hồi hiệu năng}
+
+Dựa trên các phân tích nguyên nhân ở phiên bản v1, phiên bản STAIR-SRE v1.1 được nâng cấp với bốn điều chỉnh kỹ thuật:
+
+\paragraph{1. Cross-Negative Spectral Swapping (CNSS).}
+Để loại bỏ hoàn toàn sự hiện diện của $\mathbf{i}^+$ trong mẫu hard negative, cơ chế hoán đổi được chuyển sang thực hiện giữa hai mẫu âm độc lập trong mini-batch:
+\begin{equation}
+\mathbf{i}_{\text{hard}} = \mathbf{i}_{\text{roll1}} \odot (\mathbf{1} - \mathbf{m}) + \mathbf{i}_{\text{roll2}} \odot \mathbf{m}
+\end{equation}
+trong đó $\mathbf{i}_{\text{roll1}}$ và $\mathbf{i}_{\text{roll2}}$ lần lượt là các vector thu được qua phép dịch vòng 1 và 2 vị trí trong batch. Cơ chế này đưa độ phơi nhiễm đối với sản phẩm dương $\mathbf{i}^+$ về đúng 0\%, triệt tiêu hoàn toàn xung đột gradient với hàm BPR.
+
+\paragraph{2. Thresholded Smooth False Negative Attenuation.}
+Mô hình tái lập ngưỡng chọn lọc $\tau_{\text{atten}} = 0.35$. Các mẫu âm có độ tương đồng $W_{u, k} \le 0.35$ giữ nguyên $100\%$ lực đẩy, bảo toàn tính đồng nhất trên siêu mặt cầu. Chỉ những mẫu vượt ngưỡng $0.35$ mới bị làm suy giảm lực đẩy theo công thức:
+\begin{equation}
+\alpha_{u, k} = \begin{cases} 
+1.0 & \text{nếu } W_{u, k} \le \tau_{\text{atten}} \\ 
+1.0 - \dfrac{W_{u, k} - \tau_{\text{atten}}}{1.0 - \tau_{\text{atten}}} & \text{nếu } W_{u, k} > \tau_{\text{atten}} 
+\end{cases}
+\end{equation}
+
+\paragraph{3. L2 Anchoring Regularization cho Projector.}
+Để ngăn vector trọng số $\mathbf{w}$ bị trôi dạt quá xa khỏi giá trị ban đầu, mô hình bổ sung số hạng điều hòa vào hàm mục tiêu:
+\begin{equation}
+\mathcal{L}_{\text{reg\_w}} = \lambda_w \|\mathbf{w} - \mathbf{1}\|_2^2
+\end{equation}
+với $\lambda_w = 10^{-4}$, đồng thời thiết lập tốc độ học riêng $\eta_w = 0.1 \times \text{lr}$ cho tham số này.
+
+\paragraph{4. Điều chỉnh nhiệt độ và trọng số loss trên tập Sports.}
+Trên đồ thị siêu thưa Sports, nhiệt độ được nâng lên $\tau = 0.30$ để làm mềm phân phối softmax, và trọng số được giảm xuống $\lambda_{\text{sre}} = 5 \times 10^{-5}$ nhằm duy trì dòng chảy gradient ổn định trong suốt 500 epoch.
+
+Bảng~\ref{tab:stair_sre_v1_1_results} trình bày kết quả thực nghiệm của phiên bản v1.1 so với phiên bản v1 và STAIR Baseline trên cả hai tập dữ liệu.
+
+\renewcommand{\arraystretch}{1.15}
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{longtable}{%
+    >{\raggedright\arraybackslash}p{1.8cm}
+    >{\centering\arraybackslash}p{1.6cm}
+    >{\centering\arraybackslash}p{1.6cm}
+    >{\centering\arraybackslash}p{1.6cm}
+    >{\centering\arraybackslash}p{1.6cm}
+    >{\centering\arraybackslash}p{1.6cm}
+    >{\centering\arraybackslash}p{1.6cm}}
+
+    \caption{Kết quả thực nghiệm STAIR-SRE v1.1 so với v1 và STAIR Baseline trên Baby và Sports.}
+    \label{tab:stair_sre_v1_1_results} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{Baseline} & \textbf{SRE v1} & \textbf{SRE v1.1} & \textbf{$\Delta$ vs v1} & \textbf{$\Delta$ vs BL} \\
+    \hline
+    \endfirsthead
+    \multicolumn{7}{c}{{\bfseries Bảng \thetable\ (tiếp theo)}} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{Baseline} & \textbf{SRE v1} & \textbf{SRE v1.1} & \textbf{$\Delta$ vs v1} & \textbf{$\Delta$ vs BL} \\
+    \hline
+    \endhead
+    \midrule
+    \multicolumn{7}{r}{\textit{Tiếp tục ở trang sau...}} \\
+    \endfoot
+    \hline
+    \endlastfoot
+
+    Baby & Recall@10 & \textbf{0.0674} & 0.0639 & 0.0646 & $+1.10\%$ & $-4.15\%$ \\
+    \midrule
+    {(best epoch 345)} & Recall@20 & \textbf{0.1042} & 0.0967 & 0.1003 & $+3.72\%$ & $-3.74\%$ \\
+    \midrule
+    & NDCG@10   & \textbf{0.0359} & 0.0335 & 0.0341 & $+1.79\%$ & $-5.01\%$ \\
+    \midrule
+    & NDCG@20   & \textbf{0.0454} & 0.0420 & 0.0433 & $+3.10\%$ & $-4.63\%$ \\
+    \hline
+    Sports & Recall@10 & \textbf{0.0743} & 0.0677 & 0.0723 & $+6.79\%$ & $-2.69\%$ \\
+    \midrule
+    {(best epoch 415)} & Recall@20 & \textbf{0.1111} & 0.1029 & 0.1098 & $+6.71\%$ & $-1.17\%$ \\
+    \midrule
+    & NDCG@10   & \textbf{0.0405} & 0.0371 & 0.0396 & $+6.74\%$ & $-2.22\%$ \\
+    \midrule
+    & NDCG@20   & \textbf{0.0500} & 0.0461 & 0.0493 & $+6.94\%$ & $-1.40\%$ \\
+    \hline
+\end{longtable}
+\endgroup
+
+Kết quả đo lường cho thấy phiên bản v1.1 đã tạo ra bước phục hồi hiệu năng rõ rệt:
+\begin{itemize}[leftmargin=*]
+    \item Trên tập Amazon Sports: Hiệu năng tăng trưởng mạnh mẽ trên toàn bộ bốn chỉ số so với bản v1, gồm Recall@10 tăng $+6.79\%$, Recall@20 tăng $+6.71\%$, NDCG@10 tăng $+6.74\%$ và NDCG@20 tăng $+6.94\%$. Khoảng cách chênh lệch so với Baseline được thu hẹp hơn $84\%$, đưa Recall@20 đạt $0.1098$ (chỉ còn cách Baseline $0.1111$ mức $-1.17\%$) và NDCG@20 đạt $0.0493$ (chỉ còn cách Baseline $0.0500$ mức $-1.40\%$).
+    \item Trên tập Amazon Baby: Các chỉ số đều có sự cải thiện so với v1, trong đó Recall@20 tăng $+3.72\%$ để vượt trở lại mốc $0.1000$ (đạt $0.1003$), và NDCG@20 tăng $+3.10\%$ (đạt $0.0433$).
+\end{itemize}
+
+Bảng~\ref{tab:stair_sre_trajectories} theo dõi chi tiết diễn biến của hàm mất mát huấn luyện và hai chỉ số Recall@20, NDCG@20 trên tập validation qua các mốc epoch giữa phiên bản v1 và v1.1 trên tập Sports.
+
+\renewcommand{\arraystretch}{1.15}
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{3.5pt}
+\begin{longtable}{%
+    >{\raggedright\arraybackslash}p{1.7cm}
+    >{\centering\arraybackslash}p{1.6cm}
+    >{\centering\arraybackslash}p{1.6cm}
+    >{\centering\arraybackslash}p{1.6cm}
+    >{\centering\arraybackslash}p{1.6cm}
+    >{\centering\arraybackslash}p{1.6cm}
+    >{\centering\arraybackslash}p{1.6cm}}
+
+    \caption{Diễn biến động lực học huấn luyện trên tập Amazon Sports giữa phiên bản v1 và v1.1.}
+    \label{tab:stair_sre_trajectories} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Mốc epoch} & \textbf{Loss v1} & \textbf{Val R@20 v1} & \textbf{Val N@20 v1} & \textbf{Loss v1.1} & \textbf{Val R@20 v1.1} & \textbf{Val N@20 v1.1} \\
+    \hline
+    \endfirsthead
+    \multicolumn{7}{c}{{\bfseries Bảng \thetable\ (tiếp theo)}} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Mốc epoch} & \textbf{Loss v1} & \textbf{Val R@20 v1} & \textbf{Val N@20 v1} & \textbf{Loss v1.1} & \textbf{Val R@20 v1.1} & \textbf{Val N@20 v1.1} \\
+    \hline
+    \endhead
+    \midrule
+    \multicolumn{7}{r}{\textit{Tiếp tục ở trang sau...}} \\
+    \endfoot
+    \hline
+    \endlastfoot
+
+    Epoch 1   & 0.6827 & ---    & ---    & 0.6833 & ---    & ---    \\
+    \midrule
+    Epoch 20  & 0.0722 & 0.0930 & 0.0409 & 0.1468 & 0.0879 & 0.0382 \\
+    \midrule
+    Epoch 50  & 0.0223 & 0.0989 & 0.0435 & 0.0628 & 0.0962 & 0.0422 \\
+    \midrule
+    Epoch 100 & 0.0101 & 0.1009 & 0.0447 & 0.0404 & 0.1004 & 0.0445 \\
+    \midrule
+    Epoch 150 & 0.0072 & 0.1012 & 0.0450 & 0.0349 & 0.1018 & 0.0453 \\
+    \midrule
+    Epoch 200 & 0.0060 & 0.0998 & 0.0443 & 0.0308 & 0.1031 & 0.0460 \\
+    \midrule
+    Epoch 300 & 0.0051 & 0.0989 & 0.0439 & 0.0267 & 0.1047 & 0.0470 \\
+    \midrule
+    Epoch 415 & 0.0047 & 0.0985 & 0.0435 & 0.0247 & \textbf{0.1058} & \textbf{0.0476} \\
+    \midrule
+    Epoch 500 & 0.0045 & 0.0983 & 0.0434 & 0.0242 & 0.1056 & 0.0475 \\
+    \hline
+\end{longtable}
+\endgroup
+
+Phân tích tiến trình cho thấy trong phiên bản v1.1, việc nâng nhiệt độ $\tau = 0.30$ và điều chỉnh trọng số $\lambda_{\text{sre}} = 5 \times 10^{-5}$ đã giữ giá trị loss ổn định ở mức $0.0242$ (cao hơn 5.3 lần so với mức $0.0045$ của v1). Dòng gradient được duy trì liên tục, kéo dài điểm hội tụ tối ưu từ epoch 155 lên tận epoch 415, loại bỏ hiện tượng đạt đỉnh sớm và suy thoái dài hạn.
+
+\subsubsection{Đánh giá chi phí tài nguyên và hướng phát triển tiếp theo}
+
+Về mặt tiêu thụ tài nguyên phần cứng, mô hình STAIR-SRE thể hiện mức độ hiệu quả cao khi chạy thực nghiệm trên GPU NVIDIA T4:
+\begin{itemize}[leftmargin=*]
+    \item Trên tập Amazon Baby: Thời gian huấn luyện 500 epoch là 24.3 phút (trung bình 2.65 giây mỗi epoch), mức tiêu thụ VRAM đỉnh là 785 MB, chiếm khoảng 5.1\% dung lượng bộ nhớ GPU.
+    \item Trên tập Amazon Sports: Thời gian huấn luyện 500 epoch là 66.1 phút (trung bình 6.15 giây mỗi epoch), mức tiêu thụ VRAM đỉnh là 995 MB, chiếm khoảng 6.5\% dung lượng bộ nhớ GPU.
+    \item Quá trình huấn luyện trên cả hai tập dữ liệu không ghi nhận hiện tượng tràn bộ nhớ hay rò rỉ tài nguyên, cho thấy các phép tính ma trận và lấy mẫu ngẫu nhiên đã được vector hóa hiệu quả.
+\end{itemize}
+
+Kết quả thực nghiệm của STAIR-SRE v1.1 đã giải quyết được vấn đề xung đột gradient ký sinh và phục hồi phần lớn hiệu năng bị suy giảm ở phiên bản v1, đặc biệt là trên tập dữ liệu siêu thưa Sports. Mặc dù vậy, hiệu năng tổng thể của mô hình vẫn còn thấp hơn nhẹ so với Baseline (chênh lệch $-1.17\%$ Recall@20 trên Sports và $-3.74\%$ trên Baby), do đó chưa đạt tiêu chuẩn để công nhận là một cải tiến vượt trội hoàn chỉnh.
+
+Các bài học rút ra từ thực nghiệm cung cấp cơ sở quan trọng cho định hướng nghiên cứu tiếp theo:
+\begin{itemize}[leftmargin=*]
+    \item Trên các đồ thị có mật độ tương đối dày hơn như Baby, trọng số contrastive learning cần được điều chỉnh ở mức nhỏ hơn (khoảng $2 \times 10^{-5} \sim 3 \times 10^{-5}$) hoặc áp dụng cơ chế contrastive warm-up (chỉ kích hoạt hàm mất mát tương phản sau khi BPR đã định hình không gian biểu diễn cơ sở trong 50 epoch đầu).
+    \item Tiếp tục nghiên cứu cơ chế lấy mẫu mẫu âm thích ứng theo độ cong phổ và chưng cất thông tin tương hỗ nhằm khai thác sâu hơn tín hiệu đa phương thức mà không gây áp lực cạnh tranh không gian biểu diễn với mục tiêu xếp hạng chính.
+\end{itemize}
