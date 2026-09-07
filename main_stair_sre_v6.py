@@ -1,23 +1,18 @@
-# -*- coding: utf-8 -*-
 """
-main_stair_sre_v6.py -- STAIR-SRE v1.1 Training Script (Gradient-Harmonized)
-=============================================================================
-Stepwise Spectral-Refined Contrastive Learning (Phase 3 -- Dot 1.1)
+main_stair_sre_v6.py — STAIR-SRE v6 Training Script
+======================================================
+Stepwise Spectral-Refined Contrastive Learning
 
-4 Core Pillars of STAIR-SRE v1.1:
-  Pillar 1: Regularized Diagonal Spectral Projector (0-rotation)
-            E_proj = E_svd * w, with L2 anchoring loss L_reg_w = lambda_w * ||w - 1||_2^2
-            Prevents SVD whitening coordinate drift, anchored LR (lr * 0.1).
-  Pillar 2: Cross-Negative Spectral Swapping (CNSS)
-            Mixes two independent batch negatives: i_neg1 (shift 1) & i_neg2 (shift 2).
-            Strictly 0% exposure to i+, eliminating 100% parasitic gradient conflict with BPR.
-  Pillar 3: Thresholded Smooth False Negative Attenuation
-            Re-establishes tau_atten = 0.35. Preserves 100% repulsion for 98.9% true negatives,
-            smoothly suppressing repulsion for top ~1.1% false negatives.
-  Pillar 4: Sparsity-Adaptive Layer-wise Contrastive Alignment & Hyperparameter Tuning
-            Amazon Baby:        lambda_sre = 1e-4, tau = 0.20, tau_atten = 0.35
-            Amazon Sports:      lambda_sre = 5e-5, tau = 0.30, tau_atten = 0.35 (loss saturation fix)
-            Amazon Electronics: lambda_sre = 1e-5, tau = 0.25, tau_atten = 0.35
+Phase 3 — Dot 1: Core Architecture with 4 Pillars
+  Pillar 1: Diagonal Spectral-scaling Projector (0-rotation)
+  Pillar 2: Soft Spectral Swapping (Bernoulli hard negative generation)
+  Pillar 3: Adaptive False Negative Attenuation (smooth, outside exp)
+  Pillar 4: Hierarchical Layer-wise Contrastive Alignment (NLGCL heritage)
+
+Target: Breakout ≥ +5.0% synchronously across all 3 datasets:
+  Amazon Baby:        Recall@20 ≥ 0.1095  (+5.09%) | NDCG@20 ≥ 0.0480  (+5.73%)
+  Amazon Sports:      Recall@20 ≥ 0.1168  (+5.13%) | NDCG@20 ≥ 0.0530  (+6.00%)
+  Amazon Electronics: Recall@20 ≥ 0.0705  (+6.02%) | NDCG@20 ≥ 0.0325  (+7.26%)
 """
 
 from typing import Dict, Tuple, List
@@ -99,13 +94,14 @@ from models.stair_sre_v6 import (
     DiagonalSpectralProjector,
     RegularizedDiagonalSpectralProjector,
     StepwiseSRELoss,
+    StepwiseSREv2Loss,
     StepwiseSREv1_1Loss,
 )
 
 freerec.declare(version='0.8.5')
 
 # =========================================================================
-# Config: STAIR baseline args + SRE v1.1 args
+# Config: STAIR baseline args + SRE v6 args
 # =========================================================================
 cfg = freerec.parser.Parser()
 
@@ -121,7 +117,7 @@ cfg.add_argument("--num-neighbors", type=str, default='5-1',
 cfg.add_argument("--gamma", type=float, default=0.2,
                  help="Spectral decay exponent for beta3")
 
-# -- STAIR-SRE v1.1 specific args --
+# -- STAIR-SRE v6 specific args --
 cfg.add_argument("--lambda-sre", type=float, default=1e-4,
                  help="Weight for SRE contrastive loss (0.0 = disabled)")
 cfg.add_argument("--sre-tau", type=float, default=0.2,
@@ -165,15 +161,15 @@ cfg.beta3 = (
 
 
 # =========================================================================
-# STAIR-SRE v1.1 Model Class
+# STAIR-SRE v6 Model Class
 # =========================================================================
 class STAIR_SRE_Model(freerec.models.GenRecArch):
     """
-    STAIR-SRE v1.1 Model (Gradient-Harmonized):
+    STAIR-SRE v6 Model:
     Combines STAIR Forward Stepwise Convolution with:
-      1. Regularized Diagonal Spectral Projector (0-rotation Hadamard scaling + L2 anchoring)
-      2. Cross-Negative Spectral Swapping (CNSS: 0% exposure to i+, 0% gradient conflict)
-      3. Thresholded Smooth False Negative Attenuation (tau_atten = 0.35: preserves uniformity)
+      1. Diagonal Spectral-scaling Projector (0-rotation Hadamard scaling)
+      2. Soft Spectral Swapping (Bernoulli-based hard negative generation)
+      3. Adaptive False Negative Attenuation (smooth (1-W) outside exp)
       4. Hierarchical Layer-wise Natural Contrastive Alignment (NLGCL heritage)
     """
 
@@ -244,7 +240,7 @@ class STAIR_SRE_Model(freerec.models.GenRecArch):
         ]
 
     def whitening(self, feats: torch.Tensor):
-        """SVD Whitening -- identical to STAIR baseline."""
+        """SVD Whitening — identical to STAIR baseline."""
         feats = feats - feats.mean(0, keepdim=True)
         _, S, V = torch.pca_lowrank(feats, q=cfg.embedding_dim, center=False)
         return feats @ V @ torch.diag(S.pow(-1))
@@ -257,61 +253,74 @@ class STAIR_SRE_Model(freerec.models.GenRecArch):
         return edge_index
 
     def prepare(self, path: str):
-        """
-        Multimodal feature loading, whitening, and kNN graph fusion.
-        Identical to STAIR baseline. Also saves raw multimodal features
-        and user interaction profiles for False Negative Attenuation.
-        """
-        feats = []
-        graphs = []
-        for file, k in zip(cfg.mfiles, cfg.num_neighbors):
-            feat = freerec.data.postprocessing.load_pickle(os.path.join(path, file))
-            feat = torch.from_numpy(feat).float().to(cfg.device)
-            feat = self.whitening(feat)
-            feats.append(feat)
+        """Modality Initialization + Profile Buffers for FN Attenuation."""
+        try:
+            from freerec.utils import import_pickle
+        except (ImportError, AttributeError):
+            import pickle
+            def import_pickle(fpath):
+                with open(fpath, 'rb') as f:
+                    return pickle.load(f)
 
-            if k > 0:
-                edge_index = self.get_knn_graph(feat, k=k)
-                graphs.append(edge_index)
+        mfeats = [
+            import_pickle(os.path.join(path, mfile))
+            for mfile in cfg.mfiles
+        ]
 
-        item_feats = torch.stack(feats, dim=0).mean(0)
-        self.Item.embeddings.weight.data.copy_(item_feats)
-
-        edge_index = torch.cat(graphs, dim=1)
-        mAdj = freerec.graph.to_normalized_adj(
-            edge_index,
-            size=(self.Item.count, self.Item.count),
-            normalization='sym',
-            add_self_loops=True
+        edge_index = torch.cat(
+            [self.get_knn_graph(feats, k)
+             for feats, k in zip(mfeats, cfg.num_neighbors)],
+            dim=1
         )
-        self.register_buffer('mAdj', mAdj)
+        edge_weight = torch.ones_like(edge_index[0], dtype=torch.float)
+        edge_index, edge_weight = freerec.graph.coalesce(
+            edge_index, edge_weight, reduce='sum'
+        )
+        edge_index, edge_weight = freerec.graph.to_undirected(
+            edge_index, edge_weight, reduce='max'
+        )
+        edge_index, edge_weight = freerec.graph.to_normalized(
+            edge_index, edge_weight, normalization='sym'
+        )
+        mAdj = torch.sparse_coo_tensor(
+            edge_index, edge_weight,
+            size=(self.Item.count, self.Item.count)
+        )
+        self.register_buffer('mAdj', mAdj.to_sparse_csr())
 
-        # Precompute normalized item modal features and user interaction profiles
-        # for False Negative Attenuation in SRE loss
-        with torch.no_grad():
-            self.item_modals_raw = item_feats.clone().detach()  # (N_i, D)
-            train_adj = self.dataset.train().to_bigraph(
-                normalization=None
-            ).to(cfg.device)
-            user_interaction_matrix = train_adj[:self.User.count, self.User.count:]
-            user_degree = user_interaction_matrix.sum(dim=1, keepdim=True).clamp(min=1.0)
-            user_profiles = (user_interaction_matrix @ item_feats) / user_degree
-            self.user_profiles_raw = user_profiles.clone().detach()  # (N_u, D)
+        # MI: whitened modal feature initialization
+        mfeats_w = [
+            self.whitening(mfeat) * k
+            for mfeat, k in zip(mfeats, cfg.num_neighbors)
+        ]
+        mfeats_init = sum(mfeats_w).div(sum(cfg.num_neighbors))
+        self.Item.embeddings.weight.data.copy_(mfeats_init)
+
+        edge_index_ui = self.dataset.train().to_bigraph(
+            edge_type='u2i'
+        )['u2i'].edge_index
+        edge_index_ui, edge_weight_ui = freerec.graph.to_normalized(
+            edge_index_ui, normalization='left'
+        )
+        R = torch.sparse_coo_tensor(
+            edge_index_ui, edge_weight_ui,
+            size=(self.User.count, self.Item.count)
+        ).to_sparse_csr()
+        user_profiles_init = R @ mfeats_init
+        self.User.embeddings.weight.data.copy_(user_profiles_init)
+
+        # Register raw modal features & user profiles for Adaptive FN Attenuation
+        self.register_buffer('item_modals_raw', mfeats_init.detach().clone())
+        self.register_buffer('user_profiles_raw', user_profiles_init.detach().clone())
 
     def sure_trainpipe(self, batch_size: int):
-        return self.dataset.train().to_trainpipe(
-            batch_size=batch_size
-        ).sharding_filter()
-
-    def sure_validpipe(self, ranking):
-        return self.dataset.valid().to_evalpipe(
-            batch_size=1024, ranking=ranking
-        ).sharding_filter()
-
-    def sure_testpipe(self, ranking):
-        return self.dataset.test().to_evalpipe(
-            batch_size=1024, ranking=ranking
-        ).sharding_filter()
+        return (
+            self.dataset.train()
+            .shuffled_pairs_source()
+            .gen_train_sampling_neg_(num_negatives=1)
+            .batch_(batch_size)
+            .tensor_()
+        )
 
     # =========================================================================
     # encode(): FSC with Diagonal Spectral Projector + Layer Embeds Capture
@@ -327,6 +336,7 @@ class STAIR_SRE_Model(freerec.models.GenRecArch):
             itemEmbds:    (N_i, D) final aggregated item representations
             layer_embeds: [H^0, H^1, ..., H^L] per-layer intermediates
         """
+        # Apply Diagonal Spectral Projector to Item embeddings (0-rotation)
         item_embeds_proj = self.spectral_projector(
             self.Item.embeddings.weight
         )
@@ -340,6 +350,7 @@ class STAIR_SRE_Model(freerec.models.GenRecArch):
         features = allEmbds
         smoothed = allEmbds
 
+        # beta = 1 - beta3 for FSC propagation
         beta = (1.0 - self.beta3).to(allEmbds.device)
         norm_correction = 1.0 - beta ** (self.num_layers + 1)
 
@@ -383,12 +394,11 @@ class STAIR_SRE_Model(freerec.models.GenRecArch):
         return torch.split(avgEmbds, (self.User.count, self.Item.count))
 
     # =========================================================================
-    # fit(): Combines BPR + Anchoring + STAIR-SRE v1.1 Losses
+    # fit(): Combines BPR + STAIR-SRE Losses
     # =========================================================================
     def fit(self, data: Dict[freerec.data.fields.Field, torch.Tensor]):
         """
-        Training step:
-          L = L_BPR + L_reg_w + lambda_sre * L_SRE
+        Training step: L = L_BPR + lambda_sre * L_SRE
         """
         userEmbds, itemEmbds, layer_embeds = self.encode()
 
@@ -409,6 +419,7 @@ class STAIR_SRE_Model(freerec.models.GenRecArch):
         if self.training and cfg.lambda_sre > 0.0:
             beta = (1.0 - self.beta3).to(userEmbds.device)
 
+            # Always provide user profiles and item modals for Adaptive FN Attenuation
             u_prof = self.user_profiles_raw[users.view(-1)]
             i_mod = self.item_modals_raw[positives.view(-1)]
 
@@ -435,20 +446,14 @@ class STAIR_SRE_Model(freerec.models.GenRecArch):
         }
 
     def recommend_from_full(self, data):
-        userEmbds = self.ranking_buffer[self.User]
+        userEmbds = self.ranking_buffer[self.User][data[self.User]]
         itemEmbds = self.ranking_buffer[self.Item]
-        u_idx = data[self.User]
-        u_emb = userEmbds[u_idx]
-        return torch.matmul(u_emb, itemEmbds.t())
+        return torch.einsum('BKD,ND->BN', userEmbds, itemEmbds)
 
     def recommend_from_pool(self, data):
-        userEmbds = self.ranking_buffer[self.User]
-        itemEmbds = self.ranking_buffer[self.Item]
-        u_idx = data[self.User]
-        i_idx = data[self.Item]
-        u_emb = userEmbds[u_idx].unsqueeze(1)
-        i_emb = itemEmbds[i_idx]
-        return (u_emb * i_emb).sum(dim=-1)
+        userEmbds = self.ranking_buffer[self.User][data[self.User]]
+        itemEmbds = self.ranking_buffer[self.Item][data[self.IUnseen]]
+        return torch.einsum('BKD,BKD->BK', userEmbds, itemEmbds)
 
 
 # =========================================================================
