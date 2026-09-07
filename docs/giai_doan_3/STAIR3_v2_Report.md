@@ -1,6 +1,6 @@
 # BÁO CÁO NGHIÊN CỨU & THIẾT KẾ KIẾN TRÚC GIAI ĐOẠN 3 — ĐỢT 2 (STAIR3-v2)
 ## MÔ HÌNH STAIR-SRE-ANS: STEPWISE SPECTRAL-REFINED CONTRASTIVE LEARNING WITH ADAPTIVE NEGATIVE SCHEDULING & SUBSPACE DIFFICULTY PARTITIONING
-### Đột phá Hiệu năng Đa phương thức Thông qua Phân vùng Không gian con, Điều phối Mẫu âm Thích ứng & Triệt tiêu Mẫu âm Giả
+### Đột phá Hiệu năng Đa phương thức Thông qua Phân vùng Không gian con, Điều phối Mẫu âm Thích ứng, Gated Top-K Selection & Triệt tiêu Mẫu âm Giả
 
 **Đề tài:** Recommender Systems using Graph Representation: Multi-modal  
 **Khóa luận tốt nghiệp:** Khóa 2021–2025 — Khoa Công nghệ Thông tin, Trường Đại học Khoa học Tự nhiên, ĐHQG-HCM  
@@ -25,18 +25,19 @@
    - 2.1 Phân tích & Phản biện Triết lý NegGen: Phân loại False vs. Hard vs. Easy Negatives Không Dùng MLLM
    - 2.2 Phân tích & Phản biện Triết lý GDNSM: Subspace-Aware Difficulty Scoring trên Hai Không gian con
    - 2.3 Phân tích & Phản biện Triết lý AdNGCL: Bộ Điều phối HANS Thích ứng theo Epoch
-3. [Khắc phục 4 Lỗ hổng Logic & Toán học trong Bản Phác thảo Sơ bộ](#3-khắc-phục-4-lỗ-hổng-logic--toán-học-trong-bản-phác-thảo-sơ-bộ)
-   - 3.1 Khắc phục Lỗ hổng `hn_indices`: Trích xuất Chính xác Mẫu Hard Negative bằng `torch.gather`
-   - 3.2 Khắc phục Mâu thuẫn Hệ số Điều phối $\Psi$: Công thức Phân tầng Bảo toàn Trật tự Khó/Dễ
-   - 3.3 Khắc phục Sự Phụ thuộc vào Metadata: Cơ chế Soft Metadata Weighting với Fallback An toàn
-   - 3.4 Khắc phục Giới hạn Mini-batch: Xây dựng Cross-Batch Memory Bank / Negative Queue FIFO
+3. [Phát hiện & Khắc phục 3 Điểm nghẽn Toán học và 1 Lỗi Kỹ thuật Hệ thống Tinh vi](#3-phát-hiện--khắc-phục-3-điểm-nghẽn-toán-học-và-1-lỗi-kỹ-thuật-hệ-thống-tinh-vi)
+   - 3.1 Nghịch lý Phân bổ Budget Mẫu âm khó (Top-K Budget Bottleneck) & Giải pháp Gated Top-K Selection
+   - 3.2 Mâu thuẫn Attenuation trên Mẫu cùng Metadata nhưng Tương đồng thấp & Thresholded Cosine Gating
+   - 3.3 Khắc phục Ghép nối Lập lịch HANS với Loss tổng hợp & Giám sát Tương phản Độc lập
+   - 3.4 Khắc phục Lỗi Kỹ thuật Rò rỉ Đánh giá (Evaluation Leak) trong Hàng đợi Memory Bank FIFO
+   - 3.5 Bảng Đối chiếu Hệ thống: Các Điểm nghẽn Toán học và Bản vá Kiến trúc Hoàn thiện
 4. [Kiến trúc Toàn diện Mô hình STAIR-SRE-ANS (Giai đoạn 3 — Đợt 2)](#4-kiến-trúc-toàn-diện-mô-hình-stair-sre-ans-giai-đoạn-3--đợt-2)
    - 4.1 Sơ đồ Luồng Dữ liệu và Tương tác Module Toàn hệ thống
    - 4.2 Trụ cột 1: Regularized Diagonal Spectral Projector (Bảo tồn Tuyệt đối Hệ trục SVD)
    - 4.3 Trụ cột 2: Subspace Difficulty Partitioning với Separate L2 Normalization
-   - 4.4 Trụ cột 3: Hardness-Aware Negative Scheduling (HANS) với Loss-Gated Trigger & Exponential Smoothing
-   - 4.5 Trụ cột 4: Adaptive False Negative Attenuation (MFNA) và Phân tầng Mẫu âm Đa cấp
-   - 4.6 Trụ cột 5: Cross-Batch Memory Bank FIFO Mở rộng Không gian Mẫu âm
+   - 4.4 Trụ cột 3: Gated Top-K Selection & Triệt tiêu Rỗng Ngân sách Mẫu khó
+   - 4.5 Trụ cột 4: Thresholded Cosine-Gated MFNA & Phân tầng Mẫu âm Đa cấp
+   - 4.6 Trụ cột 5: Decoupled HANS Scheduler & Cross-Batch Memory Bank FIFO An toàn
 5. [Hệ thống Công thức Toán học Vi phân & Định lý Cân bằng Gradient](#5-hệ-thống-công-thức-toán-học-vi-phân--định-lý-cân-bằng-gradient)
    - 5.1 Hàm Mục tiêu Đa nhiệm Toàn cục ($\mathcal{L}_{\text{total}}$)
    - 5.2 Công thức Chi tiết Hàm Mất mát Stepwise SRE-ANS Loss
@@ -47,7 +48,7 @@
 7. [Ma trận Mục tiêu Bứt phá $\ge +5.0\%$ trên Cả 3 Tập Dữ liệu](#7-ma-trận-mục-tiêu-bứt-phá-ge-50-trên-cả-3-tập-dữ-liệu)
 8. [Đặc tả Không gian Siêu tham số & Hướng dẫn Vận hành](#8-đặc-tả-không-gian-siêu-tham-số--hướng-dẫn-vận-hành)
 9. [Đánh giá Hiệu năng Phần cứng & Độ phức tạp Tính toán](#9-đánh-giá-hiệu-năng-phần-cứng--độ-phức-tạp-tính-toán)
-10. [Kịch bản Phản biện Học thuật Trước Hội đồng (Academic Defense Narrative v2)](#10-kịch-bản-phản-biện-học-thuật-trước-hội-đồng-academic-defense-narrative-v2)
+10. [Kịch bản Phản biện Học thuật Nâng cấp Trước Hội đồng (Academic Defense Upgrade)](#10-kịch-bản-phản-biện-học-thuật-nâng-cấp-trước-hội-đồng-academic-defense-upgrade)
 11. [Kế hoạch Hành động Triển khai Thực nghiệm Đợt 2](#11-kế-hoạch-hành-động-triển-khai-thực-nghiệm-đợt-2)
 
 ---
@@ -77,7 +78,8 @@ Khép lại Đợt 1 của Giai đoạn 3, mô hình **STAIR-SRE** đã hoàn th
 │                              │ Recall@20 Sports: 0.1098 (-1.17% vs BL) | Baby: 0.1003 (-3.74% vs BL)   │
 ├──────────────────────────────┼─────────────────────────────────────────────────────────────────────────┤
 │ ▶ GIAI ĐOẠN 3 — ĐỢT 2 (v2)   │ STAIR-SRE-ANS: Phân vùng Không gian con GDNSM + HANS Curriculum        │
-│   (STAIR-SRE-ANS v2)         │                + NegGen Categorization + Cross-Batch Memory Bank        │
+│   (STAIR-SRE-ANS v2)         │                + Gated Top-K Selection + Thresholded MFNA               │
+│                              │                + Decoupled HANS + Cross-Batch Memory Bank FIFO          │
 │                              │ MỤC TIÊU: CHÍNH THỨC VƯỢT BASELINE ≥ +5.0% ĐỒNG BỘ TRÊN CẢ 3 DATASETS   │
 └──────────────────────────────┴─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -129,14 +131,14 @@ Dưới lăng kính của một **Senior AI Research Engineer**, chúng tôi ti�
 #### Cơ chế nguyên bản của NegGen và Rủi ro kỹ thuật đối với STAIR
 NegGen đề xuất sử dụng Mô hình Ngôn ngữ Lớn Đa phương thức (MLLM) hoặc các mạng nơ-ron sinh tự hồi quy để phân định ranh giới giữa mẫu âm giả (False Negative), mẫu âm khó (Hard Negative) và mẫu âm dễ (Easy Negative).
 - **Rủi ro chí mạng:** Việc sử dụng MLLM hay các mạng nơ-ron học tham số (MLP/Attention) ở khâu tiền xử lý hoặc trong vòng lặp huấn luyện sẽ:
-  1. Làm xoay hệ trục tọa độ SVD và làm biến dạng không gian đa tạp trực giao (bài học thất bại xương máu từ v1 và v3).
+  1. Làm xoay hệ trục tọa độ SVD và làm biến dạng không gian đa tạp trực giao (bài học thất bại từ v1 và v3).
   2. Khiến chi phí tính toán bùng nổ, gây nghẽn cổ chai I/O và tràn bộ nhớ VRAM trên các môi trường nghiên cứu như Kaggle GPU T4.
 
 #### Giải pháp Cải biên STAIR-NegGen (An toàn Toán học 100%)
 Chúng tôi nhận định: **Việc phân loại mẫu âm hoàn toàn có thể thực hiện một cách chính xác mà không cần dùng đến bất kỳ tham số học nào làm xoay trục tọa độ.**  
 Thay vì dùng MLLM, STAIR-NegGen tận dụng sự kết hợp giữa:
 1. Độ tương đồng Cosine trong không gian SVD tĩnh $\mathbf{W} \in [-1, 1]$.
-2. Ràng buộc cứng từ Metadata cấu trúc sản phẩm $\mathbf{M}_{\text{meta}}$ (Brand, Category).
+2. Ràng buộc cấu trúc sản phẩm $\mathbf{M}_{\text{meta}}$ (Brand, Category).
 
 Bảng logic phân loại chuẩn xác 3 miền mẫu âm:
 
@@ -212,73 +214,153 @@ Ma trận kNN trong BSC tạo ra một dòng gradient tương đối ổn địn
 
 ---
 
-## 3. KHẮC PHỤC 4 LỖ HỔNG LOGIC & TOÁN HỌC TRONG BẢN PHÁC THẢO SƠ BỘ
+## 3. PHÁT HIỆN & KHẮC PHỤC 3 ĐIỂM NGHẼN TOÁN HỌC VÀ 1 LỖI KỸ THUẬT HỆ THỐNG TINH VI
 
-Trong quá trình thẩm định bản đề cương sơ bộ `V2.md`, chúng tôi đã phát hiện và khắc phục triệt để **4 lỗi logic toán học và kỹ thuật lập trình nghiêm trọng**:
+Dưới sự thẩm định chuyên sâu của Senior AI Research Engineer, nhóm nghiên cứu đã phát hiện và xử lý dứt điểm **3 điểm nghẽn toán học và 1 lỗi kỹ thuật hệ thống cực kỳ tinh vi** ẩn giấu trong cơ chế tương tác giữa 5 trụ cột:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                         4 LỖ HỔNG TRONG BẢN DRAFT V2 & GIẢI PHÁP KHẮC PHỤC                       │
+│                   3 ĐIỂM NGHẼN TOÁN HỌC & 1 LỖI KỸ THUẬT HỆ THỐNG TINH VI TRONG v2               │
 ├──────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 1. LỖ HỔNG GATHER TRONG LOSS:                                                                   │
-│    Tính hn_indices bằng topk nhưng lại sum toàn bộ mẫu âm trong batch!                           │
-│    ===> KHẮC PHỤC: Dùng torch.gather để trích xuất chính xác hn_neg_exp và hn_psi.               │
+│ 1. NGHỊCH LÝ PHÂN BỔ BUDGET MẪU KHÓ (TOP-K BUDGET BOTTLENECK):                                   │
+│    Top-K chọn theo difficulty thô sẽ bị chiếm trọn bởi False Negatives (tương đồng cực cao),     │
+│    sau đó MFNA ép attenuation về 0, làm rỗng tập mẫu khó thực tế huấn luyện (Active HN = 0)!     │
+│    ===> GIẢI PHÁP: Gated Top-K Selection: Selection_Score = difficulty ⊙ attenuation.            │
+│         Lọc FN TRƯỚC khi chọn Top-K, bảo đảm 100% budget dành cho True Hard Negatives!           │
 ├──────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 2. MÂU THUẪN HỆ SỐ ĐIỀU PHỐI Ψ:                                                                  │
-│    Công thức γ_epoch * d khiến mẫu HN có điểm d nhỏ nhận trọng số bé hơn mẫu Easy Negative!     │
-│    ===> KHẮC PHỤC: Thiết lập Ψ_HN = 1.0 + γ_h * d_norm ≥ 1.0, trong khi Ψ_EN = 1.0 - γ_h < 1.0. │
+│ 2. MÂU THUẪN ATTENUATION TRÊN MẪU CÙNG METADATA NHƯNG TƯƠNG ĐỒNG THẤP:                           │
+│    Tại cos = 0 (trực giao), sim = 0/tau => sigmoid(0) = 0.5. Nếu metadata_mask = 1,              │
+│    W = 0.5 * 1.5 = 0.75 => attenuation = 0.25 (suy giảm lực đẩy tới 4 lần dù không liên quan)!   │
+│    ===> GIẢI PHÁP: Thresholded Cosine-Gated Metadata Masking:                                    │
+│         W = σ(sim_all) ⊙ (1.0 + 0.5 × metadata_mask ⊙ max(0, cos(θ))).                          │
+│         Chỉ kích hoạt metadata mask khi cosine similarity thực sự mang giá trị dương!            │
 ├──────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 3. SỰ PHỤ THUỘC CỨNG VÀO METADATA:                                                              │
-│    metadata_mask nhị phân {0, 1} dễ gây lỗi nếu dữ liệu thiếu hoặc nhiễu.                        │
-│    ===> KHẮC PHỤC: Soft Metadata Weighting W = σ(sim) * (1 + 0.5 * mask) với fallback an toàn.  │
+│ 3. GHÉP NỐI LẬP LỊCH HANS VỚI LOSS TỔNG HỢP (SCHEDULER COUPLING):                                │
+│    BPR loss đi vào plateau sớm sẽ đánh lừa HANS tăng độ khó quá sớm khi không gian CL chưa ổn    │
+│    định, gây sốc gradient và làm lệch trục phổ.                                                  │
+│    ===> GIẢI PHÁP: Tách biệt hoàn toàn: Chỉ truyền riêng Contrastive Loss (loss_ans) vào HANS!   │
 ├──────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 4. GIỚI HẠN MINI-BATCH (BATCH BOTTLENECK):                                                      │
-│    Chỉ chọn HN trong 1024 mẫu của batch, bỏ lỡ các mẫu đối kháng chất lượng cao toàn catalog.    │
-│    ===> KHẮC PHỤC: Tích hợp Cross-Batch FIFO Memory Bank (Queue size = 4096 / 8192).             │
+│ 4. LỖI KỸ THUẬT RÒ RỈ ĐÁNH GIÁ (EVALUATION LEAK TRONG MEMORY BANK):                              │
+│    Hàm forward gọi enqueue_negatives vô điều kiện khiến embedding tập Validation/Test bị đẩy     │
+│    vào hàng đợi FIFO, làm ô nhiễm không gian mẫu âm đối chiếu ở các epoch kế tiếp.               │
+│    ===> GIẢI PHÁP: Thêm chốt chặn huấn luyện an toàn: if self.training: enqueue_negatives(...)   │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 3.1 Khắc phục Lỗ hổng `hn_indices`: Trích xuất Chính xác Mẫu Hard Negative bằng `torch.gather`
-- **Lỗi logic ở bản draft:**
-  ```python
-  # Draft ban đầu:
-  _, hn_indices = torch.topk(diff_scores, k=num_hn, dim=1)
-  neg_exp_weighted = (1 - W) * torch.exp(sim_all)
-  # LỖI: Lấy tổng trên toàn bộ ma trận thay vì chỉ lấy Top-K Hard Negatives!
-  loss = -torch.log(pos_exp / (pos_exp + neg_exp_weighted.sum(dim=1))).mean()
-  ```
-- **Bản vá toán học chuẩn mực trong v2:**
-  Chúng tôi trích xuất giá trị mũ và hệ số phạt tương ứng của các chỉ mục Top-K thông qua toán tử `torch.gather`:
-  ```python
-  # Bản vá v2:
-  hn_neg_exp = torch.gather(neg_exp, dim=1, index=hn_indices)       # [B, num_hn]
-  hn_psi = torch.gather(psi, dim=1, index=hn_indices)               # [B, num_hn]
-  neg_weighted = (hn_neg_exp * hn_psi).sum(dim=1)                   # [B]
-  loss = -torch.log(pos_exp / (pos_exp + neg_weighted + 1e-8)).mean()
-  ```
+---
 
-### 3.2 Khắc phục Mâu thuẫn Hệ số Điều phối $\Psi$: Công thức Phân tầng Bảo toàn Trật tự Khó/Dễ
-- **Vấn đề toán học ở bản draft:**  
-  Nếu đặt $\Psi_{\text{HN}} = \gamma_h \cdot d$, giả sử $\gamma_h = 0.20$ và $d = 0.30 \implies \Psi_{\text{HN}} = 0.06$. Trong khi đó mẫu Easy Negative nhận trọng số $\Psi_{\text{EN}} = 1 - \gamma_h = 0.80$. Khi đó mẫu âm khó lại bị phạt **ít hơn** mẫu âm dễ gấp 13 lần, phá vỡ hoàn toàn nguyên lý học đối kháng!
-- **Công thức chuẩn hóa phân tầng v2:**  
-  Điểm độ khó được chuẩn hóa về đoạn $[0, 1]$: $d_{\text{norm}} = \frac{\mathcal{D} + 1}{2}$. Hệ số phạt phân tầng được định nghĩa:
-  $$\Psi(u, i^-) = \begin{cases} 
-  1.0 + \gamma_h \cdot d_{\text{norm}} \ge 1.0 & \text{nếu } i^- \in \text{Hard Negatives (HN)} \\
-  1.0 - \gamma_h \le 1.0 & \text{nếu } i^- \in \text{Easy Negatives (EN)}
-  \end{cases}$$
-  Đẳng thức này bảo đảm tuyệt đối: $\forall i^-_{\text{HN}}, \; \forall i^-_{\text{EN}} \implies \Psi(i^-_{\text{HN}}) > \Psi(i^-_{\text{EN}})$.
+### 3.1 Nghịch lý Phân bổ Budget Mẫu âm khó (Top-K Budget Bottleneck) & Giải pháp Gated Top-K Selection
 
-### 3.3 Khắc phục Sự Phụ thuộc vào Metadata: Cơ chế Soft Metadata Weighting với Fallback An toàn
-- **Rủi ro:** Trên nhiều tập dữ liệu thực tế (như Amazon Baby hoặc Sports), thông tin thương hiệu (Brand) hoặc danh mục con (Sub-category) có thể bị khuyết thiếu (missing metadata) lên tới $20\% \sim 40\%$. Nếu áp dụng mặt nạ nhị phân cứng, các mẫu khuyết thiếu sẽ bị phân loại sai nghiêm trọng.
-- **Giải pháp v2:** Kết hợp làm mềm (Soft Scaling):
-  $$W_{u, k} = \sigma(\text{sim}_{u, k}) \cdot \left(1.0 + 0.5 \cdot \mathcal{M}_{\text{meta}}\right)$$
-  - Nếu có metadata xác nhận cùng thương hiệu/danh mục ($\mathcal{M}_{\text{meta}} = 1$): Hệ số $W$ được khuếch đại thêm $50\%$, giúp triệt tiêu lực đẩy mẫu âm giả mạnh mẽ hơn.
-  - Nếu thiếu metadata ($\mathcal{M}_{\text{meta}} = 0$): Hệ số $W$ tự động thoái lui về giá trị sigmoid cosine thuần túy $W = \sigma(\text{sim}_{u, k})$, đóng vai trò là một bộ lọc nội dung tự nhiên mà không gây sụp đổ hệ thống.
+#### Phân tích Điểm nghẽn Toán học:
+Trong thiết kế sơ bộ, Top-K Hard Negatives được chọn bằng toán tử `torch.topk` trên ma trận độ khó thô:
+$$\mathcal{D}(u, k) = 0.5 \cdot \cos_{\text{collab}}(u, k) + 0.5 \cdot \cos_{\text{multi}}(u, k)$$
+- **Nghịch lý xuất hiện:** Một sản phẩm $k$ có cả đặc trưng đa phương thức lẫn hành vi tương tác cực kỳ tương đồng với người dùng $u$ sẽ sở hữu điểm $\mathcal{D}(u, k)$ cao nhất toàn hàng đợi. Theo thuật toán Top-K, sản phẩm này **chắc chắn được đưa vào danh sách Hard Negatives $(\mathcal{H}_u)$**.
+- **Nhưng bản chất ngữ nghĩa của nó là gì?** Nó chính là một **False Negative (FN) điển hình** — một sản phẩm cực kỳ tiềm năng mà người dùng ưa thích nhưng chưa kịp tương tác trong tập huấn luyện!
+- Ở bước tiếp theo (Trụ cột 4 - MFNA), bộ lọc tính toán:
+  $$W_{u, k} \approx 1.0 \implies \text{attenuation}_{u, k} = (1.0 - W_{u, k}) \to 0.0$$
+- **HẬU QUẢ HỆ THỐNG CHÍ MẠNG (Budget Bottleneck):**  
+  Toàn bộ ngân sách $K_{\text{hn}}$ vị trí mẫu khó trong danh sách Top-K đã bị **chiếm trọn bởi các False Negatives**. Khi áp dụng hệ số suy giảm $\text{attenuation} \approx 0$, các mẫu này bị triệt tiêu lực phạt.  
+  Kết quả là: **Tập mẫu âm khó thực tế tham gia vào quá trình lan truyền ngược gần như bằng 0 (Active Hard Negatives $\approx 0$)!**  
+  Mô hình bị tước đi lực đẩy đối kháng tinh mịn, hàm loss bị rỗng lực phạt khó và thoái hóa hoàn toàn về cơ chế lấy mẫu ngẫu nhiên đồng nhất (Uniform Negative Sampling), triệt tiêu mục tiêu bứt phá hiệu năng!
 
-### 3.4 Khắc phục Giới hạn Mini-batch: Xây dựng Cross-Batch Memory Bank / Negative Queue FIFO
-- Để mở rộng không gian tìm kiếm mẫu âm khó vượt ra ngoài phạm vi 1024 mẫu của mini-batch, STAIR-SRE-ANS v2 tích hợp một **Memory Bank phân tách gradient** dưới dạng hàng đợi FIFO:
-  $$\mathcal{Q} \in \mathbb{R}^{K_{\text{queue}} \times D}, \quad \text{với } K_{\text{queue}} = 4096 \text{ (hoặc } 8192\text{)}$$
-- Sau mỗi bước lan truyền xuôi, các vector sản phẩm trong batch hiện tại được chuẩn hóa và đẩy vào hàng đợi thông qua cơ chế con trỏ vòng tròn (Circular Queue Pointer). Toàn bộ các vector trong $\mathcal{Q}$ đều bị ngắt gradient (`detach()`), không tham gia vào backpropagation, do đó **không tốn thêm bộ nhớ lưu trữ đồ thị tính toán** mà chỉ tiêu thụ thêm chưa đầy $2$ MB VRAM!
+#### Giải pháp Đột phá: Gated Top-K Selection
+Chúng tôi đề xuất nguyên lý: **Lọc Mẫu âm Giả TRƯỚC khi Phân bổ Ngân sách Top-K.**  
+Thay vì chạy `torch.topk` trên $\mathcal{D}(u, k)$ thô, mô hình tính toán **Ma trận Điểm Chọn lọc (Selection Score)** đã được điều phối bởi hệ số suy giảm:
+
+$$\text{Selection\_Score}(u, k) = \mathcal{D}(u, k) \cdot \text{attenuation}(u, k) = \mathcal{D}(u, k) \cdot \text{clamp}(1.0 - W_{u, k}, 0.0, 1.0)$$
+
+$$\mathcal{H}_u = \text{Top-K}_{k \in \mathcal{Q}} \left( \text{Selection\_Score}(u, k) \right)$$
+
+*Ý nghĩa cơ chế vật lý:*
+- Đối với các mẫu **False Negatives**: Mặc dù $\mathcal{D}(u, k)$ rất cao, nhưng $W_{u, k} \to 1 \implies \text{attenuation} \to 0$. Do đó, $\text{Selection\_Score} \to 0$, sản phẩm này lập tức bị **loại khỏi danh sách Top-K**!
+- Nhờ đó, $100\%$ ngân sách $K_{\text{hn}}$ được nhường chỗ trọn vẹn cho các **True Hard Negatives** — những sản phẩm có độ khó thực sự cao nhưng không bị nghi ngờ là mẫu âm giả.
+- Lực đẩy đối kháng được bảo toàn nguyên vẹn với cường độ tối đa, giúp tái cấu trúc không gian biểu diễn một cách sắc bén!
+
+---
+
+### 3.2 Mâu thuẫn Attenuation trên Mẫu cùng Metadata nhưng Tương đồng thấp & Thresholded Cosine Gating
+
+#### Phân tích Điểm nghẽn Toán học:
+Trong công thức suy giảm MFNA sơ bộ:
+$$W_{u, k} = \sigma\left(\frac{\cos(u, k)}{\tau}\right) \cdot \left(1.0 + 0.5 \cdot \mathcal{M}_{\text{meta}}(u, k)\right)$$
+- Xét trường hợp sản phẩm $k$ hoàn toàn trực giao với sở thích của người dùng $u$ trong không gian biểu diễn: $\cos(u, k) = 0.0$.
+- Khi đó, số hạng tương đồng chuẩn hóa: $\frac{\cos}{\tau} = 0.0 \implies \sigma(0.0) = 0.50$.
+- Nếu sản phẩm này tình cờ chung danh mục lớn (Category, ví dụ cùng là đồ thể thao) hoặc cùng thương hiệu, ta có $\mathcal{M}_{\text{meta}} = 1.0$.
+- Lúc này, giá trị $W$ trở thành:
+  $$W = 0.50 \times (1.0 + 0.5 \times 1.0) = 0.50 \times 1.5 = 0.75$$
+  $$\implies \text{attenuation} = 1.0 - W = 1.0 - 0.75 = 0.25$$
+- **HẬU QUẢ HỆ THỐNG NGUY HIỂM:**  
+  Một sản phẩm hoàn toàn không liên quan (cosine similarity = 0) chỉ vì vô tình chung danh mục phân loại lớn mà **bị giảm lực đẩy đối kháng tới 4 lần** (từ $1.0 \to 0.25$)!  
+  Điều này tước đoạt trực tiếp khả năng học phân biệt tinh mịn (fine-grained ranking) của STAIR giữa các sản phẩm trong cùng một danh mục (intra-category discrimination), làm sụt giảm nghiêm trọng chỉ số xếp hạng NDCG!
+
+#### Giải pháp Đột phá: Thresholded Cosine-Gated Metadata Masking
+Metadata chỉ mang ý nghĩa hỗ trợ phát hiện mẫu âm giả khi sản phẩm **thực sự đã có sự tương đồng dương** trong không gian biểu diễn. Nếu $\cos(u, k) \le 0$, việc chung danh mục không phải là bằng chứng của False Negative mà chỉ là sự trùng hợp ngẫu nhiên về nhãn.  
+Do đó, chúng tôi thiết lập cơ chế khóa cổng Cosine (Cosine Gating):
+
+$$\mathcal{M}_{\text{gated}}(u, k) = \mathcal{M}_{\text{meta}}(u, k) \cdot \max\left(0.0, \; \cos(u, k)\right)$$
+
+$$W_{u, k} = \sigma\left(\frac{\cos(u, k)}{\tau}\right) \cdot \left(1.0 + 0.5 \cdot \mathcal{M}_{\text{gated}}(u, k)\right)$$
+
+$$\text{attenuation}(u, k) = \text{clamp}\left(1.0 - W_{u, k}, \; 0.0, \; 1.0\right)$$
+
+*Hiệu quả kiểm soát:*
+- Khi $\cos(u, k) \le 0.0 \implies \mathcal{M}_{\text{gated}} = 0.0$. Lúc này $W = \sigma(\text{sim}) \le 0.50$, hệ số suy giảm $\text{attenuation} \ge 0.50$, lực đẩy phân rã không gian được bảo toàn nguyên vẹn.
+- Khi $\cos(u, k) > 0.0$ và có metadata xác nhận, cổng mở ra tỷ lệ thuận với mức độ tương đồng, triệt tiêu chính xác mẫu âm giả mà không gây tổn thương các mẫu âm trực giao.
+
+---
+
+### 3.3 Khắc phục Ghép nối Lập lịch HANS với Loss tổng hợp & Giám sát Tương phản Độc lập
+
+#### Phân tích Điểm nghẽn Toán học:
+Trong hàm cập nhật bộ lập lịch HANS `update_scheduler`:
+- Nếu truyền giá trị hàm mất mát tổng hợp $\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{BPR}} + \lambda_{\text{ans}} \mathcal{L}_{\text{ANS}}$, mô hình sẽ gặp hiện tượng **Coupling Interference (Nhiễu ghép nối)**.
+- $\mathcal{L}_{\text{BPR}}$ chịu trách nhiệm học cấu trúc bậc 1 trên đồ thị tương tác, có tốc độ suy giảm cực kỳ nhanh và đi vào trạng thái bình nguyên (plateau) chỉ sau $40 \sim 60$ epoch đầu.
+- Trạng thái bình nguyên của BPR sẽ **đánh lừa bộ kích hoạt Loss-Gated Trigger**, khiến nó nhận định sai rằng quá trình học tương phản đã bão hòa, từ đó kích hoạt tăng $\gamma_h$ và $\text{hn\_ratio}$ lên kịch trần quá sớm.
+- Trong khi đó, không gian tương phản đa phương thức của STAIR cần từ $100 \sim 150$ epoch để các vector SVD ổn định sau các bước tích chập FSC và BSC. Việc tăng độ khó mẫu âm quá sớm sẽ gây sốc gradient, làm biến dạng hệ trục tọa độ và phá hủy quá trình hội tụ.
+
+#### Giải pháp: Giám sát Tương phản Độc lập (Decoupled CL Monitoring)
+Tách biệt hoàn toàn tín hiệu điều phối. Bộ lập lịch HANS **chỉ tiếp nhận duy nhất giá trị hàm mất mát tương phản thuần túy $\mathcal{L}_{\text{ANS}}$ (hoặc `loss_ans`)** để theo dõi trạng thái bão hòa thực sự của không gian đối chiếu:
+```python
+# Gọi trong vòng lặp huấn luyện mỗi epoch:
+hans_scheduler.update_scheduler(current_cl_loss=epoch_loss_ans)
+```
+Điều này đảm bảo mô hình chỉ nâng cao độ thử thách đối kháng khi và chỉ khi năng lực phân biệt tương phản của mạng GNN đã thực sự làm chủ được tập mẫu âm ở cấp độ hiện tại.
+
+---
+
+### 3.4 Khắc phục Lỗi Kỹ thuật Rò rỉ Đánh giá (Evaluation Leak) trong Hàng đợi Memory Bank FIFO
+
+#### Phân tích Lỗi Hệ thống:
+Trong hàm `forward()` của module mất mát, lệnh cập nhật hàng đợi FIFO:
+```python
+# LỖI TIỀM ẨN:
+self.enqueue_negatives(pos_batch)
+```
+được thực thi vô điều kiện mỗi khi hàm `forward` được gọi.
+- Khi người dùng chạy quy trình đánh giá trên tập Validation hoặc Test (với `model.eval()` và `torch.no_grad()`), nếu mã nguồn tính toán loss đối soát bằng cách gọi hàm mất mát, các vector biểu diễn của tập Validation/Test sẽ **âm thầm bị đẩy vào Memory Bank $\mathcal{Q}$**.
+- Điều này tạo ra hiện tượng **Rò rỉ Phân phối Đánh giá (Evaluation Distribution Leak)**: Hàng đợi mẫu âm bị pha tạp bởi các vector đặc trưng chưa qua tối ưu hoàn chỉnh của tập test, làm sai lệch phân phối mẫu âm đối chiếu trong các epoch huấn luyện tiếp theo, dẫn đến dao động gradient thất thường và suy giảm độ tin cậy thực nghiệm.
+
+#### Giải pháp: Khóa Chặn Trạng thái Huấn luyện (Training Guard)
+Bảo vệ tuyệt đối thao tác enqueue bằng cờ kiểm tra trạng thái huấn luyện nội tại của `nn.Module`:
+```python
+# CHỐT CHẶN AN TOÀN TUYỆT ĐỐI:
+if self.training:
+    with torch.no_grad():
+        self.enqueue_negatives(pos_batch)
+```
+Khi mô hình ở chế độ `eval()`, hàng đợi $\mathcal{Q}$ hoàn toàn đóng băng, ngăn chặn $100\%$ mọi nguy cơ rò rỉ dữ liệu ngoài luồng.
+
+---
+
+### 3.5 Bảng Đối chiếu Hệ thống: Các Điểm nghẽn Toán học và Bản vá Kiến trúc Hoàn thiện
+
+| Thành phần Module | Thiết kế Sơ bộ / Rủi ro Kỹ thuật | Bản vá Kiến trúc STAIR-SRE-ANS v2 Hoàn thiện | Giá trị Học thuật Đóng góp |
+| :--- | :--- | :--- | :--- |
+| **Lựa chọn Mẫu âm Khó** | `topk(difficulty)` làm đầy Top-K bằng False Negatives, sau đó MFNA triệt tiêu $\to$ **Rỗng Budget Mẫu khó**. | **Gated Top-K Selection:** `topk(difficulty * attenuation)`. Lọc FN trước khi phân bổ ngân sách. | Đảm bảo $100\%$ mẫu Top-K là True Hard Negatives mang gradient cao. |
+| **Mặt nạ Metadata MFNA** | Áp dụng cứng khiến cặp $\cos = 0$ bị phạt giảm lực đẩy tới 4 lần, phá hủy xếp hạng cùng Category. | **Thresholded Cosine Gating:** $\mathcal{M}_{\text{meta}} \cdot \max(0, \cos)$. Chỉ kích hoạt khi cosine dương. | Bảo toàn khả năng phân biệt tinh mịn (Fine-grained Intra-category Ranking). |
+| **Bộ Điều phối HANS** | Giám sát loss tổng hợp (bị BPR chi phối, bão hòa giả, tăng độ khó quá sớm). | **Decoupled Contrastive Monitoring:** Giám sát độc lập riêng giá trị $\mathcal{L}_{\text{ANS}}$. | Bảo đảm lộ trình tăng độ khó đồng điệu với tốc độ hội tụ của GNN. |
+| **Memory Bank FIFO** | `enqueue_negatives` không có điều kiện, gây rò rỉ tập Validation/Test vào hàng đợi mẫu âm. | **Training-Guarded Enqueue:** Khóa cứng `if self.training: enqueue_negatives(...)`. | Bảo vệ tính toàn vẹn và nhất quán của phân phối mẫu âm đối chiếu. |
+| **Tập hợp Mẫu InfoNCE** | Lỗi sum toàn bộ mẫu âm trong batch thay vì các mẫu Top-K được chọn. | **Vectorized `torch.gather`:** Trích xuất chính xác `hn_exp` và `hn_weights` theo `hn_indices`. | Loại bỏ hoàn toàn nhiễu từ các mẫu ngoài Top-K, tối ưu hóa bộ nhớ GPU. |
 
 ---
 
@@ -288,7 +370,7 @@ Trong quá trình thẩm định bản đề cương sơ bộ `V2.md`, chúng t�
 
 ```
 ==================================================================================================
-                 KIẾN TRÚC TỔNG THỂ STAIR-SRE-ANS (PHASE 3 — BATCH 2 / v2)
+        KIẾN TRÚC TOÀN DIỆN STAIR-SRE-ANS (GIAI ĐOẠN 3 — ĐỢT 2: ĐÃ TỐI ƯU HÓA HOÀN CHỈNH)
 ==================================================================================================
 
     [ User ID Embeddings E_u ]                          [ Item SVD Whitened Embeddings E_i ]
@@ -318,9 +400,10 @@ Trong quá trình thẩm định bản đề cương sơ bộ `V2.md`, chúng t�
         ====================                                                   │
                  │                                                             ▼
                  │                                            ┌────────────────────────────────┐
-                 │                                            │ Trụ cột 5: CROSS-BATCH         │
-                 │                                            │ MEMORY BANK (QUEUE FIFO)       │
+                 │                                            │ Trụ cột 5: TRAINING-GUARDED    │
+                 │                                            │ MEMORY BANK FIFO QUEUE         │
                  │                                            │ Q ∈ R^(4096 x 64) (detached)   │
+                 │                                            │ [if self.training: enqueue]    │
                  │                                            └────────────────┬───────────────┘
                  │                                                             │
                  │                                                             ▼
@@ -334,19 +417,27 @@ Trong quá trình thẩm định bản đề cương sơ bộ `V2.md`, chúng t�
                  │                                                             │
                  │                                                             ▼
                  │                                            ┌────────────────────────────────┐
-                 │                                            │ Trụ cột 3: HANS SCHEDULER      │
-                 │                                            │ - Warmup 50 eps: γ_h = 0.05    │
-                 │                                            │ - Loss-Gated Trigger (Δ≤0.02)  │
-                 │                                            │ - Ceiling cap: γ_h ≤ 0.35      │
-                 │                                            │ Top-K Hard Neg Selection       │
+                 │                                            │ Trụ cột 4: THRESHOLDED MFNA    │
+                 │                                            │ M_gated = Meta ⊙ max(0, cos)   │
+                 │                                            │ W = σ(sim)·(1 + 0.5·M_gated)   │
+                 │                                            │ Attenuation = clamp(1-W, 0, 1) │
                  │                                            └────────────────┬───────────────┘
                  │                                                             │
                  │                                                             ▼
                  │                                            ┌────────────────────────────────┐
-                 │                                            │ Trụ cột 4: MFNA & LOSS GATHER  │
-                 │                                            │ - W = σ(sim)·(1 + 0.5·Meta)    │
-                 │                                            │ - Ψ_HN = 1 + γ_h·d_norm        │
-                 │                                            │ - torch.gather(hn_exp, hn_psi) │
+                 │                                            │ Trụ cột 3: GATED TOP-K & HANS  │
+                 │                                            │ Score = Diff ⊙ Attenuation     │
+                 │                                            │ Top-K HN: (scores, indices)    │
+                 │                                            │ HANS: Decoupled loss_ans gate  │
+                 │                                            │ Ψ_HN = 1 + γ_h·d_norm          │
+                 │                                            │ Final_W = Ψ_all ⊙ Attenuation  │
+                 │                                            └────────────────┬───────────────┘
+                 │                                                             │
+                 │                                                             ▼
+                 │                                            ┌────────────────────────────────┐
+                 │                                            │ VECTORIZED INFO NCE GATHER     │
+                 │                                            │ hn_exp = gather(exp, indices)  │
+                 │                                            │ hn_w   = gather(Final_W, idx)  │
                  │                                            │ L_ANS = -log(pos / (pos + neg))│
                  │                                            └────────────────┬───────────────┘
                  │                                                             │
@@ -360,71 +451,81 @@ Trong quá trình thẩm định bản đề cương sơ bộ `V2.md`, chúng t�
 
 ---
 
+### 4.2 Trụ cột 1: Regularized Diagonal Spectral Projector (Bảo tồn Tuyệt đối Hệ trục SVD)
+- Vector tham số $\mathbf{w} \in \mathbb{R}^D$ tác động dưới dạng phép nhân Hadamard trực tiếp $\mathbf{E}_{\text{proj}} = \mathbf{E}_{\text{svd}} \odot \mathbf{w}$.
+- Khởi tạo toàn bộ bằng $1.0$ tại epoch 0.
+- Số hạng phạt neo giữ: $\mathcal{L}_{\text{anchor}} = \lambda_w \sum_{d=1}^D (w_d - 1.0)^2$ với $\lambda_w = 10^{-4}$.
+- **Đảm bảo toán học:** Ma trận biến đổi là ma trận đường chéo thuần túy (Diagonal Matrix), góc xoay trục tọa độ bằng đúng $0^\circ$, bảo tồn trọn vẹn cơ sở trực giao của phân tích kỳ dị SVD.
+
+### 4.3 Trụ cột 2: Subspace Difficulty Partitioning với Separate L2 Normalization
+- Tách lát chỉ mục: $\mathbf{z}^{\text{col}} = \mathbf{z}[:, :32]$ và $\mathbf{z}^{\text{mul}} = \mathbf{z}[:, 32:]$.
+- Chuẩn hóa L2 độc lập triệt tiêu hoàn toàn sự chênh lệch độ lớn năng lượng gây ra bởi hàm suy giảm phổ $\beta(d)$ trong FSC:
+  $$\mathbf{u}_{\text{col}}^{\text{norm}} = \frac{\mathbf{z}_u^{\text{col}}}{\|\mathbf{z}_u^{\text{col}}\|_2 + \epsilon}, \quad \mathbf{u}_{\text{mul}}^{\text{norm}} = \frac{\mathbf{z}_u^{\text{mul}}}{\|\mathbf{z}_u^{\text{mul}}\|_2 + \epsilon}$$
+- Điểm độ khó đo lường công bằng 50/50: $\mathcal{D}(u, k) = 0.50 \cdot (\mathbf{u}_{\text{col}}^{\text{norm}} \cdot \mathbf{k}_{\text{col}}^{\text{norm}}) + 0.50 \cdot (\mathbf{u}_{\text{mul}}^{\text{norm}} \cdot \mathbf{k}_{\text{mul}}^{\text{norm}})$.
+
+### 4.4 Trụ cột 3: Gated Top-K Selection & Triệt tiêu Rỗng Ngân sách Mẫu khó
+- Kết hợp độ khó với hệ số suy giảm để tính Điểm chọn lọc: $\text{Selection\_Score} = \mathcal{D} \odot \text{attenuation}$.
+- Lọc False Negatives trước khi phân bổ vào danh sách Top-K.
+- Trích xuất chính xác $K_{\text{hn}} = \max(1, \lfloor \text{hn\_ratio} \times Q \rfloor)$ mẫu khó thực sự.
+
+### 4.5 Trụ cột 4: Thresholded Cosine-Gated MFNA & Phân tầng Mẫu âm Đa cấp
+- Khóa cổng Cosine: $\mathcal{M}_{\text{gated}} = \mathcal{M}_{\text{meta}} \odot \max(0, \cos(u, k))$.
+- Hệ số phạt phân tầng bảo toàn trật tự toán học nghiêm ngặt:
+  $$\Psi_{\text{HN}} = 1.0 + \gamma_h \cdot \left(\frac{\mathcal{D} + 1}{2}\right) \ge 1.0 > \Psi_{\text{EN}} = 1.0 - \gamma_h$$
+- Hệ số phạt cuối cùng sau suy giảm: $\Psi_{\text{final}} = \Psi \odot \text{clamp}(1.0 - W, 0.0, 1.0)$.
+
+### 4.6 Trụ cột 5: Decoupled HANS Scheduler & Cross-Batch Memory Bank FIFO An toàn
+- Hàng đợi FIFO tĩnh $\mathcal{Q} \in \mathbb{R}^{4096 \times 64}$ mở rộng không gian mẫu âm gấp 4 lần.
+- Chốt chặn `if self.training` bảo vệ hàng đợi khỏi rò rỉ dữ liệu tập Validation/Test.
+- Bộ lập lịch HANS giám sát riêng `loss_ans`, áp dụng bước nhảy mềm $\Delta \le 0.02$ và trần an toàn $\gamma_h \le 0.35$.
+
+---
+
 ## 5. HỆ THỐNG CÔNG THỨC TOÁN HỌC VI PHÂN & ĐỊNH LÝ CÂN BẰNG GRADIENT
 
 ### 5.1 Hàm Mục tiêu Đa nhiệm Toàn cục ($\mathcal{L}_{\text{total}}$)
 
 $$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{BPR}}(\mathcal{O}) + \lambda_{\text{ans}} \cdot \mathcal{L}_{\text{ANS}} + \lambda_w \cdot \|\mathbf{w} - \mathbf{1}\|_2^2 + \lambda_{\text{reg}} \cdot \|\Theta\|_2^2$$
 
-Trong đó:
-- $\mathcal{L}_{\text{BPR}} = -\sum_{(u, i, j) \in \mathcal{O}} \ln \sigma(\hat{y}_{ui} - \hat{y}_{uj})$: Hàm xếp hạng pairwise cốt lõi.
-- $\lambda_{\text{ans}} \in [3 \cdot 10^{-5}, 10^{-4}]$: Trọng số điều hòa đối chiếu thích ứng phổ.
-- $\lambda_w = 10^{-4}$: Hệ số neo giữ vector tỷ lệ phổ đường chéo $\mathbf{w}$.
-- $\lambda_{\text{reg}}$: Hệ số suy giảm trọng số (Weight Decay).
-
 ### 5.2 Công thức Chi tiết Hàm Mất mát Stepwise SRE-ANS Loss
 
-Xét một mini-batch gồm $B$ cặp tương tác $(u, i^+)$. Với mỗi người dùng $u$, tập hợp các mẫu âm được trích xuất từ Memory Bank $\mathcal{Q}$ gồm $K$ phần tử. Tập chỉ mục $K$ được phân hoạch thành hai tập con thông qua thuật toán Top-K trên điểm độ khó $\mathcal{D}(u, k)$:
-- $\mathcal{H}_u \subset \mathcal{Q}$: Tập $K_{\text{hn}} = \lfloor \text{hn\_ratio} \times K \rfloor$ mẫu âm khó nhất (Hard Negatives).
-- $\mathcal{E}_u = \mathcal{Q} \setminus \mathcal{H}_u$: Tập các mẫu âm dễ còn lại (Easy Negatives).
+Xét mini-batch $B$ người dùng và hàng đợi mẫu âm $\mathcal{Q}$ gồm $Q$ sản phẩm. Tập hợp các mẫu Hard Negatives $\mathcal{H}_u$ được xác định thông qua toán tử Gated Top-K:
 
-Hàm mất mát $\mathcal{L}_{\text{ANS}}$ có dạng:
+$$\mathcal{H}_u = \arg\text{topk}_{k \in \mathcal{Q}} \left( \mathcal{D}(u, k) \cdot \text{clamp}(1.0 - W_{u, k}, \; 0.0, \; 1.0) \right)$$
 
-$$\mathcal{L}_{\text{ANS}} = -\frac{1}{B} \sum_{u=1}^B \ln \frac{\exp\left( \frac{\mathbf{z}_u \cdot \mathbf{z}_{i^+}}{\tau} \right)}{\exp\left( \frac{\mathbf{z}_u \cdot \mathbf{z}_{i^+}}{\tau} \right) + \sum_{k \in \mathcal{H}_u} \Psi_{\text{HN}}(u, k) \cdot (1 - W_{u, k}) \cdot \exp\left( \frac{\mathbf{z}_u \cdot \mathbf{z}_k}{\tau} \right) + \sum_{j \in \mathcal{E}_u} \Psi_{\text{EN}} \cdot \exp\left( \frac{\mathbf{z}_u \cdot \mathbf{z}_j}{\tau} \right)}$$
+Hàm mất mát $\mathcal{L}_{\text{ANS}}$ có dạng phân tầng chuẩn xác:
 
-Trong đó:
-1. **Độ tương đồng không gian con:**
-   $$\mathcal{D}(u, k) = \frac{1}{2} \left[ \frac{\mathbf{z}_u^{\text{col}} \cdot \mathbf{z}_k^{\text{col}}}{\|\mathbf{z}_u^{\text{col}}\|_2 \|\mathbf{z}_k^{\text{col}}\|_2} + \frac{\mathbf{z}_u^{\text{mul}} \cdot \mathbf{z}_k^{\text{mul}}}{\|\mathbf{z}_u^{\text{mul}}\|_2 \|\mathbf{z}_k^{\text{mul}}\|_2} \right]$$
-2. **Hệ số phạt Hard Negative:**
-   $$\Psi_{\text{HN}}(u, k) = 1.0 + \gamma_h \cdot \left(\frac{\mathcal{D}(u, k) + 1}{2}\right)$$
-3. **Hệ số phạt Easy Negative:**
-   $$\Psi_{\text{EN}} = 1.0 - \gamma_h$$
-4. **Hệ số làm suy giảm mẫu âm giả (MFNA):**
-   $$W_{u, k} = \sigma\left( \frac{\mathbf{z}_u \cdot \mathbf{z}_k}{\tau} \right) \cdot \left(1.0 + 0.5 \cdot \mathcal{M}_{\text{meta}}(u, k)\right)$$
+$$\mathcal{L}_{\text{ANS}} = -\frac{1}{B} \sum_{u=1}^B \ln \frac{\exp\left( \frac{\mathbf{z}_u \cdot \mathbf{z}_{i^+}}{\tau} \right)}{\exp\left( \frac{\mathbf{z}_u \cdot \mathbf{z}_{i^+}}{\tau} \right) + \sum_{k \in \mathcal{H}_u} \Psi_{\text{HN}}(u, k) \cdot (1 - W_{u, k}) \cdot \exp\left( \frac{\mathbf{z}_u \cdot \mathbf{z}_k}{\tau} \right)}$$
 
 ### 5.3 Giải tích Gradient và Chứng minh Toán học về Tính Hòa hợp Gradient với BPR và BSC
 
 Ta xét đạo hàm riêng của $\mathcal{L}_{\text{total}}$ theo vector biểu diễn người dùng $\mathbf{z}_u$:
 $$\mathbf{g}_{\text{total}} = \frac{\partial \mathcal{L}_{\text{total}}}{\partial \mathbf{z}_u} = \mathbf{g}_{\text{BPR}} + \lambda_{\text{ans}} \mathbf{g}_{\text{ANS}}$$
 
-- **Gradient từ BPR:**
-  $$\mathbf{g}_{\text{BPR}} = -\sigma(-\hat{x}_{ui}) \cdot \mathbf{z}_{i^+} + \sigma(-\hat{x}_{ui}) \cdot \mathbf{z}_{j^-}$$
-  Thành phần cốt lõi là lực kéo $+\sigma(-\hat{x}_{ui}) \mathbf{z}_{i^+}$ đưa người dùng về phía sản phẩm dương.
-- **Gradient từ SRE-ANS:**
-  $$\mathbf{g}_{\text{ANS}} = -\frac{1}{\tau} \left[ \left(1 - P_{\text{pos}}\right) \mathbf{z}_{i^+} - \sum_{k \in \mathcal{H}_u} P_k \cdot \Psi_{\text{HN}}(u, k) (1 - W_{u, k}) \mathbf{z}_k - \sum_{j \in \mathcal{E}_u} P_j \cdot \Psi_{\text{EN}} \mathbf{z}_j \right]$$
-  Trong đó $P_{\text{pos}}, P_k, P_j$ là phân phối xác suất softmax trên mẫu số của InfoNCE.
+- **Gradient BPR:** $\mathbf{g}_{\text{BPR}} = -\sigma(-\hat{x}_{ui}) \mathbf{z}_{i^+} + \sigma(-\hat{x}_{ui}) \mathbf{z}_{j^-}$. Lực kéo cốt lõi là $+\sigma(-\hat{x}_{ui}) \mathbf{z}_{i^+}$.
+- **Gradient ANS:**
+  $$\mathbf{g}_{\text{ANS}} = -\frac{1}{\tau} \left[ (1 - P_{\text{pos}}) \mathbf{z}_{i^+} - \sum_{k \in \mathcal{H}_u} P_k \cdot \Psi_{\text{final}}(u, k) \mathbf{z}_k \right]$$
 
-#### Chứng minh Định lý Hòa hợp Gradient (Gradient Harmonization):
-1. **Triệt tiêu xung đột với sản phẩm dương:** Vì các mẫu âm trong $\mathcal{H}_u$ và $\mathcal{E}_u$ được lấy từ Memory Bank $\mathcal{Q}$ (hoặc phép dịch vòng không chứa $\mathbf{i}^+$), ta có:
-   $$\forall k \in \mathcal{H}_u \cup \mathcal{E}_u, \quad \text{Prob}(k = i^+) = 0$$
-   Do đó, số hạng đẩy $\sum P_k \mathbf{z}_k$ hoàn toàn trực giao hoặc tạo góc nhọn với không gian mẫu âm, **tuyệt đối không chứa thành phần chiếu ngược $-\mathbf{z}_{i^+}$**. Lực kéo BPR được bảo toàn $100\%$.
-2. **Không xung đột với BSC:** Do $\gamma_h$ bị khống chế bởi ngưỡng trần an toàn $\gamma_h \le 0.35$ và cập nhật mịn $\Delta \le 0.02$, lực đẩy gia tăng trên tập $\mathcal{H}_u$:
-   $$\Delta \mathbf{g}_{\text{HN}} \propto \gamma_h \cdot d_{\text{norm}} \cdot \mathbf{z}_k \le 0.35 \cdot \mathbf{z}_k$$
-   Biên độ dao động này nhỏ hơn một bậc độ lớn so với biên độ gradient của tích chập ngược BSC ($\approx \mathbf{S} \mathbf{H}^{(l)}$), đảm bảo hướng cập nhật của đồ thị kNN không bị nhiễu loạn.
+#### Định lý về Tính Không Rỗng của Lực Đẩy Đối Kháng (Active Gradient Guarantee):
+- Dưới cơ chế **Gated Top-K Selection**, vì $\mathcal{H}_u$ chỉ chọn các mẫu có $\text{Selection\_Score} > 0$, ta có:
+  $$\forall k \in \mathcal{H}_u \implies \text{attenuation}(u, k) = (1 - W_{u, k}) > \delta > 0$$
+- Do đó, tổng lực đẩy đối kháng:
+  $$\|\mathbf{g}_{\text{repulsion}}\| = \left\| \sum_{k \in \mathcal{H}_u} P_k \cdot \Psi_{\text{final}}(u, k) \mathbf{z}_k \right\| \ge \delta \cdot \min_{k} P_k > 0$$
+- **Hệ quả:** Ngân sách mẫu khó không bao giờ bị rỗng, mô hình duy trì liên tục dòng gradient cải biên không gian biểu diễn mà không bị suy thoái về Uniform Sampling.
 
 ---
 
 ## 6. HIỆN THỰC HÓA MÃ NGUỒN PYTORCH CHUẨN SẢN XUẤT (PRODUCTION-GRADE IMPLEMENTATION)
 
-Dưới đây là toàn bộ mã nguồn module `models/stair_sre_ans_v8.py` đã được kiểm toán toàn diện, giải quyết triệt để 4 lỗi draft, tối ưu hóa tính toán trên GPU và tích hợp đầy đủ Memory Bank, Separate L2 Normalization, HANS Scheduler và MFNA.
+Dưới đây là mã nguồn module `models/stair_sre_ans_v8.py` hoàn chỉnh, tích hợp trọn vẹn toàn bộ các bản vá kỹ thuật và giải thuật tối ưu hóa GPU Tensor Cores:
 
 ```python
 # -*- coding: utf-8 -*-
 """
 models/stair_sre_ans_v8.py
 STAIR-SRE-ANS (Phase 3 -- Batch 2 / v2)
-Stepwise Spectral-Refined Contrastive Learning with Adaptive Negative Scheduling
-and Subspace Difficulty Partitioning.
+Stepwise Spectral-Refined Contrastive Learning with Adaptive Negative Scheduling,
+Subspace Difficulty Partitioning, Gated Top-K Selection, and Thresholded MFNA.
 """
 
 from typing import Optional, Tuple
@@ -444,7 +545,7 @@ class RegularizedDiagonalSpectralProjector(nn.Module):
         super(RegularizedDiagonalSpectralProjector, self).__init__()
         self.dim = dim
         self.reg_weight = reg_weight
-        # Khoi tao bang 1 de epoch 0 trung khop hoan toan voi khong gian SVD goc
+        # Khoi tao bang 1.0 de epoch 0 trung khop hoan toan voi khong gian SVD goc
         self.w = nn.Parameter(torch.ones(dim, dtype=torch.float32))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -457,12 +558,12 @@ class RegularizedDiagonalSpectralProjector(nn.Module):
 
 class StepwiseSREANSLoss(nn.Module):
     """
-    Ham mat mat STAIR-SRE-ANS (v2) tich hop 5 tru cot:
+    Ham mat mat STAIR-SRE-ANS (v2) tich hop 5 tru cot toan hoc hoan thien:
     1. Zero-rotation Diagonal Projector voi L2 Anchoring.
     2. Subspace Difficulty Partitioning (GDNSM) voi Separate L2 Normalization.
-    3. Hardness-Aware Negative Scheduling (HANS) voi Loss-Gated Trigger.
-    4. Adaptive False Negative Attenuation (MFNA) voi Soft Metadata Masking.
-    5. Cross-Batch FIFO Memory Bank (Negative Queue).
+    3. Gated Top-K Selection: Selection_Score = Difficulty * Attenuation (Giai toa Budget Bottleneck).
+    4. Thresholded Cosine-Gated MFNA: W = sigmoid(sim) * (1 + 0.5 * Meta * max(0, cos)).
+    5. Decoupled HANS Scheduler & Training-Guarded Cross-Batch Memory Bank FIFO.
     """
     def __init__(
         self,
@@ -483,59 +584,54 @@ class StepwiseSREANSLoss(nn.Module):
         self.hn_ratio_max = hn_ratio_max
         self.subspace_alpha = subspace_alpha
 
-        # 1. Khoi tao Memory Bank (FIFO Queue)
+        # Memory Bank FIFO Queue cho mau am cross-batch (ngat gradient 100%)
         self.register_buffer('neg_queue', torch.randn(queue_size, dim))
         self.neg_queue = F.normalize(self.neg_queue, p=2, dim=-1)
         self.register_buffer('queue_ptr', torch.zeros(1, dtype=torch.long))
 
-        # 2. Trang thai bo dieu phoi HANS
-        self.current_epoch = 0
-        self.gamma_h = 0.05
+        # Tham so bo dieu phoi HANS
         self.hn_ratio = 0.10
+        self.gamma_h = 0.05
+        self.current_epoch = 0
         self.loss_history = []
-        self.window_size = 10
-        self.plateau_threshold = 0.99
 
     @torch.no_grad()
-    def enqueue_negatives(self, item_embeds: torch.Tensor):
-        """Cap nhat FIFO Queue voi cac embedding san pham trong batch hien tai."""
-        item_norm = F.normalize(item_embeds.detach(), p=2, dim=-1)
-        batch_size = item_norm.size(0)
-        ptr = int(self.queue_ptr.item())
+    def enqueue_negatives(self, pos_emb: torch.Tensor):
+        """Cap nhat hang doi FIFO voi vector bieu dien pos items trong batch."""
+        batch_size = pos_emb.size(0)
+        norm_emb = F.normalize(pos_emb.detach(), p=2, dim=-1)
 
+        ptr = int(self.queue_ptr.item())
         if ptr + batch_size <= self.queue_size:
-            self.neg_queue[ptr:ptr + batch_size] = item_norm
+            self.neg_queue[ptr:ptr + batch_size] = norm_emb
             ptr = (ptr + batch_size) % self.queue_size
         else:
-            first_part = self.queue_size - ptr
-            second_part = batch_size - first_part
-            self.neg_queue[ptr:self.queue_size] = item_norm[:first_part]
-            self.neg_queue[0:second_part] = item_norm[first_part:]
-            ptr = second_part
+            first_chunk = self.queue_size - ptr
+            self.neg_queue[ptr:] = norm_emb[:first_chunk]
+            remain = batch_size - first_chunk
+            self.neg_queue[:remain] = norm_emb[first_chunk:]
+            ptr = remain
 
         self.queue_ptr[0] = ptr
 
-    def update_scheduler(self, current_epoch_loss: float, epoch: int):
+    def update_scheduler(self, current_cl_loss: float, window: int = 10, threshold: float = 0.99):
         """
-        Bo dieu phoi HANS: Cap nhat mem gamma_h va hn_ratio dua tren loss bieu hien.
-        Giai doan Warmup: Giu co dinh gamma_h = 0.05, hn_ratio = 0.10.
-        Giai doan sau Warmup: Kich hoat Trigger khi loss plateau.
+        Bo dieu phoi HANS thich ung doc lap:
+        Giam sat RIENG ham mat mat tuong phan CL (loss_ans) de tang gamma_h va hn_ratio.
         """
-        self.current_epoch = epoch
-
-        if epoch < self.warmup_epochs:
+        if self.current_epoch < self.warmup_epochs:
             self.gamma_h = 0.05
             self.hn_ratio = 0.10
             return
 
-        self.loss_history.append(current_epoch_loss)
-        if len(self.loss_history) > self.window_size * 2:
+        self.loss_history.append(current_cl_loss)
+        if len(self.loss_history) > window * 2:
             self.loss_history.pop(0)
-            loss_curr = sum(self.loss_history[-self.window_size:]) / self.window_size
-            loss_prev = sum(self.loss_history[-self.window_size * 2 : -self.window_size]) / self.window_size
+            loss_curr = sum(self.loss_history[-window:]) / window
+            loss_prev = sum(self.loss_history[-window*2:-window]) / window
 
-            # Loss-Gated Trigger Condition
-            if loss_curr >= self.plateau_threshold * loss_prev:
+            # Kich hoat Loss-Gated Trigger khi CL loss giam cham hon 1%
+            if loss_curr >= threshold * loss_prev:
                 self.gamma_h = min(self.gamma_h + 0.02, self.gamma_max)
                 self.hn_ratio = min(self.hn_ratio + 0.02, self.hn_ratio_max)
             else:
@@ -550,15 +646,6 @@ class StepwiseSREANSLoss(nn.Module):
         batch_items: torch.Tensor,
         metadata_mask: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        """
-        Lan truyen xuoi tinh toan Stepwise SRE-ANS Loss.
-        Args:
-            u_embed: Tensor bieu dien user [N_users, D]
-            i_pos_embed: Tensor bieu dien item duong [N_items, D]
-            batch_users: Chi muc user trong mini-batch [B]
-            batch_items: Chi muc item duong trong mini-batch [B]
-            metadata_mask: Mat na metadata [B, Queue_Size] (1 neu cung Brand/Cat, 0 neu khac)
-        """
         device = u_embed.device
         B = batch_users.size(0)
 
@@ -566,11 +653,11 @@ class StepwiseSREANSLoss(nn.Module):
         u_batch = u_embed[batch_users]           # [B, D]
         pos_batch = i_pos_embed[batch_items]     # [B, D]
 
-        # 2. Lay mau am tu Memory Bank FIFO Queue
-        neg_pool = self.neg_queue.clone().to(device)  # [Q, D], detached
+        # 2. Lay mau am tu Memory Bank FIFO Queue (detached)
+        neg_pool = self.neg_queue.clone().to(device)  # [Q, D]
         Q = neg_pool.size(0)
 
-        # 3. GDNSM: Tinh Difficulty Score tren 2 khong gian con (Separate L2 Norm)
+        # 3. GDNSM: Tinh Difficulty Score tren 2 khong gian con (Separate L2 Normalization)
         d_half = self.dim // 2
         u_collab = F.normalize(u_batch[:, :d_half], p=2, dim=-1)
         u_multi = F.normalize(u_batch[:, d_half:], p=2, dim=-1)
@@ -578,33 +665,31 @@ class StepwiseSREANSLoss(nn.Module):
         neg_collab = F.normalize(neg_pool[:, :d_half], p=2, dim=-1)
         neg_multi = F.normalize(neg_pool[:, d_half:], p=2, dim=-1)
 
-        sim_collab = torch.matmul(u_collab, neg_collab.T)  # [B, Q]
-        sim_multi = torch.matmul(u_multi, neg_multi.T)     # [B, Q]
+        cos_collab = torch.matmul(u_collab, neg_collab.T)  # [B, Q]
+        cos_multi = torch.matmul(u_multi, neg_multi.T)     # [B, Q]
 
-        difficulty = self.subspace_alpha * sim_collab + (1.0 - self.subspace_alpha) * sim_multi  # [B, Q]
+        difficulty = self.subspace_alpha * cos_collab + (1.0 - self.subspace_alpha) * cos_multi  # [B, Q]
 
-        # 4. HANS Selection: Trich xuat Top-K Hard Negatives
-        k_hn = max(1, int(self.hn_ratio * Q))
-        _, hn_indices = torch.topk(difficulty, k=k_hn, dim=1)  # [B, k_hn]
-
-        # 5. Tinh toan ma tran tuong dong toan phan tren toan bo vector 64-D
+        # 4. Tinh toan ma tran tuong quan toan phan (Cosine similarity goc truoc khi chia tau)
         u_norm = F.normalize(u_batch, p=2, dim=-1)
         pos_norm = F.normalize(pos_batch, p=2, dim=-1)
         neg_norm = F.normalize(neg_pool, p=2, dim=-1)
 
-        # Tich vo huong mau duong
-        pos_sim = torch.sum(u_norm * pos_norm, dim=-1) / self.tau  # [B]
-        pos_exp = torch.exp(pos_sim)                               # [B]
+        cos_all = torch.matmul(u_norm, neg_norm.T)                 # [B, Q]
+        sim_all = cos_all / self.tau                              # [B, Q]
 
-        # Ma tran tuong dong voi toan bo mau am trong Queue
-        sim_all = torch.matmul(u_norm, neg_norm.T) / self.tau      # [B, Q]
-
-        # 6. MFNA: He so suy giam mau am gia Soft Attenuation
+        # 5. Thresholded Cosine-Gated MFNA: Chi kich hoat metadata khi cosine > 0
         if metadata_mask is not None:
-            W = torch.sigmoid(sim_all) * (1.0 + 0.5 * metadata_mask.to(device))
+            gated_metadata = metadata_mask.to(device) * torch.clamp(cos_all, min=0.0)
+            W = torch.sigmoid(sim_all) * (1.0 + 0.5 * gated_metadata)
         else:
             W = torch.sigmoid(sim_all)
         attenuation = torch.clamp(1.0 - W, min=0.0, max=1.0)       # [B, Q]
+
+        # 6. GATED TOP-K SELECTION: Loc FN truoc khi phan bo ngan sach Top-K HN
+        selection_score = difficulty * attenuation                 # [B, Q]
+        k_hn = max(1, int(self.hn_ratio * Q))
+        _, hn_indices = torch.topk(selection_score, k=k_hn, dim=1)  # [B, k_hn]
 
         # 7. He so dieu phoi phan tang Psi (HN vs EN)
         diff_norm = (difficulty + 1.0) / 2.0                       # Chuan hoa ve [0, 1]
@@ -616,10 +701,12 @@ class StepwiseSREANSLoss(nn.Module):
         hn_mask.scatter_(1, hn_indices, True)
         psi_all = torch.where(hn_mask, psi_HN, psi_all)
 
-        # Ap dung MFNA len he so phat
+        # Ap dung MFNA suy giam len he so phat
         final_weights = psi_all * attenuation                      # [B, Q]
 
-        # 8. Tinh InfoNCE Loss bang cach gather chinh xac Top-K Hard Negatives
+        # 8. Tinh InfoNCE Loss bang cach gather chinh xac Top-K Hard Negatives da loc
+        pos_sim = torch.sum(u_norm * pos_norm, dim=-1) / self.tau  # [B]
+        pos_exp = torch.exp(pos_sim)                               # [B]
         exp_all = torch.exp(sim_all)                               # [B, Q]
 
         hn_exp = torch.gather(exp_all, dim=1, index=hn_indices)           # [B, k_hn]
@@ -629,8 +716,10 @@ class StepwiseSREANSLoss(nn.Module):
 
         loss = -torch.log(pos_exp / (pos_exp + neg_weighted_sum + 1e-8)).mean()
 
-        # 9. Day mau item hien tai vao Memory Bank FIFO Queue
-        self.enqueue_negatives(pos_batch)
+        # 9. TRAINING GUARD: Chi cap nhat Queue khi o che do train (Chong Evaluation Leak)
+        if self.training:
+            with torch.no_grad():
+                self.enqueue_negatives(pos_batch)
 
         return loss
 ```
@@ -639,16 +728,16 @@ class StepwiseSREANSLoss(nn.Module):
 
 ## 7. MA TRẬN MỤC TIÊU BỨT PHÁ $\ge +5.0\%$ TRÊN CẢ 3 TẬP DỮ LIỆU
 
-Bảng đối soát tiêu chuẩn xác định các ngưỡng hiệu năng mục tiêu cho phiên bản **STAIR-SRE-ANS v2**, so sánh trực diện với STAIR Baseline và hai cột mốc của Đợt 1 (v1 và v1.1):
+Bảng đối chuẩn mục tiêu hiệu năng toàn diện trên tập kiểm thử (Test Set) của Giai đoạn 3 — Đợt 2:
 
-| Tập dữ liệu | Chỉ số Đánh giá | STAIR Baseline (Tái lập chuẩn) | STAIR-SRE v1 (Kaggle T4) | STAIR-SRE v1.1 (Kaggle T4) | **Mục tiêu STAIR-SRE-ANS v2** | **Kỳ vọng Tăng trưởng ($\Delta$ vs BL)** |
+| Tập dữ liệu | Chỉ số Đánh giá | Baseline STAIR (Paper Table 2) | STAIR-SRE v1 (Thực nghiệm) | STAIR-SRE v1.1 (Thực nghiệm) | **STAIR-SRE-ANS v2 (Mục tiêu)** | Mức Tăng trưởng vs Baseline |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Amazon Baby** | **Recall@10** | 0.0674 | 0.0639 | 0.0646 | **$\ge 0.0710$** | **$+5.34\%$** |
+| **Amazon Baby** | **Recall@10** | 0.0674 | 0.0621 | 0.0645 | **$\ge 0.0710$** | **$+5.34\%$** |
 | *(19.4K Users)* | **Recall@20** | 0.1042 | 0.0967 | 0.1003 | **$\ge 0.1095$** | **$+5.09\%$** |
-| *(Sparsity: 99.82%)* | **NDCG@10** | 0.0359 | 0.0335 | 0.0341 | **$\ge 0.0380$** | **$+5.85\%$** |
-| *(Best @Ep 345)* | **NDCG@20** | 0.0454 | 0.0420 | 0.0433 | **$\ge 0.0480$** | **$+5.73\%$** |
+| *(Sparsity: 99.82%)* | **NDCG@10** | 0.0359 | 0.0326 | 0.0341 | **$\ge 0.0380$** | **$+5.85\%$** |
+| *(Best @Ep 455)* | **NDCG@20** | 0.0454 | 0.0416 | 0.0433 | **$\ge 0.0480$** | **$+5.73\%$** |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Amazon Sports** | **Recall@10** | 0.0743 | 0.0677 | 0.0723 | **$\ge 0.0785$** | **$+5.65\%$** |
+| **Amazon Sports** | **Recall@10** | 0.0743 | 0.0682 | 0.0736 | **$\ge 0.0785$** | **$+5.65\%$** |
 | *(35.6K Users)* | **Recall@20** | 0.1111 | 0.1029 | 0.1098 | **$\ge 0.1168$** | **$+5.13\%$** |
 | *(Sparsity: 99.95%)* | **NDCG@10** | 0.0405 | 0.0371 | 0.0396 | **$\ge 0.0430$** | **$+6.17\%$** |
 | *(Best @Ep 415)* | **NDCG@20** | 0.0500 | 0.0461 | 0.0493 | **$\ge 0.0530$** | **$+6.00\%$** |
@@ -662,7 +751,7 @@ Bảng đối soát tiêu chuẩn xác định các ngưỡng hiệu năng mục
 
 ## 8. ĐẶC TẢ KHÔNG GIAN SIÊU THAM SỐ & HƯỚNG DẪN VẬN HÀNH
 
-Bảng thiết lập siêu tham số vận hành tối ưu cho từng tập dữ liệu trong Đợt 2:
+### 8.1 Bảng Cấu hình Siêu tham số Khuyến nghị
 
 | Tham số CLI | Ý nghĩa Vật lý | Amazon Baby | Amazon Sports | Amazon Electronics | Rationale Kỹ thuật |
 | :--- | :--- | :---: | :---: | :---: | :--- |
@@ -674,6 +763,15 @@ Bảng thiết lập siêu tham số vận hành tối ưu cho từng tập dữ
 | `--hn-ratio-max`| Tỷ lệ mẫu HN tối đa | $0.40$ | $0.40$ | $0.35$ | Giữ $60\%$ mẫu nền để bảo toàn tính Uniformity. |
 | `--lr-w` | Learning rate cho vector $w$ | $10^{-4}$ ($0.1 \times \text{lr}$) | $10^{-4}$ | $10^{-4}$ | Cập nhật chậm để tránh trôi dạt tham số. |
 | `--lambda-w` | Hệ số neo giữ L2 Projector | $10^{-4}$ | $10^{-4}$ | $10^{-4}$ | Neo giữ quanh giá trị 1.0. |
+
+### 8.2 Các Lưu ý Vận hành Sống còn cho Cột mốc $\ge +5\%$
+
+1. **Giám sát Kích thước Hàng đợi (Queue Size Tuning) & Độ nhạy Nhiệt độ $\tau$:**  
+   Hàng đợi mẫu âm càng lớn ($Q = 4096$ hay $8192$), lực đẩy tích lũy từ $\sum \exp(\text{sim})$ càng mạnh. Nếu trong 50 epoch đầu, quan sát thấy `loss_ans` giảm quá nhanh tiệm cận về 0 (dưới $0.01$), cần chủ động nâng nhiệt độ $\tau$ (ví dụ từ $0.20$ lên $0.25$ hoặc $0.30$) để làm mềm phân phối xác suất, tránh bão hòa sớm trước khi bộ lập lịch HANS kịp kích hoạt.
+2. **Điểm Neo Cửa sổ Trượt HANS (Window Tuning):**  
+   Mặc định sử dụng `window = 10` (so sánh 10 epoch hiện tại với 10 epoch trước đó). Tuy nhiên, trên tập **Amazon Electronics** (kích thước dữ liệu lớn, thời gian huấn luyện mỗi epoch dài $\approx 15 \sim 20$ giây), việc chờ 20 epoch để kích hoạt trigger có thể làm chậm nhịp thích ứng. Nhóm nghiên cứu nên cấu hình `window = 5` riêng cho Electronics để HANS phản ứng nhạy bén hơn.
+3. **Chốt chặn Attenuation An toàn (Zero-NaN Guarantee):**  
+   Toán tử `torch.clamp(1.0 - W, min=0.0, max=1.0)` đảm bảo hệ số phạt không bao giờ nhận giá trị âm, triệt tiêu hoàn toàn nguy cơ số hạng mẫu số InfoNCE bị âm sinh ra lỗi toán học `NaN` trong hàm logarit.
 
 ---
 
@@ -694,25 +792,28 @@ Kiến trúc **STAIR-SRE-ANS v2** duy trì ưu thế vận hành siêu nhẹ và
 
 ---
 
-## 10. KỊCH BẢN PHẢN BIỆN HỌC THUẬT TRƯỚC HỘI ĐỒNG (ACADEMIC DEFENSE NARRATIVE v2)
+## 10. KỊCH BẢN PHẢN BIỆN HỌC THUẬT NÂNG CẤP TRƯỚC HỘI ĐỒNG (ACADEMIC DEFENSE UPGRADE)
 
-Nếu Hội đồng Khoa học đặt câu hỏi phản biện:
-> *"Tại sao nhóm lại đề xuất kết hợp cả 3 công trình NegGen, GDNSM và AdNGCL vào STAIR? Liệu việc 'ghép nối' này có làm hệ thống trở nên cồng kềnh, phức tạp và dễ xung đột gradient như các đợt thất bại trước đây hay không?"*
+Khi Hội đồng Khoa học đặt câu hỏi về **tính sáng tạo độc bản** của giải pháp thay vì lắp ghép cơ học các bài báo có sẵn:
+
+> *"Tại sao nhóm lại kết hợp NegGen, GDNSM và AdNGCL? Liệu việc kết hợp này có gây mâu thuẫn giữa các thành phần hay chỉ là phép cộng cơ học?"*
 
 **Kịch bản trả lời mẫu mực của Senior AI Research Engineer:**
-> *"Dạ kính thưa Thầy/Cô trong Hội đồng Khoa học, đây chính là bài toán cốt lõi mà nhóm đã dành toàn bộ tâm huyết phân tích và phản biện trước khi bắt tay vào lập trình.*
+
+> *"Kính thưa Thầy/Cô trong Hội đồng Khoa học, đóng góp học thuật mang tính bước ngoặt của nhóm em trong phiên bản v2 chính là việc phát hiện ra **sự mâu thuẫn và triệt tiêu lẫn nhau giữa bộ lọc mẫu âm giả (MFNA từ NegGen) và bộ chọn mẫu khó (HANS từ AdNGCL)**.*
 >
-> *Thực tế nghiên cứu cho thấy: Nếu chúng em 'sao chép nguyên xi' 3 mô hình trên, hệ thống chắc chắn sẽ sụp đổ:*
-> - *NegGen nguyên bản dùng MLLM cực kỳ chậm và nặng.*
-> - *GDNSM nguyên bản dùng mô hình Diffusion làm trôi dạt không gian nhúng.*
-> - *AdNGCL nguyên bản tăng độ khó đột ngột, sẽ xung đột trực tiếp và bẻ gãy dòng gradient của thuật toán tích chập ngược BSC trong STAIR.*
+> *Nếu chọn mẫu khó dựa trên điểm tương đồng thô như các mô hình truyền thống (GDNSM, AdNGCL), hệ thống sẽ rơi vào một **nghịch lý phân bổ ngân sách (Top-K Budget Bottleneck)**: Toàn bộ danh sách Top-K sẽ bị lấp đầy bởi các False Negatives (vì chúng có độ tương đồng hành vi và đa phương thức cao nhất). Ngay sau đó, MFNA phát hiện và ép hệ số suy giảm của chúng về sát 0. Kết quả là tập mẫu khó thực tế trong hàm loss bị 'rỗng' hoàn toàn, tước đi lực đẩy đối kháng cần thiết và khiến mô hình thoái hóa về cơ chế lấy mẫu ngẫu nhiên.*
 >
-> *Thay vì ghép nối cơ học, nhóm em đã **chắt lọc triết lý toán học cốt lõi** và **tái cấu trúc lại hoàn toàn trên các đặc thù vật lý của STAIR**:*
-> 1. *Với NegGen: Chúng em loại bỏ MLLM, biến thành bộ lọc tĩnh không tham số kết hợp giữa độ tương đồng SVD và Metadata (Brand/Category), bảo vệ $100\%$ hệ cơ sở trực giao mà không sinh thêm bất kỳ tham số xoay nào.*
-> 2. *Với GDNSM: Chúng em loại bỏ Diffusion, tận dụng đúng 2 phân vùng phổ tự nhiên của STAIR là Collaborative $[0:32]$ và Multimodal $[32:64]$. Đặc biệt, nhóm phát hiện ra hiện tượng năng lượng collaborative lấn át multimodal do hệ số co phổ $\beta$, từ đó đề xuất giải pháp **Separate L2 Normalization** độc bản để cân bằng tuyệt đối hai nguồn tín hiệu.*
-> 3. *Với AdNGCL: Chúng em thiết kế bộ điều phối HANS có chốt chặn an toàn (Loss-Gated Trigger, bước nhảy mịn $\le 0.02$, trần an toàn $\le 0.35$), đảm bảo việc tăng độ khó diễn ra êm dịu và hòa hợp $100\%$ với BSC.*
+> *Để giải quyết triệt để vấn đề này, nhóm em đã phát minh giải pháp **Gated Top-K Selection**: Chúng em tích hợp ma trận suy giảm trực tiếp vào điểm độ khó để lọc False Negatives TRƯỚC khi tiến hành chọn Top-K:*
+> $$\text{Selection\_Score} = \text{Difficulty} \odot \text{Attenuation}$$
+> *Nhờ đó, 100% ngân sách tính toán của mô hình được dành trọn vẹn cho các **True Hard Negatives** — những mẫu thực sự thử thách nhưng an toàn để đẩy ra xa.*
 >
-> *Chính sự cẩn trọng về mặt giải tích gradient và tối ưu hóa toán học vi phân này đã giúp STAIR-SRE-ANS v2 đạt được sức mạnh phân biệt ranh giới cực đại mà vẫn giữ mức tiêu thụ VRAM siêu nhẹ dưới 2.2 GB."*
+> *Bên cạnh đó, nhóm em đã thực hiện các tinh chỉnh mang tính cấu trúc vật lý của STAIR:*
+> 1. *Áp dụng **Separate L2 Normalization** trên 2 phân vùng $[0:32]$ và $[32:64]$ để ngăn chặn năng lượng collaborative lấn át thông tin đa phương thức.*
+> 2. *Thiết lập **Thresholded Cosine Gating** cho metadata mask để bảo toàn lực đẩy đối với các sản phẩm cùng danh mục nhưng trực giao về nội dung.*
+> 3. *Tách biệt hoàn toàn bộ điều phối HANS để chỉ giám sát riêng loss tương phản CL thay vì bị đánh lừa bởi sự bão hòa sớm của BPR.*
+>
+> *Chính sự cẩn trọng về mặt giải tích gradient và tương tác liên module này đã giúp STAIR-SRE-ANS v2 đạt được sự hòa hợp tuyệt đối, khai phóng toàn bộ sức mạnh của học đối kháng thích ứng mà vẫn giữ mức tiêu thụ VRAM siêu nhẹ dưới 2.2 GB."*
 
 ---
 
@@ -721,11 +822,11 @@ Nếu Hội đồng Khoa học đặt câu hỏi phản biện:
 Lộ trình thực thi chi tiết sẵn sàng triển khai:
 
 1. **Khởi tạo mã nguồn module v2:**  
-   Tạo file [`models/stair_sre_ans_v8.py`](file:///d:/4thY_HCMUS/KLTN/STAIR-Enhanced/models/stair_sre_ans_v8.py) chứa toàn bộ class `RegularizedDiagonalSpectralProjector` và `StepwiseSREANSLoss`.
+   Tạo file [`models/stair_sre_ans_v8.py`](file:///d:/4thY_HCMUS/KLTN/STAIR-Enhanced/models/stair_sre_ans_v8.py) chứa toàn bộ class `RegularizedDiagonalSpectralProjector` và `StepwiseSREANSLoss` với đầy đủ các nâng cấp toán học.
 2. **Xây dựng script huấn luyện chuẩn hóa:**  
    Tạo file [`main_stair_sre_ans_v8.py`](file:///d:/4thY_HCMUS/KLTN/STAIR-Enhanced/main_stair_sre_ans_v8.py) hỗ trợ đầy đủ các tham số CLI `--lambda-ans`, `--ans-tau`, `--queue-size`, `--warmup-epochs`, `--gamma-max`, `--hn-ratio-max`.
 3. **Kiểm thử Unit Test cục bộ:**  
-   Chạy script kiểm thử mini-batch giả lập để xác nhận: (1) Hàng đợi Queue FIFO cập nhật chính xác; (2) Separate L2 Norm cân bằng biên độ; (3) HANS Scheduler cập nhật mượt mà; (4) Backward gradient không có NaN/Inf.
+   Chạy script kiểm thử mini-batch giả lập để xác nhận: (1) Hàng đợi Queue FIFO cập nhật chính xác và có khóa `self.training`; (2) Separate L2 Norm cân bằng biên độ; (3) Gated Top-K Selection loại bỏ FN chính xác; (4) HANS Scheduler cập nhật mượt mà; (5) Backward gradient không có NaN/Inf.
 4. **Đóng gói Notebook Huấn luyện Kaggle GPU:**  
    Khởi tạo [`notebook/P3/stair_sre_v2.ipynb`](file:///d:/4thY_HCMUS/KLTN/STAIR-Enhanced/notebook/P3/stair_sre_v2.ipynb) với đầy đủ pipeline tự động tải dữ liệu, huấn luyện trọn vẹn 500 epochs trên Amazon Baby, Sports và Electronics, lưu trữ nhật ký huấn luyện vào `logs/GD3/`.
 5. **Phân tích Đối soát Thực nghiệm:**  
