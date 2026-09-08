@@ -68,32 +68,32 @@ Khi nghiên cứu việc tích hợp các tư tưởng tiên tiến từ các c�
 
 ### 2.1 Phản biện 1 (Bác bỏ Dense Projector của REARM): Phá vỡ Hệ tọa độ Phổ (Spectral Coordinate Collapse)
 - **Cơ chế nguy hiểm:** REARM sử dụng các lớp tuyến tính đầy đủ (Dense Linear Layers) $\mathbf{Y} = \mathbf{X} \mathbf{W} + \mathbf{b}$ để chiếu thích ứng đặc trưng người dùng và sản phẩm.
-- **Phân tích toán học:** Ma trận trọng số $\mathbf{W} \in \mathbb{R}^{64 	imes 64}$ là một toán tử affine tổng quát bao gồm cả phép co giãn và phép xoay không gian (rotation):
+- **Phân tích toán học:** Ma trận trọng số $\mathbf{W} \in \mathbb{R}^{64 \times 64}$ là một toán tử affine tổng quát bao gồm cả phép co giãn và phép xoay không gian (rotation):
   $$\mathbf{W} = \mathbf{P} \mathbf{\Lambda} \mathbf{Q}^	op$$
   Phép xoay $\mathbf{P}, \mathbf{Q}$ làm trộn lẫn (cross-mixing) các chiều không gian với nhau.
 - **Tác động phá hủy đối với STAIR:**
   - Trong STAIR, 64 chiều SVD được sắp xếp theo thứ tự đơn điệu nghiêm ngặt về năng lượng phổ: Chiều $0$ mang tần số thấp nhất (đặc trưng cộng tác Collaborative thuần túy), chiều $63$ mang tần số cao nhất (đặc trưng ngữ nghĩa đa phương thức Multimodal).
-  - Phép tích chập đồ thị Forward Stepwise Convolution (FSC) và Backward Stepwise Convolution (BSC) hoạt động hoàn toàn dựa trên giả định hệ trục tọa độ này được giữ nguyên vẹn để phân bổ bước nhảy $oldsymbol{eta}_1, oldsymbol{eta}_2, oldsymbol{eta}_3$.
+  - Phép tích chập đồ thị Forward Stepwise Convolution (FSC) và Backward Stepwise Convolution (BSC) hoạt động hoàn toàn dựa trên giả định hệ trục tọa độ này được giữ nguyên vẹn để phân bổ bước nhảy $\boldsymbol{\beta}_1, \boldsymbol{\beta}_2, \boldsymbol{\beta}_3$.
   - Nếu áp dụng Dense Linear, chiều $0$ sẽ bị lai tạp đặc trưng của chiều $63$, phá hủy hoàn toàn nguyên lý lọc phổ từng bước.
 - **Giải pháp STAIR-SRE:** Thay thế Dense Linear bằng **Diagonal Spectral-scaling Projector** sử dụng phép nhân Hadamard:
   $$\mathbf{E}_{proj, i} = \mathbf{E}_{svd, i} \odot \mathbf{w}, \quad \mathbf{w} \in \mathbb{R}^{64}$$
-  Toán tử này tương đương với ma trận đường chéo $	ext{diag}(\mathbf{w})$ với góc xoay bằng $0$ tuyệt đối ($\mathbf{0}	ext{-rotation}$), chỉ co giãn phương sai độc lập trên từng trục phổ mà không làm lệch hướng bất kỳ chiều nào!
+  Toán tử này tương đương với ma trận đường chéo $\text{diag}(\mathbf{w})$ với góc xoay bằng $0$ tuyệt đối ($\mathbf{0}\text{-rotation}$), chỉ co giãn phương sai độc lập trên từng trục phổ mà không làm lệch hướng bất kỳ chiều nào!
 
 ---
 
 ### 2.2 Phản biện 2 (Bác bỏ Công thức Trọng số Mẫu âm của MSAW): Mâu thuẫn Khuếch đại Mẫu âm Giả (Inverse Negative Penalty)
 - **Cơ chế nguy hiểm:** Trong MSAW, tác giả đề xuất đưa độ tương đồng đa phương thức $W_{u, i^-} \in [0, 1]$ trực tiếp vào hàm mũ của mẫu số InfoNCE:
-  $$\mathcal{L}_{	ext{MSAW}} = -\log rac{\exp(	ext{sim}(u, i^+) / 	au)}{\exp(	ext{sim}(u, i^+) / 	au) + \sum_{i^-} \exp\left( rac{W_{u, i^-} \cdot 	ext{sim}(u, i^-)}{	au} ight)}$$
+  $$\mathcal{L}_{\text{MSAW}} = -\log \frac{\exp(\text{sim}(u, i^+) / \tau)}{\exp(\text{sim}(u, i^+) / \tau) + \sum_{i^-} \exp\left( \frac{W_{u, i^-} \cdot \text{sim}(u, i^-)}{\tau} \right)}$$
 - **Phân tích toán học & Lỗ hổng chí mạng:**
   - Trong hàm InfoNCE, mục tiêu của mẫu số là **đẩy các mẫu âm ra xa** (tối đa hóa khoảng cách giữa $u$ và $i^-$).
-  - Giả sử $i^-$ là một **mẫu âm giả (False Negative)**, tức là sản phẩm cực kỳ phù hợp với sở thích của người dùng $u$ (ví dụ: người dùng thích bỉm Merries size M, và $i^-$ là bỉm Pampers size M). Khi đó độ tương đồng $W_{u, i^-} 	o 1.0$.
-  - Nếu đưa $W$ nhân trực tiếp vào số mũ: Số hạng $\exp(1.0 \cdot 	ext{sim} / 	au)$ đạt giá trị cực đại, tạo ra một lực đẩy mạnh nhất xua đuổi món hàng tiềm năng này ra khỏi top khuyến nghị!
-  - Ngược lại, nếu $i^-$ là một món hàng hoàn toàn không liên quan ($W_{u, i^-} 	o 0.0$), số mũ trở thành $\exp(0) = 1$, lực đẩy đối với mẫu âm thực sự bị triệt tiêu!
+  - Giả sử $i^-$ là một **mẫu âm giả (False Negative)**, tức là sản phẩm cực kỳ phù hợp với sở thích của người dùng $u$ (ví dụ: người dùng thích bỉm Merries size M, và $i^-$ là bỉm Pampers size M). Khi đó độ tương đồng $W_{u, i^-} \to 1.0$.
+  - Nếu đưa $W$ nhân trực tiếp vào số mũ: Số hạng $\exp(1.0 \cdot \text{sim} / \tau)$ đạt giá trị cực đại, tạo ra một lực đẩy mạnh nhất xua đuổi món hàng tiềm năng này ra khỏi top khuyến nghị!
+  - Ngược lại, nếu $i^-$ là một món hàng hoàn toàn không liên quan ($W_{u, i^-} \to 0.0$), số mũ trở thành $\exp(0) = 1$, lực đẩy đối với mẫu âm thực sự bị triệt tiêu!
   - **Đây là một mâu thuẫn toán học ngược đời (inverted logic)**, đi ngược lại $100\%$ triết lý lọc mẫu âm giả của hệ gợi ý.
 - **Giải pháp STAIR-SRE:** Áp dụng cơ chế **Adaptive False Negative Attenuation** đưa hệ số suy giảm $(1 - W_{u, i^-})$ đứng **NGOÀI** số mũ $\exp$:
-  $$	ext{Số hạng mẫu âm} = \sum_{i^-} (\mathbf{1 - W_{u, i^-}}) \cdot \exp\left( rac{	ext{sim}(u, i^-)}{	au} ight)$$
-  - Khi $i^-$ là mẫu âm giả ($W 	o 1$): Hệ số $(1 - W) 	o 0$, số hạng bị triệt tiêu êm dịu, mô hình **ngừng đẩy mẫu âm giả**.
-  - Khi $i^-$ là mẫu âm thật ($W 	o 0$): Hệ số $(1 - W) 	o 1$, lực đẩy InfoNCE được kích hoạt toàn phần để phân tách không gian.
+  $$\text{Số hạng mẫu âm} = \sum_{i^-} (\mathbf{1 - W_{u, i^-}}) \cdot \exp\left( \frac{\text{sim}(u, i^-)}{\tau} \right)$$
+  - Khi $i^-$ là mẫu âm giả ($W \to 1$): Hệ số $(1 - W) \to 0$, số hạng bị triệt tiêu êm dịu, mô hình **ngừng đẩy mẫu âm giả**.
+  - Khi $i^-$ là mẫu âm thật ($W \to 0$): Hệ số $(1 - W) \to 1$, lực đẩy InfoNCE được kích hoạt toàn phần để phân tách không gian.
 
 ---
 
@@ -101,7 +101,7 @@ Khi nghiên cứu việc tích hợp các tư tưởng tiên tiến từ các c�
 - **Cơ chế nguy hiểm:** MMGCL tạo các góc nhìn tương phản (views) bằng cách xáo trộn (perturbation) riêng rẽ trên vector thị giác thô $\mathbf{x}_v$ và vector văn bản thô $\mathbf{x}_t$.
 - **Phân tích cấu trúc:**
   - STAIR đã thực hiện nén và dung hợp đặc trưng ảnh và chữ thông qua hàm khởi tạo `whitening()` dựa trên SVD Whitening ngay từ bước đầu:
-    $$\mathbf{M}_i = rac{1}{\sum k_m} \sum_{m \in \{t, v\}} k_m \cdot 	ext{whitening}(\mathbf{X}_m)[:, :64]$$
+    $$\mathbf{M}_i = \frac{1}{\sum k_m} \sum_{m \in \{t, v\}} k_m \cdot \text{whitening}(\mathbf{X}_m)[:, :64]$$
   - Tại tầng ẩn của GNN, các đặc trưng ảnh và chữ đã được nén hòa quyện vào một không gian 64 chiều duy nhất. Ta **không còn các tensor ảnh hay chữ thô độc lập** ở từng layer để xáo trộn theo kiểu MMGCL.
 - **Giải pháp STAIR-SRE:** Đề xuất cơ chế **Spectral-disentangled Subspace Perturbation** kết hợp **Soft Spectral Swapping** trực tiếp trên chính vector 64 chiều ẩn.
 
@@ -110,8 +110,8 @@ Khi nghiên cứu việc tích hợp các tư tưởng tiên tiến từ các c�
 ### 2.4 Phản biện 4 & 5: Bác bỏ "Hard Split 32:32" & Lỗ hổng Bỏ rơi Tương phản Đa tầng
 1. **Bác bỏ Hard Split 32:32:**
    - Việc giả định 32 chiều đầu $[0:32]$ là Collaborative thuần và 32 chiều sau $[32:64]$ là Multimodal thuần để cắt đôi vector là một giả định thô bạo (hard-split fallacy).
-   - Trong STAIR, năng lượng phổ biến thiên liên tục theo đường cong lũy thừa $eta_3(d) = (d/63)^\gamma$. Chiều 31 và chiều 32 có năng lượng phổ gần như y hệt nhau. Cắt cứng tại 32 sẽ tạo ra xung đột gradient tại biên phân chia.
-   - **Khắc phục:** Dùng **Soft Spectral Swapping** với phân phối xác suất Bernoulli $p_{	ext{swap}}(j) = 1 - eta_j$.
+   - Trong STAIR, năng lượng phổ biến thiên liên tục theo đường cong lũy thừa $\beta_3(d) = (d/63)^\gamma$. Chiều 31 và chiều 32 có năng lượng phổ gần như y hệt nhau. Cắt cứng tại 32 sẽ tạo ra xung đột gradient tại biên phân chia.
+   - **Khắc phục:** Dùng **Soft Spectral Swapping** với phân phối xác suất Bernoulli $p_{\text{swap}}(j) = 1 - \beta_j$.
 2. **Khôi phục Tương phản Đa tầng (Layer-wise NLGCL):**
    - Không được phép chỉ tính contrastive loss trên Final Embedding (sẽ đánh mất khả năng học phân cấp cấu trúc đồ thị và mất đi thành quả $+5\%$ của v4).
    - Bắt buộc phải tính tương phản trên từng cặp tầng liền kề $g \leftrightarrow g+1$ ($G=1$ hoặc $G=2$) trích xuất từ chuỗi Neumann của FSC.
@@ -166,23 +166,22 @@ Kiến trúc **STAIR-SRE** được xây dựng trên 4 trụ cột toán học 
 ### 3.1 Trụ cột 1: Diagonal Spectral-scaling Projector
 - **Mục tiêu:** Cho phép mô hình tự động khuếch đại hoặc thu hẹp phương sai của từng dải tần số trong không gian 64 chiều dựa trên phản hồi của đồ thị, nhưng **tuyệt đối không xoay hệ trục tọa độ**.
 - **Công thức:**
-  $$\mathbf{e}_{i}^{	ext{proj}} = \mathbf{e}_{i}^{	ext{svd}} \odot \mathbf{w}$$
+  $$\mathbf{e}_{i}^{\text{proj}} = \mathbf{e}_{i}^{\text{svd}} \odot \mathbf{w}$$
   Trong đó $\mathbf{w} \in \mathbb{R}^{D}$ ($D=64$) là vector trọng số học được, khởi tạo bằng vector $\mathbf{1}$.
 - **Tính chất toán học:**
   - Ma trận Jacobian của phép biến đổi là ma trận đường chéo:
-    $$\mathbf{J} = rac{\partial \mathbf{e}^{	ext{proj}}}{\partial \mathbf{e}^{	ext{svd}}} = 	ext{diag}(w_0, w_1, \dots, w_{D-1})$$
-  - Không có bất kỳ thành phần ngoài đường chéo nào ($J_{jk} = 0, orall j 
-e k$), đảm bảo tính độc lập thống kê giữa các chiều SVD được bảo toàn nguyên vẹn $100\%$.
+    $$\mathbf{J} = \frac{\partial \mathbf{e}^{\text{proj}}}{\partial \mathbf{e}^{\text{svd}}} = \text{diag}(w_0, w_1, \dots, w_{D-1})$$
+  - Không có bất kỳ thành phần ngoài đường chéo nào ($J_{jk} = 0, \forall j \ne k$), đảm bảo tính độc lập thống kê giữa các chiều SVD được bảo toàn nguyên vẹn $100\%$.
 
 ---
 
 ### 3.2 Trụ cột 2: Soft Spectral Swapping (Tạo Mẫu Âm Siêu Thách Thức Không Cắt Cứng)
 - **Mục tiêu:** Tạo ra một mẫu âm siêu khó (Hard Negative) bằng cách giữ lại bản sắc Collaborative của sản phẩm dương $i^+$ và chỉ hoán đổi các chiều mang đặc trưng Multimodal từ một sản phẩm khác.
 - **Xác suất hoán đổi động theo phổ năng lượng:**
-  Trong STAIR, vector $oldsymbol{eta} \in \mathbb{R}^D$ phản ánh tỷ lệ tín hiệu đồ thị (Collaborative weight). Ta định nghĩa vector xác suất hoán đổi:
-  $$\mathbf{p}_{	ext{swap}} = 1.0 - oldsymbol{eta} \in [0, 1]^D$$
-  - Tại chiều $j=0$ (Collaborative thuần): $eta_0 pprox 0.9 \implies p_{	ext{swap}}(0) pprox 0.1$ (xác suất bị hoán đổi cực thấp, bảo toàn tương tác dương).
-  - Tại chiều $j=63$ (Multimodal thuần): $eta_{63} pprox 0.0 \implies p_{	ext{swap}}(63) pprox 1.0$ (chắc chắn bị hoán đổi, nhận đặc trưng nội dung của sản phẩm khác).
+  Trong STAIR, vector $\beta \in \mathbb{R}^D$ phản ánh tỷ lệ tín hiệu đồ thị (Collaborative weight). Ta định nghĩa vector xác suất hoán đổi:
+  $$\mathbf{p}_{\text{swap}} = 1.0 - \beta \in [0, 1]^D$$
+  - Tại chiều $j=0$ (Collaborative thuần): $\beta_0 \u0007pprox 0.9 \implies p_{\text{swap}}(0) \u0007pprox 0.1$ (xác suất bị hoán đổi cực thấp, bảo toàn tương tác dương).
+  - Tại chiều $j=63$ (Multimodal thuần): $\beta_{63} \u0007pprox 0.0 \implies p_{\text{swap}}(63) \u0007pprox 1.0$ (chắc chắn bị hoán đổi, nhận đặc trưng nội dung của sản phẩm khác).
 - **Cơ chế lấy mẫu Bernoulli:**
   $$\mathbf{m} \sim 	ext{Bernoulli}(\mathbf{p}_{	ext{swap}}) \in \{0, 1\}^D$$
   $$\mathbf{i}_{	ext{hard\_neg}} = \mathbf{i}^+ \odot (\mathbf{1} - \mathbf{m}) + \mathbf{i}_{	ext{rolled}} \odot \mathbf{m}$$
@@ -195,11 +194,11 @@ e k$), đảm bảo tính độc lập thống kê giữa các chiều SVD đư�
 - **Mục tiêu:** Loại bỏ lực đẩy tiêu cực lên các sản phẩm tương đồng thật (False Negatives) trong mini-batch mà không gây gián đoạn đạo hàm như phương pháp cắt ngưỡng nhị phân (Hard Masking) ở v5.
 - **Ma trận tương đồng đa phương thức $\mathbf{W}_{	ext{multi}} \in [0, 1]^{B 	imes B}$:**
   Được tính toán từ trước (pre-computed) hoặc tính online trên vector trọng tâm sở thích (User Profile centroid):
-  $$W_{u, k} = \cos(\mathbf{u}^{	ext{prof}}, \mathbf{x}_k^{	ext{item}}) = rac{\mathbf{u}^{	ext{prof}} \cdot \mathbf{x}_k}{\|\mathbf{u}^{	ext{prof}}\|_2 \|\mathbf{x}_k\|_2}$$
+  $$W_{u, k} = \cos(\mathbf{u}^{\text{prof}}, \mathbf{x}_k^{\text{item}}) = rac{\mathbf{u}^{\text{prof}} \cdot \mathbf{x}_k}{\|\mathbf{u}^{\text{prof}}\|_2 \|\mathbf{x}_k\|_2}$$
 - **Hệ số suy giảm lực đẩy (Attenuation Factor):**
-  $$lpha_{u, k} = 1.0 - 	ext{clamp}(W_{u, k}, 0.0, 1.0)$$
-  - Nếu sản phẩm $k$ trong batch là sản phẩm thay thế hoàn hảo cho sở thích của $u$ ($W_{u, k} 	o 1.0$): $lpha_{u, k} 	o 0$, số hạng $lpha_{u, k} \cdot \exp(	ext{sim}/	au)$ tiệm cận 0, triệt tiêu hoàn toàn lực đẩy InfoNCE.
-  - Nếu sản phẩm $k$ hoàn toàn xa lạ với gu của $u$ ($W_{u, k} 	o 0.0$): $lpha_{u, k} 	o 1$, lực đẩy được kích hoạt trọn vẹn.
+  $$\alpha_{u, k} = 1.0 - \text{clamp}(W_{u, k}, 0.0, 1.0)$$
+  - Nếu sản phẩm $k$ trong batch là sản phẩm thay thế hoàn hảo cho sở thích của $u$ ($W_{u, k} \to 1.0$): $\alpha_{u, k} \to 0$, số hạng $\alpha_{u, k} \cdot \exp(\text{sim}/\tau)$ tiệm cận 0, triệt tiêu hoàn toàn lực đẩy InfoNCE.
+  - Nếu sản phẩm $k$ hoàn toàn xa lạ với gu của $u$ ($W_{u, k} \to 0.0$): $\alpha_{u, k} \to 1$, lực đẩy được kích hoạt trọn vẹn.
 
 ---
 
@@ -207,10 +206,13 @@ e k$), đảm bảo tính độc lập thống kê giữa các chiều SVD đư�
 - Thực hiện đối chiếu tự nhiên không qua tăng cường giữa các tầng biểu diễn ẩn của Forward Stepwise Convolution:
   - Tầng $g$ (phía User) đối chiếu với Tầng $g+1$ (phía Item) với $g \in \{0, 1\}$.
 - Công thức hàm mất mát $\mathcal{L}_{	ext{SRE}}$ cho cặp tầng $(g, g+1)$:
-  $$\mathcal{L}_{	ext{SRE}}^{(g, g+1)} = -rac{1}{B} \sum_{u=1}^B \log rac{\exp\left( rac{\mathbf{u}_g \cdot \mathbf{i}_{g+1}^+}{	au} ight)}{\exp\left( rac{\mathbf{u}_g \cdot \mathbf{i}_{g+1}^+}{	au} ight) + \exp\left( rac{\mathbf{u}_g \cdot \mathbf{i}_{	ext{hard\_neg}}}{	au} ight) + \sum_{k 
-e i^+} (1 - W_{u, k}) \exp\left( rac{\mathbf{u}_g \cdot \mathbf{i}_{g+1, k}}{	au} ight) + \epsilon}$$
+  $$\mathcal{L}_{	ext{SRE}}^{(g, g+1)} = -rac{1}{B} \sum_{u=1}^B \log rac{\exp\left( rac{\mathbf{u}_g \cdot \mathbf{i}_{g+1}^+}{	au} 
+ight)}{\exp\left( rac{\mathbf{u}_g \cdot \mathbf{i}_{g+1}^+}{\tau} 
+ight) + \exp\left( rac{\mathbf{u}_g \cdot \mathbf{i}_{\text{hard\_neg}}}{	au} 
+ight) + \sum_{k \ne i^+} (1 - W_{u, k}) \exp\left( rac{\mathbf{u}_g \cdot \mathbf{i}_{g+1, k}}{\tau} 
+ight) + \epsilon}$$
 - Hàm mất mát tương phản toàn cục:
-  $$\mathcal{L}_{	ext{SRE}} = rac{1}{G} \sum_{g=0}^{G-1} \mathcal{L}_{	ext{SRE}}^{(g, g+1)}$$
+  $$\mathcal{L}_{\text{SRE}} = \frac{1}{G} \sum_{g=0}^{G-1} \mathcal{L}_{\text{SRE}}^{(g, g+1)}$$
 
 ---
 
@@ -226,11 +228,11 @@ Trong đó:
 ### 4.2 Phân tích Động lực Gradient: Soft Attenuation vs. Hard Masking
 So sánh đạo hàm riêng của hàm mất mát tương phản theo vector biểu diễn người dùng $\mathbf{u}$:
 - **Ở phiên bản v5 (Hard Masking):**
-  $$rac{\partial \mathcal{L}_{	ext{v5}}}{\partial \mathbf{u}} = -rac{1}{	au} \left( \mathbf{i}^+ - \sum_{k} P_{	ext{hard}}(k) \cdot M_k \cdot \mathbf{i}_k ight)$$
-  Toán tử mặt nạ nhị phân $M_k \in \{0, 1\}$ tạo ra bước nhảy bậc thang không liên tục (step discontinuity). Khi tương đồng $W$ dao động quanh ngưỡng $	au_{	ext{thresh}}$, gradient bị giật cục, làm chậm tốc độ hội tụ.
+  $$\frac{\partial \mathcal{L}_{\text{v5}}}{\partial \mathbf{u}} = -\frac{1}{\tau} \left( \mathbf{i}^+ - \sum_{k} P_{\text{hard}}(k) \cdot M_k \cdot \mathbf{i}_k \right)$$
+  Toán tử mặt nạ nhị phân $M_k \in \{0, 1\}$ tạo ra bước nhảy bậc thang không liên tục (step discontinuity). Khi tương đồng $W$ dao động quanh ngưỡng $\tau_{\text{thresh}}$, gradient bị giật cục, làm chậm tốc độ hội tụ.
 - **Ở phiên bản v6 STAIR-SRE (Soft Attenuation):**
-  $$rac{\partial \mathcal{L}_{	ext{SRE}}}{\partial \mathbf{u}} = -rac{1}{	au} \left( \mathbf{i}^+ - P_{	ext{hard\_neg}} \mathbf{i}_{	ext{hard\_neg}} - \sum_{k 
-e i^+} P_{	ext{soft}}(k) \cdot (1 - W_{u, k}) \cdot \mathbf{i}_k ight)$$
+  $$\frac{\partial \mathcal{L}_{\text{SRE}}}{\partial \mathbf{u}} = -\frac{1}{\tau} \left( \mathbf{i}^+ - P_{\text{hard\_neg}} \mathbf{i}_{\text{hard\_neg}} - \sum_{k \ne i^+} P_{\text{soft}}(k) \cdot (1 - W_{u, k}) \cdot \mathbf{i}_k \right)$$
+ight)$$
   Hàm mục tiêu liên tục và khả vi mọi nơi ($\mathcal{C}^\infty$). Gradient co giãn mượt mà theo đúng khoảng cách ngữ nghĩa thực tế, bảo vệ tính ổn định số học tuyệt đối trong suốt quá trình tối ưu hóa.
 
 ---
@@ -359,10 +361,10 @@ Bảng đối chuẩn dưới đây thiết lập các mốc chỉ số kỳ v�
 ## 8. PHÂN TÍCH HIỆU NĂNG PHẦN CỨNG & ĐỘ PHỨC TẠP TÍNH TOÁN
 
 1. **Bộ nhớ VRAM (Zero OOM Guarantee):**
-   - Không gian tính toán In-batch ma trận tương đồng $B 	imes B$ với $B=1024$ chỉ tiêu tốn $pprox 4.19	ext{ MB}$.
-   - VRAM Peak thực tế khi huấn luyện STAIR-SRE: Baby $pprox 777	ext{ MB}$, Sports $pprox 995	ext{ MB}$.
+   - Không gian tính toán In-batch ma trận tương đồng $B \times B$ với $B=1024$ chỉ tiêu tốn $\u0007pprox 4.19\text{ MB}$.
+   - VRAM Peak thực tế khi huấn luyện STAIR-SRE: Baby $\u0007pprox 777\text{ MB}$, Sports $\u0007pprox 995\text{ MB}$.
 2. **Thời gian Huấn luyện (Training Throughput):**
-   - Tốc độ huấn luyện: $pprox 2.65$ giây/epoch trên Baby và $pprox 6.15$ giây/epoch trên Sports.
+   - Tốc độ huấn luyện: $\u0007pprox 2.65$ giây/epoch trên Baby và $\u0007pprox 6.15$ giây/epoch trên Sports.
 
 ---
 
@@ -516,7 +518,8 @@ Qua việc giải tích vi phân và đối soát biểu đồ Learning Curves D
      $$\mathbf{p}_{	ext{swap}} = 	ext{clamp}(1.0 - oldsymbol{eta}, 0.0, 1.0) \in [0, 1]^D$$
      $$\mathbf{m} \sim 	ext{Bernoulli}(\mathbf{p}_{	ext{swap}}) \in \{0, 1\}^D$$
   3. Tổng hợp vector biểu diễn lai ghép:
-     $$\mathbf{i}_{	ext{hard\_neg}} = 	ext{Normalize}\left( \mathbf{i}_{	ext{neg1}} \odot (\mathbf{1} - \mathbf{m}) + \mathbf{i}_{	ext{neg2}} \odot \mathbf{m} ight)$$
+     $$\mathbf{i}_{	ext{hard\_neg}} = 	ext{Normalize}\left( \mathbf{i}_{	ext{neg1}} \odot (\mathbf{1} - \mathbf{m}) + \mathbf{i}_{	ext{neg2}} \odot \mathbf{m} 
+ight)$$
 - **Chứng minh Toán học về Tính Độc lập:**
   - $\mathbf{i}_{	ext{hard\_neg}}$ kế thừa đặc trưng cộng tác tần số thấp từ $\mathbf{i}_{	ext{neg1}}$ và đặc trưng đa phương thức tần số cao từ $\mathbf{i}_{	ext{neg2}}$.
   - Vì $\mathbf{i}_{	ext{neg1}} 
@@ -531,7 +534,8 @@ e \mathbf{i}^+$, kỳ vọng tương đồng giữa $\mathbf{i}_{	ext{hard\_neg}
 - **Công thức Tương đồng Đa phương thức:**
   $$W_{u, k} = \cos(\mathbf{u}^{	ext{prof}}, \mathbf{x}_k^{	ext{item}}) = rac{\mathbf{u}^{	ext{prof}} \cdot \mathbf{x}_k^{	ext{item}}}{\Vert\mathbf{u}^{	ext{prof}}\Vert_2 \Vert\mathbf{x}_k^{	ext{item}}\Vert_2}$$
 - **Hàm Suy giảm Trơn tru Có Ngưỡng:**
-  $$W_{u, k}^{	ext{eff}} = 	ext{clamp}\left( rac{W_{u, k} - 	au_{	ext{atten}}}{1.0 - 	au_{	ext{atten}}}, 0.0, 1.0 ight), \quad 	ext{với } 	au_{	ext{atten}} = 0.35$$
+  $$W_{u, k}^{	ext{eff}} = 	ext{clamp}\left( rac{W_{u, k} - 	au_{	ext{atten}}}{1.0 - 	au_{	ext{atten}}}, 0.0, 1.0 
+ight), \quad 	ext{với } 	au_{	ext{atten}} = 0.35$$
   $$lpha_{u, k} = 1.0 - W_{u, k}^{	ext{eff}}$$
 - **Phân tích Trạng thái:**
   - Khi $W_{u, k} \le 0.35$: $W_{u, k}^{	ext{eff}} = 0 \implies lpha_{u, k} = 1.0$ (Giữ nguyên lực đẩy tối đa).
@@ -556,15 +560,23 @@ $$\mathbf{g}_{	ext{total}} = rac{\partial \mathcal{L}_{	ext{total}}}{\partial \
 Trong đó:
 $$\mathbf{g}_{	ext{BPR}} = -\sigma(-\hat{x}_{uij}) \cdot (\mathbf{i}^+ - \mathbf{i}^-)$$
 $$\mathbf{g}_{	ext{SRE}} = -rac{1}{	au} \left[ \mathbf{i}^+ - P_{	ext{hard}} \mathbf{i}_{	ext{hard\_neg}} - \sum_{k 
-e i^+} P_k lpha_{uk} \mathbf{i}_k ight]$$
+e i^+} P_k lpha_{uk} \mathbf{i}_k 
+ight]$$
 
 Tích vô hướng giữa hai hướng gradient:
-$$\langle \mathbf{g}_{	ext{BPR}}, \mathbf{g}_{	ext{SRE}} angle pprox rac{\sigma(-\hat{x})}{	au} \cdot \left[ \Vert\mathbf{i}^+\Vert_2^2 - P_{	ext{hard}} \langle \mathbf{i}^+, \mathbf{i}_{	ext{hard\_neg}} angle - \sum_k P_k lpha_{uk} \langle \mathbf{i}^+, \mathbf{i}_k angle ight]$$
+$$\langle \mathbf{g}_{	ext{BPR}}, \mathbf{g}_{	ext{SRE}} 
+angle pprox rac{\sigma(-\hat{x})}{	au} \cdot \left[ \Vert\mathbf{i}^+\Vert_2^2 - P_{	ext{hard}} \langle \mathbf{i}^+, \mathbf{i}_{	ext{hard\_neg}} 
+angle - \sum_k P_k lpha_{uk} \langle \mathbf{i}^+, \mathbf{i}_k 
+angle 
+ight]$$
 
-- Vì $\mathbf{i}_{	ext{hard\_neg}}$ được lai ghép từ $\mathbf{i}_{	ext{neg1}}$ và $\mathbf{i}_{	ext{neg2}}$ (không chứa $\mathbf{i}^+$), ta có $\langle \mathbf{i}^+, \mathbf{i}_{	ext{hard\_neg}} angle pprox 0$.
-- Tương tự, trung bình tương đồng in-batch giữa các items khác nhau là $\langle \mathbf{i}^+, \mathbf{i}_k angle pprox 0$.
+- Vì $\mathbf{i}_{	ext{hard\_neg}}$ được lai ghép từ $\mathbf{i}_{	ext{neg1}}$ và $\mathbf{i}_{	ext{neg2}}$ (không chứa $\mathbf{i}^+$), ta có $\langle \mathbf{i}^+, \mathbf{i}_{	ext{hard\_neg}} 
+angle pprox 0$.
+- Tương tự, trung bình tương đồng in-batch giữa các items khác nhau là $\langle \mathbf{i}^+, \mathbf{i}_k 
+angle pprox 0$.
 - Do đó:
-  $$\langle \mathbf{g}_{	ext{BPR}}, \mathbf{g}_{	ext{SRE}} angle pprox rac{\sigma(-\hat{x})}{	au} \Vert\mathbf{i}^+\Vert_2^2 > 0$$
+  $$\langle \mathbf{g}_{	ext{BPR}}, \mathbf{g}_{	ext{SRE}} 
+angle pprox rac{\sigma(-\hat{x})}{	au} \Vert\mathbf{i}^+\Vert_2^2 > 0$$
 
 > [!TIP]
 > **ĐỊNH LÝ HÒA HỢP GRADIENT (GRADIENT HARMONIZATION THEOREM):**  
