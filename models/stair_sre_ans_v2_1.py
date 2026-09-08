@@ -177,14 +177,19 @@ class StepwiseSREANSLoss_v21(nn.Module):
         self,
         u_raw: torch.Tensor,
         i_raw: torch.Tensor,
-        batch_users: torch.Tensor,
-        batch_items: torch.Tensor,
+        batch_users: Optional[torch.Tensor] = None,
+        batch_items: Optional[torch.Tensor] = None,
+        metadata_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         device = u_raw.device
 
         # 1. Decoupled Projection onto Contrastive Manifold
-        u_batch = self.proj_head(u_raw[batch_users])
-        pos_batch = self.proj_head(i_raw[batch_items])
+        if batch_users is not None and batch_items is not None:
+            u_batch = self.proj_head(u_raw[batch_users])
+            pos_batch = self.proj_head(i_raw[batch_items])
+        else:
+            u_batch = self.proj_head(u_raw)
+            pos_batch = self.proj_head(i_raw)
         neg_pool = self.neg_queue.detach().to(device)
         Q = neg_pool.size(0)
 
@@ -212,6 +217,8 @@ class StepwiseSREANSLoss_v21(nn.Module):
         # Gated threshold: only attenuate when cosine > 0.25 (True False-Negative Risk)
         active_mask = (cos_all > 0.25).float()
         W = torch.sigmoid(sim_all) * active_mask
+        if metadata_mask is not None:
+            W = W * (1.0 + 0.5 * metadata_mask.float())
         attenuation = torch.clamp(1.0 - W, min=0.1, max=1.0)
 
         # 4. Gated Top-K Selection
