@@ -92,17 +92,17 @@ Khi tìm kiếm giải pháp nâng cao khả năng học biểu diễn, việc c
 
 Để giải quyết các vấn đề trên, mô hình STAIR-SRE được thiết kế với bốn thành phần kỹ thuật phối hợp chặt chẽ:
 
-\paragraph{1. Zero-rotation Diagonal Spectral Projector.}
+\noindent\textcolor{lightblue}{\textbf{1. Zero-rotation Diagonal Spectral Projector.}}
 Để thích ứng phương sai của từng dải tần số mà không làm xoay hệ trục tọa độ, mô hình sử dụng toán tử nhân Hadamard với vector trọng số đường chéo:
 \begin{equation}
 \mathbf{e}_i^{(0)} = \mathbf{e}_{i}^{\text{svd}} \odot \mathbf{w}
 \end{equation}
 trong đó $\mathbf{w} \in \mathbb{R}^D$ là vector tham số học được, khởi tạo bằng vector $\mathbf{1}$. Ma trận Jacobian của phép chiếu là ma trận đường chéo $\mathbf{J} = \text{diag}(\mathbf{w})$ với tất cả các phần tử ngoài đường chéo bằng 0, đảm bảo tính độc lập giữa các chiều tọa độ được bảo toàn tuyệt đối.
 
-\paragraph{2. Stepwise Contrastive Learning trên các tầng trung gian.}
+\noindent\textcolor{lightblue}{\textbf{2. Stepwise Contrastive Learning trên các tầng trung gian.}}
 Thay vì tạo góc nhìn nhân tạo bằng cách xóa cạnh hoặc ẩn node trên đồ thị, mô hình trích xuất trực tiếp các biểu diễn trung gian từ Forward Stepwise Convolution. Tầng 0 đại diện cho thông tin cục bộ và tầng 1 đại diện cho thông tin láng giềng 1-hop, tạo thành các góc nhìn tự nhiên không phát sinh chi phí tính toán bổ sung.
 
-\paragraph{3. Soft Spectral Swapping.}
+\noindent\textcolor{lightblue}{\textbf{3. Soft Spectral Swapping.}}
 Mô hình tạo mẫu hard negative bằng cách kết hợp có chọn lọc giữa các chiều đặc trưng. Dựa vào vector phân bổ phổ $\boldsymbol{\beta} \in \mathbb{R}^D$ của STAIR, xác suất hoán đổi được xác định theo công thức:
 \begin{equation}
 \mathbf{p}_{\text{swap}} = 1.0 - \boldsymbol{\beta}
@@ -112,7 +112,7 @@ Tại chiều tần số thấp ($d \to 0$), $\beta \approx 0.9$ nên xác suấ
 \mathbf{m} \sim \text{Bernoulli}(\mathbf{p}_{\text{swap}}) \in \{0, 1\}^D
 \end{equation}
 
-\paragraph{4. Adaptive False Negative Attenuation.}
+\noindent\textcolor{lightblue}{\textbf{4. Adaptive False Negative Attenuation.}}
 Để xử lý các false negative trong mini-batch mà không làm gián đoạn đạo hàm bằng ngưỡng nhị phân cứng, mô hình tính toán độ tương đồng giữa centroid sở thích của người dùng $\mathbf{p}_u$ và vector item $\mathbf{m}_k$:
 \begin{equation}
 W_{u, k} = \frac{\mathbf{p}_u \cdot \mathbf{m}_k}{\|\mathbf{p}_u\|_2 \|\mathbf{m}_k\|_2}
@@ -269,7 +269,7 @@ Bảng~\ref{tab:stair_sre_v1_results} trình bày kết quả thực nghiệm c�
 
 Số liệu thực nghiệm cho thấy phiên bản v1 chưa đạt được mức hiệu năng mong muốn, ghi nhận mức giảm từ $-5.19\%$ đến $-7.49\%$ trên Baby và từ $-7.38\%$ đến $-8.88\%$ trên Sports. Phân tích toán học và cơ chế vận hành của mô hình chỉ ra ba nguyên nhân kỹ thuật chính:
 
-\paragraph{1. Hiện tượng xung đột gradient ký sinh.}
+\noindent\textcolor{lightblue}{\textbf{1. Hiện tượng xung đột gradient ký sinh.}}
 Trong phiên bản v1, mẫu hard negative được tạo bằng cách hoán đổi giữa sản phẩm dương $i^+$ và sản phẩm dịch vòng trong batch:
 \begin{equation}
 \mathbf{i}_{\text{hard}} = \mathbf{i}^+ \odot (\mathbf{1} - \mathbf{m}) + \mathbf{i}_{\text{rolled}} \odot \mathbf{m}
@@ -290,24 +290,24 @@ Trong khi đó, gradient của hàm InfoNCE đẩy người dùng ra xa mẫu ha
 \end{equation}
 Vì $\mathbf{i}_{\text{hard}}$ chứa trực tiếp thành phần của $\mathbf{i}^+$, lực đẩy từ InfoNCE đã triệt tiêu một phần đáng kể lực kéo của hàm BPR. Sự giằng co này làm giảm độ sắc nét của không gian embedding và làm suy giảm khả năng phân biệt thứ hạng.
 
-\paragraph{2. Suy giảm tính đồng nhất do attenuation không ngưỡng.}
+\noindent\textcolor{lightblue}{\textbf{2. Suy giảm tính đồng nhất do attenuation không ngưỡng.}}
 Trong v1, hệ số suy giảm $(1 - W)$ được áp dụng trực tiếp lên toàn bộ các mẫu âm trong batch mà không có ngưỡng chọn lọc. Thống kê trên dữ liệu thực tế cho thấy $98.9\%$ các cặp sản phẩm trong batch có độ tương đồng $W \in [0.0, 0.35]$, tức là các true negative hoàn toàn không liên quan đến sở thích người dùng. Việc nhân thêm hệ số $(1 - W)$ đã làm suy yếu lực đẩy cần thiết đối với $98.9\%$ mẫu âm này, làm giảm tính đồng nhất phân bố trên siêu mặt cầu đơn vị.
 
-\paragraph{3. Hiện tượng bão hòa loss sớm trên đồ thị siêu thưa.}
+\noindent\textcolor{lightblue}{\textbf{3. Hiện tượng bão hòa loss sớm trên đồ thị siêu thưa.}}
 Trên tập Sports có độ thưa rất cao ($99.95\%$), khoảng cách giữa các node trên đồ thị rất lớn. Giá trị nhiệt độ $\tau = 0.20$ quá nhọn khiến xác suất của các mẫu âm ngẫu nhiên nhanh chóng tiệm cận 0, dẫn đến training loss rơi tự do về mức $0.0045$ tại epoch 150. Khi loss bão hòa, gradient của contrastive learning triệt tiêu gần như hoàn toàn, khiến mô hình đạt đỉnh sớm tại epoch 155 rồi suy giảm dần do overfitting.
 
 \subsubsection{Cải tiến phiên bản v1.1 và phục hồi hiệu năng}
 
 Dựa trên các phân tích nguyên nhân ở phiên bản v1, phiên bản STAIR-SRE v1.1 được nâng cấp với bốn điều chỉnh kỹ thuật:
 
-\paragraph{1. Cross-Negative Spectral Swapping (CNSS).}
+\noindent\textcolor{lightblue}{\textbf{1. Cross-Negative Spectral Swapping (CNSS).}}
 Để loại bỏ hoàn toàn sự hiện diện của $\mathbf{i}^+$ trong mẫu hard negative, cơ chế hoán đổi được chuyển sang thực hiện giữa hai mẫu âm độc lập trong mini-batch:
 \begin{equation}
 \mathbf{i}_{\text{hard}} = \mathbf{i}_{\text{roll1}} \odot (\mathbf{1} - \mathbf{m}) + \mathbf{i}_{\text{roll2}} \odot \mathbf{m}
 \end{equation}
 trong đó $\mathbf{i}_{\text{roll1}}$ và $\mathbf{i}_{\text{roll2}}$ lần lượt là các vector thu được qua phép dịch vòng 1 và 2 vị trí trong batch. Cơ chế này đưa độ phơi nhiễm đối với sản phẩm dương $\mathbf{i}^+$ về đúng 0\%, triệt tiêu hoàn toàn xung đột gradient với hàm BPR.
 
-\paragraph{2. Thresholded Smooth False Negative Attenuation.}
+\noindent\textcolor{lightblue}{\textbf{2. Thresholded Smooth False Negative Attenuation.}}
 Mô hình tái lập ngưỡng chọn lọc $\tau_{\text{atten}} = 0.35$. Các mẫu âm có độ tương đồng $W_{u, k} \le 0.35$ giữ nguyên $100\%$ lực đẩy, bảo toàn tính đồng nhất trên siêu mặt cầu. Chỉ những mẫu vượt ngưỡng $0.35$ mới bị làm suy giảm lực đẩy theo công thức:
 \begin{equation}
 \alpha_{u, k} = \begin{cases} 
@@ -316,14 +316,14 @@ Mô hình tái lập ngưỡng chọn lọc $\tau_{\text{atten}} = 0.35$. Các m
 \end{cases}
 \end{equation}
 
-\paragraph{3. L2 Anchoring Regularization cho Projector.}
+\noindent\textcolor{lightblue}{\textbf{3. L2 Anchoring Regularization cho Projector.}}
 Để ngăn vector trọng số $\mathbf{w}$ bị trôi dạt quá xa khỏi giá trị ban đầu, mô hình bổ sung số hạng điều hòa vào hàm mục tiêu:
 \begin{equation}
 \mathcal{L}_{\text{reg\_w}} = \lambda_w \|\mathbf{w} - \mathbf{1}\|_2^2
 \end{equation}
 với $\lambda_w = 10^{-4}$, đồng thời thiết lập tốc độ học riêng $\eta_w = 0.1 \times \text{lr}$ cho tham số này.
 
-\paragraph{4. Điều chỉnh nhiệt độ và trọng số loss trên tập Sports.}
+\noindent\textcolor{lightblue}{\textbf{4. Điều chỉnh nhiệt độ và trọng số loss trên tập Sports.}}
 Trên đồ thị siêu thưa Sports, nhiệt độ được nâng lên $\tau = 0.30$ để làm mềm phân phối softmax, và trọng số được giảm xuống $\lambda_{\text{sre}} = 5 \times 10^{-5}$ nhằm duy trì dòng chảy gradient ổn định trong suốt 500 epoch.
 
 Bảng~\ref{tab:stair_sre_v1_1_results} trình bày kết quả thực nghiệm của phiên bản v1.1 so với phiên bản v1 và STAIR Baseline trên cả hai tập dữ liệu.
