@@ -167,7 +167,7 @@ cfg.beta3 = (
 # =========================================================================
 # STAIR_SRE_ANS_v2_1 Model Class
 # =========================================================================
-class STAIR_SRE_ANS_v2_1_1(freerec.models.GenRecArch):
+class STAIR_SRE_ANS_v2_1(freerec.models.GenRecArch):
     """
     STAIR-SRE-ANS v2 Model:
     Integrates Forward Stepwise Convolution with 5 Pillars:
@@ -449,9 +449,9 @@ class STAIR_SRE_ANS_v2_1_1(freerec.models.GenRecArch):
 
 
 # =========================================================================
-# CoachForSTAIR_SRE_ANS_v2_1_1 (Training Loop with Decoupled HANS Scheduling)
+# CoachForSTAIR_SRE_ANS_v2_1 (Training Loop with Decoupled HANS Scheduling)
 # =========================================================================
-class CoachForSTAIR_SRE_ANS_v2_1_1_1(freerec.launcher.Coach):
+class CoachForSTAIR_SRE_ANS_v2_1(freerec.launcher.Coach):
 
     def set_optimizer(self):
         if self.cfg.optimizer.lower() == 'sgd':
@@ -486,7 +486,7 @@ class CoachForSTAIR_SRE_ANS_v2_1_1_1(freerec.launcher.Coach):
             )
         else:
             raise NotImplementedError(
-                f"CoachForSTAIR_SRE_ANS_v2_1_1 does not support {self.cfg.optimizer} optimizer"
+                f"CoachForSTAIR_SRE_ANS_v2_1 does not support {self.cfg.optimizer} optimizer"
             )
 
     def train_per_epoch(self, epoch: int):
@@ -572,7 +572,7 @@ def main():
     validpipe = model.sure_validpipe(cfg.ranking)
     testpipe  = model.sure_testpipe(cfg.ranking)
 
-    coach = CoachForSTAIR_SRE_ANS_v2_1_1(
+    coach = CoachForSTAIR_SRE_ANS_v2_1(
         dataset=dataset,
         trainpipe=trainpipe,
         validpipe=validpipe,
