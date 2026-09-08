@@ -285,6 +285,7 @@ class STAIR_NE_NLGCL_Plus_Model(freerec.models.GenRecArch):
         if hasattr(self.ne_nlgcl_plus, 'proj_head'):
             params_groups.append({
                 'params': self.ne_nlgcl_plus.proj_head.parameters(),
+                'lr': proj_lr,
                 'smoother': None,
             })
         return params_groups
