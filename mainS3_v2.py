@@ -21,6 +21,7 @@ Target Performance (Breakthrough >= +5.0% synchronously across all 3 datasets):
 from typing import Dict, Tuple, List, Optional
 import os
 import sys
+import math
 import types
 import torch
 import torch.nn as nn
@@ -97,7 +98,6 @@ from optimizers.utils import Smoother
 
 from models.stair_sre_ans_v2 import (
     RegularizedDiagonalSpectralProjector,
-    DiagonalSpectralProjector,
     StepwiseSREANSLoss,
 )
 
@@ -118,8 +118,8 @@ cfg.add_argument("--mfiles", type=str,
                  help="Comma-separated multimodal feature file paths")
 cfg.add_argument("--num-neighbors", type=str, default='5-1',
                  help="kNN neighbor counts per modality, e.g. '5-1'")
-cfg.add_argument("--gamma", type=float, default=0.1,
-                 help="Spectral decay power gamma for beta3 (default: 0.1 matching config)")
+cfg.add_argument("--gamma", type=float, default=0.2,
+                 help="Spectral decay power gamma for beta3 (default: 0.2, overridden by dataset YAML)")
 
 # -- STAIR-SRE-ANS v2 Specific Parameters --
 cfg.add_argument("--lambda-ans", type=float, default=5e-5,
@@ -206,6 +206,7 @@ class STAIR_SRE_ANS_v2(freerec.models.GenRecArch):
         )
 
         # -- Pillars 2-5: Stepwise SRE-ANS v2 Loss --
+        # Dynamically inject the exact FSC spectral curve (1.0 - beta3) to guarantee 100% mathematical consistency
         self.ans_loss = StepwiseSREANSLoss(
             dim=cfg.embedding_dim,
             tau=cfg.ans_tau,
@@ -214,6 +215,7 @@ class STAIR_SRE_ANS_v2(freerec.models.GenRecArch):
             gamma_max=cfg.gamma_max,
             hn_ratio_max=cfg.hn_ratio_max,
             subspace_alpha=cfg.subspace_alpha,
+            beta=(1.0 - self.beta3),
         )
 
         # State tracking for decoupled HANS monitoring
@@ -248,10 +250,10 @@ class STAIR_SRE_ANS_v2(freerec.models.GenRecArch):
         ]
 
     def whitening(self, feats: torch.Tensor):
-        """SVD Whitening — identical to STAIR baseline."""
+        """SVD Whitening -- strictly identical to STAIR baseline (torch.linalg.svd)."""
         feats = feats - feats.mean(0, keepdim=True)
-        _, S, V = torch.pca_lowrank(feats, q=cfg.embedding_dim, center=False)
-        return feats @ V @ torch.diag(S.pow(-1))
+        feats, _, _ = torch.linalg.svd(feats, full_matrices=False)
+        return feats[:, :cfg.embedding_dim] * math.sqrt(self.Item.count / cfg.embedding_dim)
 
     def get_knn_graph(self, features: torch.Tensor, k: int = 5):
         features = F.normalize(features, p=2, dim=-1)

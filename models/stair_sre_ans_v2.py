@@ -112,6 +112,8 @@ class StepwiseSREANSLoss(nn.Module):
         gamma_max: float = 0.35,
         hn_ratio_max: float = 0.40,
         subspace_alpha: float = 0.50,
+        beta: Optional[torch.Tensor] = None,
+        gamma: float = 0.10,
     ):
         super(StepwiseSREANSLoss, self).__init__()
         self.dim = dim
@@ -124,11 +126,14 @@ class StepwiseSREANSLoss(nn.Module):
 
         # ------------------------------------------------------------------
         # Pillar 2: Continuous Spectral Decay Vector beta(d)
-        # beta(d) = 0.9 * (1 - (d / D)^0.10)
+        # Either directly passed from FSC (1 - beta3) or dynamically computed via gamma.
         # Completely continuous across all 64 dimensions -- NO hard dim-32 boundary!
         # ------------------------------------------------------------------
-        d_indices = torch.arange(dim, dtype=torch.float32)
-        beta_curve = 0.9 * (1.0 - torch.pow(d_indices / float(dim), 0.10))
+        if beta is not None:
+            beta_curve = beta.detach().clone().to(dtype=torch.float32)
+        else:
+            d_indices = torch.arange(dim, dtype=torch.float32)
+            beta_curve = 0.9 * (1.0 - torch.pow(d_indices / float(dim), float(gamma)))
         self.register_buffer('beta', beta_curve)             # [D] Low-frequency band (Graph Collaborative)
         self.register_buffer('beta_high', 1.0 - beta_curve)  # [D] High-frequency band (Multimodal Invariant)
 
@@ -238,7 +243,7 @@ class StepwiseSREANSLoss(nn.Module):
         B = u_batch.size(0)
 
         # 2. Negative pool from FIFO Queue (detached)
-        neg_pool = self.neg_queue.clone().to(device)  # [Q, D]
+        neg_pool = self.neg_queue.detach().to(device)  # [Q, D] (Zero-grad view, no clone overhead)
         Q = neg_pool.size(0)
 
         # ------------------------------------------------------------------
