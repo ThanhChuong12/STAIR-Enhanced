@@ -113,8 +113,8 @@ class StepwiseSREANSLoss_v21(nn.Module):
         )
 
         # Cross-Batch Memory Bank FIFO Queue
-        self.register_buffer('neg_queue', torch.randn(queue_size, dim))
-        self.neg_queue = F.normalize(self.neg_queue, p=2, dim=-1)
+        init_queue = F.normalize(torch.randn(queue_size, dim), p=2, dim=-1)
+        self.register_buffer('neg_queue', init_queue)
         self.register_buffer('queue_ptr', torch.zeros(1, dtype=torch.long))
 
         # HANS Adaptive Dynamic Scheduler
@@ -127,6 +127,10 @@ class StepwiseSREANSLoss_v21(nn.Module):
     def enqueue_negatives(self, pos_emb: torch.Tensor):
         batch_size = pos_emb.size(0)
         norm_emb = F.normalize(pos_emb.detach(), p=2, dim=-1)
+        if batch_size > self.queue_size:
+            norm_emb = norm_emb[-self.queue_size:]
+            batch_size = self.queue_size
+
         ptr = int(self.queue_ptr.item())
         if ptr + batch_size <= self.queue_size:
             self.neg_queue[ptr:ptr + batch_size] = norm_emb
@@ -183,14 +187,22 @@ class StepwiseSREANSLoss_v21(nn.Module):
     ) -> torch.Tensor:
         device = u_raw.device
 
-        # 1. Decoupled Projection onto Contrastive Manifold
-        if batch_users is not None and batch_items is not None:
-            u_batch = self.proj_head(u_raw[batch_users])
-            pos_batch = self.proj_head(i_raw[batch_items])
+        # 1. Mini-batch Extraction & Decoupled Projection onto Contrastive Manifold
+        # Ensure 2D tensor shapes [B, D] by flattening input index vectors
+        if batch_users is not None:
+            u_in = u_raw[batch_users.view(-1)]
         else:
-            u_batch = self.proj_head(u_raw)
-            pos_batch = self.proj_head(i_raw)
-        neg_pool = self.neg_queue.detach().to(device)
+            u_in = u_raw.view(-1, self.dim)
+
+        if batch_items is not None:
+            pos_in = i_raw[batch_items.view(-1)]
+        else:
+            pos_in = i_raw.view(-1, self.dim)
+
+        u_batch = self.proj_head(u_in)       # [B, D]
+        pos_batch = self.proj_head(pos_in)   # [B, D]
+
+        neg_pool = self.neg_queue.detach().to(device) # [Q, D]
         Q = neg_pool.size(0)
 
         # 2. Continuous Spectral Subspace Decoupling
@@ -202,29 +214,30 @@ class StepwiseSREANSLoss_v21(nn.Module):
         neg_low = F.normalize(neg_pool * beta, p=2, dim=-1)
         neg_high = F.normalize(neg_pool * beta_high, p=2, dim=-1)
 
-        cos_low = torch.matmul(u_low, neg_low.T)
-        cos_high = torch.matmul(u_high, neg_high.T)
-        difficulty = self.subspace_alpha * cos_low + (1.0 - self.subspace_alpha) * cos_high
+        cos_low = torch.matmul(u_low, neg_low.T)     # [B, Q]
+        cos_high = torch.matmul(u_high, neg_high.T)   # [B, Q]
+        difficulty = self.subspace_alpha * cos_low + (1.0 - self.subspace_alpha) * cos_high # [B, Q]
 
         # 3. Thresholded Dynamic MFNA Attenuation
         u_norm = F.normalize(u_batch, p=2, dim=-1)
         pos_norm = F.normalize(pos_batch, p=2, dim=-1)
         neg_norm = F.normalize(neg_pool, p=2, dim=-1)
 
-        cos_all = torch.matmul(u_norm, neg_norm.T)
-        sim_all = cos_all / self.tau
+        cos_all = torch.matmul(u_norm, neg_norm.T)   # [B, Q]
+        sim_all = cos_all / self.tau                 # [B, Q]
 
         # Gated threshold: only attenuate when cosine > 0.25 (True False-Negative Risk)
         active_mask = (cos_all > 0.25).float()
         W = torch.sigmoid(sim_all) * active_mask
         if metadata_mask is not None:
-            W = W * (1.0 + 0.5 * metadata_mask.float())
-        attenuation = torch.clamp(1.0 - W, min=0.1, max=1.0)
+            gated_meta = metadata_mask.to(device) * torch.clamp(cos_all, min=0.0)
+            W = W * (1.0 + 0.5 * gated_meta)
+        attenuation = torch.clamp(1.0 - W, min=0.1, max=1.0) # [B, Q]
 
         # 4. Gated Top-K Selection
-        selection_score = difficulty * attenuation
-        k_hn = max(1, int(self.hn_ratio * Q))
-        _, hn_indices = torch.topk(selection_score, k=k_hn, dim=1)
+        selection_score = difficulty * attenuation   # [B, Q]
+        k_hn = max(1, min(int(self.hn_ratio * Q), Q))
+        _, hn_indices = torch.topk(selection_score, k=k_hn, dim=-1) # [B, k_hn]
 
         # 5. Stratified Weights & Full Partition InfoNCE
         diff_norm = (difficulty + 1.0) / 2.0
@@ -233,16 +246,16 @@ class StepwiseSREANSLoss_v21(nn.Module):
 
         psi_all = torch.full_like(sim_all, psi_EN)
         hn_mask = torch.zeros_like(sim_all, dtype=torch.bool)
-        hn_mask.scatter_(1, hn_indices, True)
+        hn_mask.scatter_(-1, hn_indices, True)
         psi_all = torch.where(hn_mask, psi_HN, psi_all)
 
-        final_weights = psi_all * attenuation
+        final_weights = psi_all * attenuation # [B, Q]
 
         # Full Partition Conservation: sum over all Q negatives
-        pos_sim = torch.sum(u_norm * pos_norm, dim=-1) / self.tau
-        pos_exp = torch.exp(pos_sim)
-        exp_all = torch.exp(sim_all)
-        neg_weighted_sum = (exp_all * final_weights).sum(dim=1)
+        pos_sim = torch.sum(u_norm * pos_norm, dim=-1) / self.tau # [B]
+        pos_exp = torch.exp(pos_sim)                              # [B]
+        exp_all = torch.exp(sim_all)                              # [B, Q]
+        neg_weighted_sum = (exp_all * final_weights).sum(dim=-1)  # [B]
 
         loss = -torch.log(pos_exp / (pos_exp + neg_weighted_sum + 1e-8)).mean()
 
