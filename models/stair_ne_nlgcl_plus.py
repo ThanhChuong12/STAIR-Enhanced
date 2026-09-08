@@ -144,6 +144,10 @@ class STAIR_NE_NLGCL_Plus(nn.Module):
             # Maintain gamma within ceiling before window fills up
             self.current_gamma_h = min(self.current_gamma_h, dynamic_gamma_cap)
 
+    def get_current_hans_params(self) -> Tuple[float, float]:
+        """Returns (current_gamma_h, current_lambda)."""
+        return self.current_gamma_h, self.current_lambda
+
     def inject_spectral_noise(self, h: torch.Tensor, beta: torch.Tensor) -> torch.Tensor:
         """
         Pillar 2: True Sign-Preserving Spectral Perturbation.
