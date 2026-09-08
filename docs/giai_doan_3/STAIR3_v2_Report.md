@@ -51,6 +51,14 @@
 9. [Đánh giá Hiệu năng Phần cứng & Độ phức tạp Tính toán](#9-đánh-giá-hiệu-năng-phần-cứng--độ-phức-tạp-tính-toán)
 10. [Kịch bản Phản biện Học thuật Nâng cấp Trước Hội đồng (Academic Defense Upgrade)](#10-kịch-bản-phản-biện-học-thuật-nâng-cấp-trước-hội-đồng-academic-defense-upgrade)
 11. [Kế hoạch Hành động Triển khai Thực nghiệm Đợt 2](#11-kế-hoạch-hành-động-triển-khai-thực-nghiệm-đợt-2)
+12. [Đóng góp Phản biện Chuyên sâu & Nâng cấp Kiến trúc STAIR-SRE-ANS v2.1](#12-đóng-góp-phản-biện-chuyên-sâu--nâng-cấp-kiến-trúc-stair-sre-ans-v21)
+    - 12.1 Phân tích Phản biện 4 Tử huyệt Toán học & Kỹ thuật trong Thực thi v2
+    - 12.2 Thiết kế Kiến trúc STAIR-SRE-ANS v2.1: Decoupled Multi-Scale Representation & Thresholded Gating
+    - 12.3 Bảng Ma trận Đối chiếu Tiến hóa: STAIR Baseline vs v2 vs v2.1
+    - 12.4 Hệ thống Công thức Toán học Vi phân Hoàn thiện của v2.1
+    - 12.5 Mã nguồn Triển khai Chuẩn hóa: `models/stair_sre_ans_v2_1.py` & Pipeline Huấn luyện
+    - 12.6 Giả thuyết Khoa học, Khuyến nghị Tham số & Kỳ vọng Vượt Baseline trên Cả 3 Tập Dữ liệu
+11. [Kế hoạch Hành động Triển khai Thực nghiệm Đợt 2](#11-kế-hoạch-hành-động-triển-khai-thực-nghiệm-đợt-2)
 
 ---
 
@@ -798,3 +806,418 @@ Lộ trình thực thi chi tiết sẵn sàng triển khai:
    Khởi tạo [`notebook/P3/stair_sre_v2.ipynb`](file:///d:/4thY_HCMUS/KLTN/STAIR-Enhanced/notebook/P3/stair_sre_v2.ipynb) với đầy đủ pipeline tự động tải dữ liệu, huấn luyện trọn vẹn 500 epochs trên Amazon Baby, Sports và Electronics, lưu trữ nhật ký huấn luyện vào `logs/GD3/`.
 5. **Phân tích Đối soát Thực nghiệm:**  
    Thu thập các file log, trích xuất ma trận số liệu tại Best Checkpoint, so sánh với Baseline và hoàn thiện Báo cáo Thực nghiệm Đợt 2 [`docs/giai_doan_3/STAIR3_v2_Experiment_Report.md`](file:///d:/4thY_HCMUS/KLTN/STAIR-Enhanced/docs/giai_doan_3/STAIR3_v2_Experiment_Report.md).
+
+---
+
+## 12. ĐÓNG GÓP PHẢN BIỆN CHUYÊN SÂU & NÂNG CẤP KIẾN TRÚC STAIR-SRE-ANS v2.1
+### Decoupled Multi-Scale Representation, Thresholded Dynamic MFNA, Full Partition Conservation & Cosine-Annealed HANS Scheduler
+
+Dựa trên kết quả thực nghiệm thực tế của Đợt 2 trên hai tập dữ liệu **Amazon Baby** (Recall@20: 0.1002, -3.84% vs Baseline) và **Amazon Sports** (Recall@20: 0.1096, -1.35% vs Baseline), nhóm nghiên cứu đã tiến hành một đợt **Code Forensics & Mathematical Audit** chuyên sâu dòng-trên-dòng giữa lý thuyết thiết kế và mã nguồn thực thi thực tế trong [`models/stair_sre_ans_v2.py`](file:///d:/4thY_HCMUS/KLTN/STAIR-Enhanced/models/stair_sre_ans_v2.py) và [`mainS3_v2.py`](file:///d:/4thY_HCMUS/KLTN/STAIR-Enhanced/mainS3_v2.py). 
+
+Từ đó, chúng tôi phát hiện ra **4 tử huyệt toán học và cơ chế then chốt** đã kìm hãm mô hình v2 không thể bứt phá vượt qua Baseline và đề xuất giải pháp kiến trúc nâng cấp toàn diện: **STAIR-SRE-ANS v2.1**.
+
+---
+
+### 12.1 Phân Tích Phản Biện 4 Tử Huyệt Toán Học & Kỹ Thuật Trong Thực Thi v2
+
+#### Tử huyệt 1: Mâu Thuẫn Không Gian Biểu Diễn (Representation Dilemma) & Ép InfoNCE Lên Tầng GNN Cuối Cùng $H^{(L)}$
+* **Cơ chế lỗi trong code v2:** Trong hàm `fit()` của `mainS3_v2.py` (dòng 405–411), `ans_loss` được gọi trực tiếp trên `u_embed = userEmbds` và `i_pos_embed = itemEmbds`. Đây là các biểu diễn lấy từ `self.encode()`, tức đã trải qua trọn vẹn $L = 3$ lớp tích chập đồ thị Neumann Stepwise Convolution ($H^{(L)}$).
+* **Bản chất xung đột toán học:**
+  - **Hàm xếp hạng BPR** đòi hỏi các embedding $H^{(L)}$ phải **co cụm mạnh mẽ (Clustering Bias)** quanh các sở thích hành vi của người dùng trên đồ thị tương tác.
+  - **Hàm tương phản InfoNCE** lại ép buộc các vector $H^{(L)}$ phải **phân bố đồng đều trên mặt cầu siêu cầu (Hyperspherical Uniformity)** để tối đa hóa entropy thông tin (Wang & Isola, ICML 2020).
+  - Khi InfoNCE tác động trực tiếp lên $H^{(L)}$, hai hàm mục tiêu kéo ngược chiều nhau: BPR cố gắng kéo các item cùng sở thích lại gần nhau, trong khi InfoNCE lại cố gắng đẩy dãn các cụm ra để thỏa mãn tính đồng đều. Kết quả là cấu trúc lân cận CF bị loãng nhẹ, giải thích chính xác tại sao **thứ tự xếp hạng cục bộ tăng (NDCG@10 và NDCG@20 tăng), nhưng độ bao phủ Top-20 (Recall@20) bị ghìm dưới Baseline từ 1% đến 3.8%**.
+* **Giải pháp v2.1 (Decoupled CL Views at Layer-0):**
+  Tách rời hai không gian: Đưa hàm Contrastive Loss về tối ưu hóa trên **Không gian Thô Tầng 0 (Layer-0 Latent Space)** gồm $E_u^{(0)}$ và $E_{proj}^{(0)} = E_{item}^{(0)} \odot \mathbf{w}$ thông qua một bộ chiếu nhẹ 1-layer MLP Projection Head (`Linear + LayerNorm + LeakyReLU`). Toàn bộ không gian $H^{(L)}$ sau GNN được giải phóng 100% để phục vụ mục tiêu xếp hạng BPR thuần túy!
+
+---
+
+#### Tử huyệt 2: Lỗi Triệt Tiêu Mẫu Âm Giả (MFNA Attenuation Leak) $\sigma(0) = 0.5$ Khi `metadata_mask = None`
+* **Cơ chế lỗi trong code v2:** Trong `mainS3_v2.py` dòng 410, `metadata_mask` được truyền vào là `None`. Khi đó, nhánh tính trọng số suy giảm MFNA trong `stair_sre_ans_v2.py` (dòng 287–288) thực thi:
+  $$	ext{sim\_all} = rac{\cos(\mathbf{u}, \mathbf{k})}{	au}, \quad W = \sigma(	ext{sim\_all}), \quad 	ext{attenuation} = 	ext{clamp}(1.0 - W, 0.0, 1.0)$$
+  với $	au = 0.20$.
+* **Hậu quả toán học tai hại:**
+  - Xét một mẫu âm hoàn toàn trực giao với người dùng (True Negative hiển nhiên), tức $\cos(\mathbf{u}, \mathbf{k}) = 0$.
+  - Ta có: $	ext{sim\_all} = 0 / 0.2 = 0 \implies W = \sigma(0) = 0.5 \implies 	ext{attenuation} = 1.0 - 0.5 = \mathbf{0.5000}$!
+  - Ngay cả với mẫu âm có góc tù nhẹ ($\cos = -0.2$), $	ext{sim\_all} = -1.0 \implies W = 0.2689 \implies 	ext{attenuation} = \mathbf{0.7311}$.
+  - 👉 **HỆ QUẢ:** **100% các True Negatives (mẫu âm chân chính) trong toàn bộ kho hàng đều bị cắt giảm từ 25% đến 50% lực đẩy đối kháng!** Hàm InfoNCE bị suy yếu nghiêm trọng khả năng phân tách không gian, mất đi động lực đẩy các sản phẩm không liên quan ra xa.
+* **Giải pháp v2.1 (Thresholded Dynamic Attenuation Gate):**
+  Thiết lập cổng kích hoạt ngưỡng: Chỉ kích hoạt cơ chế suy giảm $W$ khi cosine similarity thực sự dương và vượt qua ngưỡng cảnh báo tương đồng cao ($	au_{sim} = 0.25$):
+  $$	ext{active\_mask} = \mathbb{I}(\cos(\mathbf{u}, \mathbf{k}) > 0.25), \quad W = \sigma(	ext{sim\_all}) \cdot 	ext{active\_mask}, \quad 	ext{attenuation} = 	ext{clamp}(1.0 - W, 0.1, 1.0)$$
+  Đối với tất cả các mẫu âm trực giao ($\cos \le 0.25$), $	ext{active\_mask} = 0 \implies W = 0 \implies 	ext{attenuation} = \mathbf{1.0000}$ (Bảo toàn 100% lực đẩy tối đa)!
+
+---
+
+#### Tử huyệt 3: Động Lực Học HANS Bão Hòa Sớm (Premature Saturation) & Thiếu Cơ Chế Hạ Nhiệt (Cooling/Annealing)
+* **Cơ chế lỗi trong code v2:** Nhật ký thực nghiệm cho thấy hàm loss tương phản giảm nhanh từ 3.55 về 2.65 trong 40 epoch đầu và đạt trạng thái bão hòa độ dốc ($\Delta_{\mathcal{L}} \le 10^{-4}$). Ngay khi kết thúc Warmup (Epoch 50), HANS kích hoạt liên tục và chạm ngưỡng trần tối đa $\gamma_{max}=0.35, hn\_ratio_{max}=0.40$ chỉ sau 20 epoch (tại Epoch 90).
+* **Hậu quả:** Trong suốt 410 epoch tiếp theo (từ epoch 91 đến epoch 500), mô hình bị ép chịu tải tối đa 40% hard negatives với hệ số phạt $\gamma_h = 0.35$ cố định không hề suy giảm. Việc thiếu cơ chế hạ nhiệt (Annealing/Cooling) ở giai đoạn hậu kỳ khiến mô hình không thể thực hiện fine-tuning tinh vi trên các ranh giới xếp hạng, làm dao động nhẹ điểm Recall ở những epoch cuối.
+* **Giải pháp v2.1 (Cosine-Annealed Ceiling Scheduler):**
+  Thiết lập trần thích ứng động theo hàm Cosine Annealing:
+  $$\gamma_{max}(t) = \max\left(0.08, \gamma_{max} \cdot rac{1}{2} \left[1 + \cos\left(rac{t - t_{warmup}}{T - t_{warmup}} \piight)ight]ight)$$
+  - *Giai đoạn 1 (Warmup, Epoch 1–50):* Giữ $\gamma_h = 0.05$ để ổn định không gian thô.
+  - *Giai đoạn 2 (Peak Hardening, Epoch 51–250):* HANS tăng tốc khai thác hard negatives lên đỉnh $\gamma pprox 0.30 - 0.35$ để kéo giãn khoảng cách cụm.
+  - *Giai đoạn 3 (Fine-tuning Annealing, Epoch 251–500):* Trần $\gamma_{max}(t)$ giảm dần mượt mà về $0.08 - 0.10$, hạ bớt áp lực phạt đối kháng, tạo điều kiện cho BPR loss tinh chỉnh tối ưu thứ tự Top-K.
+
+---
+
+#### Tử huyệt 4: Cắt Xén Mẫu Số InfoNCE (Partition Function Truncation) & Mẫu Dương Lịch Sử Trong Memory Bank
+* **Cơ chế lỗi trong code v2:**
+  - Tại dòng 321–326 của `stair_sre_ans_v2.py`:
+    $$	ext{hn\_exp} = 	ext{gather}(\exp(	ext{sim\_all}), 	ext{hn\_indices}), \quad 	ext{neg\_weighted\_sum} = \sum (	ext{hn\_exp} \cdot 	ext{hn\_weights})$$
+    $$\mathcal{L} = -\log rac{\exp(	ext{pos} / 	au)}{\exp(	ext{pos} / 	au) + 	ext{neg\_weighted\_sum}}$$
+    Mẫu số InfoNCE **chỉ cộng tổng trên Top-K Hard Negatives ($k_{hn}$ phần tử)**, hoàn toàn vứt bỏ $(Q - k_{hn})$ phần tử Easy Negatives còn lại (chiếm 60% đến 90% không gian)!
+  - Việc bỏ rơi Easy Negatives vi phạm nghiêm trọng tính toàn vẹn của hàm phân phối chuẩn hóa $Z$ (Partition Function) trên siêu mặt cầu. Các mẫu âm dễ không nhận được bất kỳ gradient đẩy nào ($
+abla \mathcal{L} = 0$), dẫn đến hiện tượng trôi dạt tự do (free-drifting) và suy thoái tính đồng đều toàn cục.
+  - Đồng thời, trên tập dữ liệu nhỏ như Amazon Baby (catalog $N=7050$), hàng đợi FIFO $Q=4096$ chiếm tới **$58.1\%$ toàn bộ sản phẩm**. Khi các sản phẩm phổ biến được người dùng yêu thích liên tục được đẩy vào hàng đợi, chúng bị gán nhãn làm mẫu âm cho chính những người dùng đã từng tương tác, gây ra hiện tượng phạt nhầm lịch sử mua hàng.
+* **Giải pháp v2.1:**
+  1. Bảo toàn mẫu số toàn cục: Mẫu số tính tổng trên toàn bộ $Q$ mẫu âm, trong đó Hard Negatives được nhân trọng số điều biến $\psi_{HN} \ge 1.0$ và Easy Negatives giữ trọng số cơ sở $\psi_{EN} \le 1.0$ (hoặc 1.0).
+  2. Điều chỉnh kích thước $Q$ tương ứng với dung lượng catalog: $Q = 1024$ cho Amazon Baby (chiếm $< 15\%$ catalog) và $Q = 4096$ cho Amazon Sports/Electronics.
+
+---
+
+### 12.2 Thiết Kế Kiến Trúc STAIR-SRE-ANS v2.1
+
+Dưới đây là sơ đồ luồng dữ liệu độc lập hai tầng của **STAIR-SRE-ANS v2.1**:
+
+```
+                         KIẾN TRÚC STAIR-SRE-ANS v2.1
+                         
+   User ID u                     Item ID i+                      Negative Item i-
+       │                              │                                 │
+       ▼                              ▼                                 ▼
+┌──────────────┐              ┌──────────────┐                  ┌──────────────┐
+│ User Embed E │              │ Item Embed E │                  │ Item Embed E │
+│   (Layer 0)  │              │   (Layer 0)  │                  │   (Layer 0)  │
+└──────┬───────┘              └──────┬───────┘                  └──────┬───────┘
+       │                             │                                 │
+       │                      ┌──────▼────────┐                        │
+       │                      │  Diagonal     │                        │
+       │                      │  Projector w  │                        │
+       │                      └──────┬────────┘                        │
+       │                             │ E_proj                          │
+       ├─────────────────────────────┼─────────────────────────────────┤
+       │ [TẦNG 1: CL NHÁNH ĐỘC LẬP]  │                                 │
+       │                             │                                 │
+       ▼                             ▼                                 │
+┌──────────────┐              ┌──────────────┐                         │
+│ 1-Layer MLP  │              │ 1-Layer MLP  │                         │
+│  Proj Head   │              │  Proj Head   │                         │
+└──────┬───────┘              └──────┬───────┘                         │
+       │ z_u                         │ z_i+                            │
+       └──────────────┬──────────────┘                                 │
+                      ▼                                                │
+         ┌─────────────────────────┐                                   │
+         │ StepwiseSREANSLoss v2.1 │ ◄── [FIFO Queue Q (1024/4096)]    │
+         │ * Continuous Decoupling │                                   │
+         │ * Active Gating cos>0.25│ ◄── [Cosine-Annealed HANS]        │
+         │ * Full Partition Sum    │                                   │
+         └────────────┬────────────┘                                   │
+                      ▼                                                │
+                 L_SRE-ANS v2.1                                        │
+                                                                       │
+       ┌───────────────────────────────────────────────────────────────┘
+       │ [TẦNG 2: GNN & BPR RANKING NHÁNH CHÍNH]
+       │
+       ▼
+┌────────────────────────────────────────┐
+│  Neumann Series Stepwise Convolution   │
+│  (3-Layer Polynomial GNN Smoothing)    │
+└──────────────────┬─────────────────────┘
+                   ▼
+     H_u^(L) và H_i+^(L), H_i-^(L) (Final Smoothed Embeddings)
+                   │
+                   ▼
+         ┌───────────────────┐
+         │     BPR Loss      │
+         │  (Clustering CF)  │
+         └─────────┬─────────┘
+                   ▼
+                 L_BPR
+```
+
+---
+
+### 12.3 Bảng Ma Trận Đối Chiếu Tiến Hóa: Baseline vs v2 vs v2.1
+
+| Đặc Tính Thiết Kế | STAIR Baseline | STAIR-SRE-ANS v2 | STAIR-SRE-ANS v2.1 (Bản Vá Hoàn Thiện) |
+| :--- | :--- | :--- | :--- |
+| **Không Gian Tương Phản (CL Target)** | Không có CL | $H^{(L)}$ (Final smoothed embedding sau 3 lớp GNN) | **Layer-0 Raw Space** ($E_u^{(0)}, E_{proj}^{(0)}$) qua 1-layer MLP Head |
+| **Bảo Vệ Không Gian BPR** | 100% cho BPR | Bị InfoNCE cạnh tranh gradient làm loãng cụm CF | **Giải phóng 100% $H^{(L)}$ cho BPR**, không có gradient conflict |
+| **Bộ Chiếu Tương Phản (Proj Head)** | Không | Không có (Identity) | **MLP Head (`Linear + LayerNorm + LeakyReLU`)** |
+| **Cơ Chế Suy Giảm Mẫu Âm (MFNA)** | Không | $W = \sigma(	ext{sim})$, cắt giảm 50% lực đẩy của mẫu góc $pprox 90^\circ$ | **Thresholded Gate: Chỉ giảm khi $\cos > 0.25$**; $\cos \le 0.25 \implies 	ext{Atten} = 1.0$ |
+| **Mẫu Số Hàm InfoNCE** | Không | Chỉ sum trên Top-K Hard Negatives ($k_{hn}$ mẫu) | **Bảo tồn Full Partition Sum trên toàn bộ $Q$ mẫu âm** |
+| **HANS Scheduler Ceiling** | Không | Chạm trần $\gamma = 0.35$ ở epoch 90 và giữ cố định đến epoch 500 | **Cosine-Annealed Ceiling**: Đạt đỉnh ở epoch 200 và hạ nhiệt về cuối kỳ |
+| **Kích Thước Hàng Đợi $Q$** | Không | $Q = 4096$ cố định cho mọi dataset (quá lớn với Baby) | **$Q = 1024$ (Baby) / $Q = 4096$ (Sports & Electronics)** |
+| **Phân Rã Phổ Năng Lượng** | $eta(d)$ cố định | Continuous $eta(d)$ với $lpha_{spec} = 0.50$ | **Continuous $eta(d)$ với $lpha_{spec} = 0.35$ (ưu tiên tần số cao)** |
+
+---
+
+### 12.4 Hệ Thống Công Thức Toán Học Vi Phân Hoàn Thiện Của v2.1
+
+#### 1. Biểu diễn Tầng 0 qua Projection Head
+$$\mathbf{z}_u = g_u(\mathbf{e}_u^{(0)}) = 	ext{LeakyReLU}(	ext{LayerNorm}(\mathbf{W}_p \mathbf{e}_u^{(0)}))$$
+$$\mathbf{z}_i = g_i(\mathbf{e}_i^{(0)} \odot \mathbf{w}) = 	ext{LeakyReLU}(	ext{LayerNorm}(\mathbf{W}_p (\mathbf{e}_i^{(0)} \odot \mathbf{w})))$$
+
+#### 2. Phân rã độ khó quang phổ liên tục với $lpha_{spec} = 0.35$
+$$\mathbf{z}_{u, 	ext{low}} = rac{\mathbf{z}_u \odot oldsymbol{eta}}{\|\mathbf{z}_u \odot oldsymbol{eta}\|_2}, \quad \mathbf{z}_{u, 	ext{high}} = rac{\mathbf{z}_u \odot (\mathbf{1} - oldsymbol{eta})}{\|\mathbf{z}_u \odot (\mathbf{1} - oldsymbol{eta})\|_2}$$
+$$	ext{Diff}(u, k) = 0.35 \cdot \langle \mathbf{z}_{u, 	ext{low}}, \mathbf{z}_{k, 	ext{low}} angle + 0.65 \cdot \langle \mathbf{z}_{u, 	ext{high}}, \mathbf{z}_{k, 	ext{high}} angle$$
+
+#### 3. Thresholded Dynamic Attenuation Gate
+$$	ext{active\_mask}(u, k) = \mathbb{I}(\langle \hat{\mathbf{z}}_u, \hat{\mathbf{z}}_k angle > 0.25)$$
+$$W(u, k) = \sigma\left(rac{\langle \hat{\mathbf{z}}_u, \hat{\mathbf{z}}_k angle}{	au}ight) \cdot 	ext{active\_mask}(u, k)$$
+$$	ext{Atten}(u, k) = 	ext{clamp}(1.0 - W(u, k), 0.1, 1.0)$$
+
+#### 4. Full Partition Weighted InfoNCE Loss
+$$\mathcal{L}_{	ext{SRE-ANS v2.1}} = -rac{1}{B} \sum_{u=1}^B \log rac{\exp(\langle \hat{\mathbf{z}}_u, \hat{\mathbf{z}}_{i^+} angle / 	au)}{\exp(\langle \hat{\mathbf{z}}_u, \hat{\mathbf{z}}_{i^+} angle / 	au) + \sum_{k \in \mathcal{HN}_u} \psi_{HN}(u, k) \exp(	ext{sim}_{uk}) + \sum_{j \in \mathcal{EN}_u} \psi_{EN} \exp(	ext{sim}_{uj})}$$
+trong đó:
+$$\psi_{HN}(u, k) = (1.0 + \gamma_h \cdot 	ext{Diff}_{norm}(u, k)) \cdot 	ext{Atten}(u, k)$$
+$$\psi_{EN} = 1.0 - \gamma_h$$
+
+#### 5. Cosine-Annealed HANS Scheduler
+$$\gamma_{max}(t) = \max\left(0.08, \gamma_{max} \cdot rac{1}{2} \left[1 + \cos\left(rac{t - 50}{450} \piight)ight]ight)$$
+
+---
+
+### 12.5 Mã Nguồn Triển Khai Chuẩn Hóa: `models/stair_sre_ans_v2_1.py`
+
+```python
+# -*- coding: utf-8 -*-
+"""
+models/stair_sre_ans_v2_1.py
+STAIR-SRE-ANS v2.1: Decoupled Multi-Scale Representation,
+Thresholded Topology-driven MFNA & Cosine-Annealed HANS Scheduler.
+"""
+
+from typing import Optional
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+__all__ = ['RegularizedDiagonalSpectralProjector', 'StepwiseSREANSLoss_v21']
+
+
+class RegularizedDiagonalSpectralProjector(nn.Module):
+    def __init__(self, dim: int = 64, reg_weight: float = 1e-4):
+        super().__init__()
+        self.dim = dim
+        self.reg_weight = float(reg_weight)
+        self.w = nn.Parameter(torch.ones(dim, dtype=torch.float32))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x * self.w
+
+    def get_anchoring_loss(self) -> torch.Tensor:
+        if self.reg_weight <= 0.0:
+            return torch.tensor(0.0, device=self.w.device)
+        return self.reg_weight * torch.sum((self.w - 1.0) ** 2)
+
+
+class StepwiseSREANSLoss_v21(nn.Module):
+    def __init__(
+        self,
+        dim: int = 64,
+        tau: float = 0.25,
+        queue_size: int = 4096,
+        warmup_epochs: int = 50,
+        total_epochs: int = 500,
+        gamma_max: float = 0.30,
+        hn_ratio_max: float = 0.35,
+        subspace_alpha: float = 0.35,
+        beta: Optional[torch.Tensor] = None,
+        gamma: float = 0.10,
+    ):
+        super().__init__()
+        self.dim = dim
+        self.tau = float(tau)
+        self.queue_size = int(queue_size)
+        self.warmup_epochs = int(warmup_epochs)
+        self.total_epochs = int(total_epochs)
+        self.gamma_max = float(gamma_max)
+        self.hn_ratio_max = float(hn_ratio_max)
+        self.subspace_alpha = float(subspace_alpha)
+
+        # Spectral continuous decay
+        if beta is not None:
+            beta_curve = beta.detach().clone().to(dtype=torch.float32)
+        else:
+            d_indices = torch.arange(dim, dtype=torch.float32)
+            beta_curve = 0.9 * (1.0 - torch.pow(d_indices / float(dim), float(gamma)))
+        self.register_buffer('beta', beta_curve)
+        self.register_buffer('beta_high', 1.0 - beta_curve)
+
+        # Contrastive Projection Head (Bảo vệ không gian GNN chính)
+        self.proj_head = nn.Sequential(
+            nn.Linear(dim, dim, bias=False),
+            nn.LayerNorm(dim),
+            nn.LeakyReLU(0.2)
+        )
+
+        # Cross-Batch Memory Bank
+        self.register_buffer('neg_queue', torch.randn(queue_size, dim))
+        self.neg_queue = F.normalize(self.neg_queue, p=2, dim=-1)
+        self.register_buffer('queue_ptr', torch.zeros(1, dtype=torch.long))
+
+        # HANS Scheduler
+        self.hn_ratio = 0.10
+        self.gamma_h = 0.05
+        self.current_epoch = 0
+        self.loss_history = []
+
+    @torch.no_grad()
+    def enqueue_negatives(self, pos_emb: torch.Tensor):
+        batch_size = pos_emb.size(0)
+        norm_emb = F.normalize(pos_emb.detach(), p=2, dim=-1)
+        ptr = int(self.queue_ptr.item())
+        if ptr + batch_size <= self.queue_size:
+            self.neg_queue[ptr:ptr + batch_size] = norm_emb
+            ptr = (ptr + batch_size) % self.queue_size
+        else:
+            first = self.queue_size - ptr
+            self.neg_queue[ptr:] = norm_emb[:first]
+            remain = batch_size - first
+            self.neg_queue[:remain] = norm_emb[first:]
+            ptr = remain
+        self.queue_ptr[0] = ptr
+
+    def update_scheduler(self, current_cl_loss: float, window: int = 10, threshold: float = 0.99):
+        self.current_epoch += 1
+        if self.current_epoch < self.warmup_epochs:
+            self.gamma_h = 0.05
+            self.hn_ratio = 0.10
+            return
+
+        # Cosine-Annealed Ceiling: Giảm tải áp lực HN ở giai đoạn hậu kỳ
+        progress = (self.current_epoch - self.warmup_epochs) / max(1, (self.total_epochs - self.warmup_epochs))
+        dynamic_gamma_cap = self.gamma_max * 0.5 * (1.0 + torch.cos(torch.tensor(progress * 3.14159)).item())
+        dynamic_gamma_cap = max(0.08, dynamic_gamma_cap)
+
+        self.loss_history.append(float(current_cl_loss))
+        if len(self.loss_history) > window * 2:
+            self.loss_history.pop(0)
+            loss_curr = sum(self.loss_history[-window:]) / float(window)
+            loss_prev = sum(self.loss_history[-window*2:-window]) / float(window)
+
+            if loss_curr >= threshold * loss_prev:
+                self.gamma_h = min(self.gamma_h + 0.015, dynamic_gamma_cap)
+                self.hn_ratio = min(self.hn_ratio + 0.015, self.hn_ratio_max)
+            else:
+                self.gamma_h = max(self.gamma_h - 0.01, 0.05)
+                self.hn_ratio = max(self.hn_ratio - 0.01, 0.10)
+
+    def forward(
+        self,
+        u_raw: torch.Tensor,
+        i_raw: torch.Tensor,
+        batch_users: torch.Tensor,
+        batch_items: torch.Tensor,
+    ) -> torch.Tensor:
+        device = u_raw.device
+        u_batch = self.proj_head(u_raw[batch_users])
+        pos_batch = self.proj_head(i_raw[batch_items])
+        neg_pool = self.neg_queue.detach().to(device)
+        Q = neg_pool.size(0)
+
+        # 1. Continuous Spectral Difficulty
+        beta = self.beta.to(device)
+        beta_high = self.beta_high.to(device)
+
+        u_low = F.normalize(u_batch * beta, p=2, dim=-1)
+        u_high = F.normalize(u_batch * beta_high, p=2, dim=-1)
+        neg_low = F.normalize(neg_pool * beta, p=2, dim=-1)
+        neg_high = F.normalize(neg_pool * beta_high, p=2, dim=-1)
+
+        cos_low = torch.matmul(u_low, neg_low.T)
+        cos_high = torch.matmul(u_high, neg_high.T)
+        difficulty = self.subspace_alpha * cos_low + (1.0 - self.subspace_alpha) * cos_high
+
+        # 2. Thresholded Dynamic Attenuation (Fix Tử huyệt 2)
+        u_norm = F.normalize(u_batch, p=2, dim=-1)
+        pos_norm = F.normalize(pos_batch, p=2, dim=-1)
+        neg_norm = F.normalize(neg_pool, p=2, dim=-1)
+
+        cos_all = torch.matmul(u_norm, neg_norm.T)
+        sim_all = cos_all / self.tau
+
+        # Chỉ giảm lực đẩy nếu cosine > 0.25 (nguy cơ False Negative cao)
+        active_mask = (cos_all > 0.25).float()
+        W = torch.sigmoid(sim_all) * active_mask
+        attenuation = torch.clamp(1.0 - W, min=0.1, max=1.0)
+
+        # 3. Gated Top-K Selection
+        selection_score = difficulty * attenuation
+        k_hn = max(1, int(self.hn_ratio * Q))
+        _, hn_indices = torch.topk(selection_score, k=k_hn, dim=1)
+
+        # 4. Stratified Weights & Full Partition InfoNCE
+        diff_norm = (difficulty + 1.0) / 2.0
+        psi_HN = 1.0 + self.gamma_h * diff_norm
+        psi_EN = 1.0 - self.gamma_h
+
+        psi_all = torch.full_like(sim_all, psi_EN)
+        hn_mask = torch.zeros_like(sim_all, dtype=torch.bool)
+        hn_mask.scatter_(1, hn_indices, True)
+        psi_all = torch.where(hn_mask, psi_HN, psi_all)
+
+        final_weights = psi_all * attenuation
+
+        # Mẫu số tính tổng trên toàn bộ Q mẫu âm (Bảo tồn Full Partition)
+        pos_sim = torch.sum(u_norm * pos_norm, dim=-1) / self.tau
+        pos_exp = torch.exp(pos_sim)
+        exp_all = torch.exp(sim_all)
+        neg_weighted_sum = (exp_all * final_weights).sum(dim=1)
+
+        loss = -torch.log(pos_exp / (pos_exp + neg_weighted_sum + 1e-8)).mean()
+
+        if self.training:
+            with torch.no_grad():
+                self.enqueue_negatives(pos_batch)
+
+        return loss
+```
+
+#### Pipeline Huấn Luyện Trong `fit()` của Coach v2.1:
+```python
+def fit(self, data: Dict[freerec.data.fields.Field, torch.Tensor]):
+    userEmbds, itemEmbds = self.encode()
+
+    users = data[self.User]
+    positives = data[self.Item]
+    negatives = data[self.INeg]
+
+    # BPR Loss tối ưu trên không gian đã tích chập GNN (Graph Smoothed)
+    rec_loss = self.criterion(
+        torch.einsum('BKD,BKD->BK', userEmbds[users], itemEmbds[positives]),
+        torch.einsum('BKD,BKD->BK', userEmbds[users], itemEmbds[negatives]),
+    )
+
+    reg_w_loss = self.spectral_projector.get_anchoring_loss()
+
+    # Contrastive Loss tối ưu trên Tầng 0 (Bảo vệ đặc trưng gốc, giải phóng H^(L))
+    if self.training and cfg.lambda_ans > 0.0:
+        item_raw_proj = self.spectral_projector(self.Item.embeddings.weight)
+        user_raw = self.User.embeddings.weight
+
+        cl_loss = self.ans_loss(
+            u_raw=user_raw,
+            i_raw=item_raw_proj,
+            batch_users=users,
+            batch_items=positives,
+        )
+        self.last_cl_loss = float(cl_loss.detach().item())
+        return rec_loss + reg_w_loss + cfg.lambda_ans * cl_loss
+
+    return rec_loss + reg_w_loss
+```
+
+---
+
+### 12.6 Giả Thuyết Khoa Học, Khuyến Nghị Tham Số & Kỳ Vọng Vượt Baseline
+
+1. **Giả thuyết Khoa học 1 (Decoupled Representation Hypothesis):** Việc đưa InfoNCE về Tầng 0 sẽ ngăn chặn hoàn toàn hiện tượng kéo dãn cụm của $H^{(L)}$, cho phép BPR tự do hội tụ các cụm sở thích CF, giúp Recall@20 lập tức tăng trưởng trở lại mốc $\ge 0.1050$ trên Baby và $\ge 0.1120$ trên Sports.
+2. **Giả thuyết Khoa học 2 (True Negative Force Restoration):** Khi cổng Thresholded Gating ($\cos > 0.25$) được kích hoạt, 100% lực đẩy đối kháng của True Negatives được giải phóng, khôi phục lại mật độ phân tán đều (Uniformity) lành mạnh trên mặt cầu siêu cầu.
+3. **Giả thuyết Khoa học 3 (Cooling Fine-tuning Benefit):** Cosine Annealing giúp các epoch cuối (epoch 350–500) không bị rung lắc bởi mẫu âm cực khó, hỗ trợ bộ tối ưu AdamWSEvo chốt chặn tại điểm cực tiểu Pareto lý tưởng.
+
+**Khuyến nghị tham số thực nghiệm v2.1:**
+- $\lambda_{ans}$: Đặt $2 	imes 10^{-5}$ trên Sports (giảm áp lực gradient so với $5 	imes 10^{-5}$) và $5 	imes 10^{-5}$ trên Baby.
+- $	au$: Tăng nhẹ lên $0.25$ để làm mượt bề mặt hàm mục tiêu softmax.
+- Queue Size $Q$: Đặt $1024$ trên Amazon Baby và $4096$ trên Amazon Sports.
+
