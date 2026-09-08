@@ -522,6 +522,31 @@ class CoachForSTAIR_SRE_ANS_v2(freerec.launcher.Coach):
 
 
 def main():
+    # Robust auto-bridge for FreeRec:
+    # FreeRec expects data in os.path.join(cfg.root, "Processed", cfg.dataset).
+    # If it is located in cfg.root/{cfg.dataset} or any other standard location, symlink or copy it
+    # so FreeRec never triggers fragile Zenodo downloads that return 403 Forbidden.
+    processed_dir = os.path.join(cfg.root, "Processed", cfg.dataset)
+    if not os.path.exists(processed_dir) or not os.listdir(processed_dir):
+        candidates = [
+            os.path.join(cfg.root, cfg.dataset),
+            os.path.join("/kaggle/data", cfg.dataset),
+            os.path.join("/kaggle/data/Processed", cfg.dataset),
+            os.path.join("data", cfg.dataset),
+            os.path.join("data/Processed", cfg.dataset),
+        ]
+        for cand in candidates:
+            if os.path.exists(cand) and os.path.isdir(cand) and os.path.abspath(cand) != os.path.abspath(processed_dir) and len(os.listdir(cand)) > 0:
+                os.makedirs(os.path.dirname(processed_dir), exist_ok=True)
+                try:
+                    os.symlink(cand, processed_dir)
+                    print(f"[DataSet] >>> Auto-bridged symlink: {cand} -> {processed_dir}")
+                except Exception:
+                    import shutil
+                    shutil.copytree(cand, processed_dir, dirs_exist_ok=True)
+                    print(f"[DataSet] >>> Auto-bridged copied: {cand} -> {processed_dir}")
+                break
+
     try:
         dataset = getattr(freerec.data.datasets, cfg.dataset)(root=cfg.root)
     except AttributeError:
