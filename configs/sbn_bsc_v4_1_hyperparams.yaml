@@ -1,0 +1,26 @@
+# ===========================================================================
+# STAIR-BSC-Reweight v4.1-SSB Hyperparameters Configuration
+# ===========================================================================
+# Reference: docs/giai_doan_3/STAIR3_v4_Report.md Section 13 & 16
+#
+# Usage:
+#   python main_stair_sbn_bsc_v4_1_ssb.py --config configs/sbn_bsc_v4_1_hyperparams.yaml \
+#       --dataset Amazon2014Baby_550_MMRec
+# ===========================================================================
+
+# === STAIR-BSC-Reweight v4.1-SSB Core Hyperparameters ===
+ssb_mode: "full_ssb"            # ['baseline', 'modal_only', 'behavior_only', 'full_ssb']
+ssb_alpha: 0.50                 # [0.0, 1.0] Modal boost weight (Step A)
+ssb_beta: 0.30                  # [0.0, 1.0] Behavior co-occurrence boost weight (Step B)
+ssb_tau_text: 0.10              # [0.05, 0.25] Text similarity threshold
+ssb_tau_visual: 0.10            # [0.05, 0.25] Visual similarity threshold
+
+# Safe Bounded Scaling (Prevents Gradient Explosion)
+ssb_min_weight: 1.00            # Strictly bounded: min w_ij = 1.0
+ssb_max_weight: 1.80            # Strictly bounded: max w_ij = 1.8
+
+# === Experimental Step Presets (Strict Sequential Protocol) ===
+# Bước 0: Static Check (python tests/static_sanity_check_v4_1_ssb.py)
+# Bước A: Modal Only   (ssb_mode: "modal_only", ssb_alpha: 0.50, ssb_beta: 0.00)
+# Bước B: Behavior Only (ssb_mode: "behavior_only", ssb_alpha: 0.00, ssb_beta: 0.30)
+# Bước C: Full SSB     (ssb_mode: "full_ssb", ssb_alpha: 0.50, ssb_beta: 0.30)
