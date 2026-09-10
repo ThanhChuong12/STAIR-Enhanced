@@ -1,0 +1,32 @@
+# ===========================================================================
+# SBN-BSC v4 Hyperparameters Configuration
+# ===========================================================================
+# Reference: docs/giai_doan_3/STAIR3_v4_Report.md Section 4.9
+#
+# Usage:
+#   python main_stair_sbn_bsc_v4.py --config configs/sbn_bsc_v4_hyperparams.yaml \
+#       --dataset Amazon2014Sports_550_MMRec
+# ===========================================================================
+
+# === SBN-BSC v4 Core Hyperparameters ===
+# Cross-Modal Agreement (EVEN-inspired)
+sbn_tau_text: 0.15              # [0.05, 0.30] Text similarity threshold
+sbn_tau_visual: 0.10            # [0.05, 0.25] Visual similarity threshold
+
+# Joint Quality Combination (SIGE-inspired)
+sbn_modal_discount: 0.50        # [0.30, 0.80] Modal discount factor rho
+                                # Sports sparse: 0.60 | Baby dense: 0.40
+
+# Adaptive Edge Pruning
+sbn_prune_lambda: 0.50          # [0.30, 0.90] tau_prune = mu_q + lambda * sigma_q
+sbn_min_edge_threshold: 0.05    # [0.01, 0.10] Floor threshold tau_min
+
+# === Ablation Config Selector (A0 → A6) ===
+sbn_ablation_config: "A6_full_sbn_bsc_v4"
+
+# === Tuning Priority (per Blueprint Section 4.9) ===
+# 1. HIGH   : sbn_modal_discount (rho)
+# 2. HIGH   : sbn_prune_lambda (lambda)
+# 3. MEDIUM : sbn_tau_text
+# 4. MEDIUM : sbn_tau_visual
+# 5. LOW    : sbn_min_edge_threshold

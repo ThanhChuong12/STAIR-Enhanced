@@ -1,0 +1,41 @@
+# ===========================================================================
+# requirements_sbn_bsc_v4.txt
+# ===========================================================================
+# STAIR-SBN-BSC v4: Precomputed Structural Denoising for BSC Smoother
+# Reference: docs/giai_doan_3/STAIR3_v4_Report.md Section 6.5
+# ===========================================================================
+
+# Core Deep Learning & Tensor Operations
+torch>=1.13.0,<2.1.0       # Full support for torch.sparse_csr_tensor and optimizer buffers
+torchvision>=0.14.0
+torchaudio>=0.13.0
+
+# Scientific Computing & Sparse Algebra
+numpy>=1.21.0,<2.0.0       # Avoid NumPy 2.0 API breaking changes
+scipy>=1.7.0,<2.0.0        # Optimized sparse CSR multiplication C = R.T @ R
+
+# STAIR Core Framework (freerec ecosystem)
+freerec>=0.7.0
+torchdata>=0.5.0
+scikit-learn>=1.0.0
+
+# Automated Testing & Verification
+pytest>=7.0.0
+pytest-cov>=4.0.0
+
+# Logging & Monitoring
+tensorboard>=2.10.0
+tqdm>=4.64.0
+pyyaml>=6.0
+
+# ===========================================================================
+# HARDWARE REQUIREMENTS:
+# GPU: NVIDIA T4 (16GB VRAM) minimum; A100 (40GB) recommended for Electronics
+# System RAM: 16 GB minimum (32 GB recommended for Electronics R^T R)
+# Disk: 50 GB free (for checkpoints and preprocessed matrix cache)
+#
+# ENVIRONMENT:
+# OS: Ubuntu 20.04 LTS+, Windows 11 with WSL2
+# Python: 3.9, 3.10 or 3.11
+# CUDA: 11.7 or 11.8; cuDNN: 8.5+
+# ===========================================================================
