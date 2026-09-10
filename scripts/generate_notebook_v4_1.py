@@ -46,7 +46,7 @@ def create_notebook():
     # =========================================================================
     # CELL 1: Markdown Overview
     # =========================================================================
-    cells.append(md_cell("""# 🚀 GIAI ĐOẠN 3 — HUẤN LUYỆN MÔ HÌNH STAIR-BSC-REWEIGHT v4.1-SSB
+    cells.append(md_cell(r"""# 🚀 GIAI ĐOẠN 3 — HUẤN LUYỆN MÔ HÌNH STAIR-BSC-REWEIGHT v4.1-SSB
 ### *Topology-Preserving Safe Spectral Boost for Backward Stepwise Convolution (BSC Smoother)*
 **Đề tài Khóa Luận Tốt Nghiệp — Khoa CNTT, Trường ĐH Khoa học Tự nhiên, ĐHQG-HCM**
 
@@ -237,15 +237,23 @@ print(f"✅ Static Check Script   : {v4_1_check_path}")
 print("=" * 80)"""))
 
     # =========================================================================
-    # CELL 4: Data Preparation
+    # CELL 4: Data Preparation & Multi-Bridge
     # =========================================================================
-    cells.append(code_cell("""# Cell 4: Chuẩn bị Dữ liệu & Tự động phát hiện đường dẫn (Data Preparation)
+    cells.append(code_cell("""# Cell 4: Chuẩn bị Dữ liệu & Cầu nối Đa Vị trí (Data Preparation & Multi-Bridge)
 import os
 import shutil
+import glob
+import zipfile
+import tarfile
 
 STAIR_DIR = '/kaggle/working/STAIR-Enhanced'
-DATA_LOCAL = os.path.join(STAIR_DIR, 'data')
-os.makedirs(DATA_LOCAL, exist_ok=True)
+DATA_ROOT = '/kaggle/data'
+PROCESSED_ROOT = os.path.join(DATA_ROOT, 'Processed')
+LOCAL_DATA = os.path.join(STAIR_DIR, 'data')
+LOCAL_PROCESSED = os.path.join(LOCAL_DATA, 'Processed')
+
+for d in [DATA_ROOT, PROCESSED_ROOT, LOCAL_DATA, LOCAL_PROCESSED]:
+    os.makedirs(d, exist_ok=True)
 
 DATASET_NAMES = [
     'Amazon2014Baby_550_MMRec',
@@ -253,53 +261,128 @@ DATASET_NAMES = [
     'Amazon2014Electronics_550_MMRec'
 ]
 
-# Quét tìm kiếm thư mục dữ liệu nguồn
-CANDIDATE_ROOTS = [
-    '/kaggle/input/datasets/rainyle/stair-datasets-mmrec',
-    '/kaggle/input/stair-datasets-mmrec',
-    '/kaggle/input',
-    '../../data',
-    'data'
-]
+DATASET_ALIASES = {
+    'Amazon2014Baby_550_MMRec': ['baby', 'amazon2014baby'],
+    'Amazon2014Sports_550_MMRec': ['sport', 'sports', 'amazon2014sports'],
+    'Amazon2014Electronics_550_MMRec': ['electronic', 'electronics', 'amazon2014electronics']
+}
 
-DATASET_ROOT = None
-for base in CANDIDATE_ROOTS:
-    if os.path.exists(base):
-        for root, dirs, files in os.walk(base):
-            if any(ds in dirs for ds in DATASET_NAMES):
-                DATASET_ROOT = root
-                break
-    if DATASET_ROOT is not None:
-        break
+REQUIRED_FILES = {'train.txt', 'valid.txt', 'test.txt', 'textual_modality.pkl', 'visual_modality.pkl'}
+REQUIRED_EXTENSIONS = ('.npy', '.pkl', '.txt', '.inter', '.item', '.pt', '.csv', '.yaml')
 
-print("=" * 60)
-print(f"📍 Dataset Root phát hiện: {DATASET_ROOT}")
+def bridge_directories(src_dir, target_folder):
+    \"\"\"Đồng bộ dữ liệu sang toàn bộ 4 vị trí FreeRec có thể tìm kiếm:
+       1. /kaggle/data/{target_folder}
+       2. /kaggle/data/Processed/{target_folder}
+       3. /kaggle/working/STAIR-Enhanced/data/{target_folder}
+       4. /kaggle/working/STAIR-Enhanced/data/Processed/{target_folder}
+    \"\"\"
+    destinations = [
+        os.path.join(DATA_ROOT, target_folder),
+        os.path.join(PROCESSED_ROOT, target_folder),
+        os.path.join(LOCAL_DATA, target_folder),
+        os.path.join(LOCAL_PROCESSED, target_folder),
+    ]
+    for dst in destinations:
+        if os.path.abspath(src_dir) == os.path.abspath(dst):
+            continue
+        os.makedirs(dst, exist_ok=True)
+        for item in os.listdir(src_dir):
+            s_item = os.path.join(src_dir, item)
+            d_item = os.path.join(dst, item)
+            if os.path.isfile(s_item) and not os.path.exists(d_item):
+                try:
+                    os.symlink(s_item, d_item)
+                except Exception:
+                    shutil.copy2(s_item, d_item)
 
 prepared_datasets = {}
-REQUIRED_FILES = {'train.txt', 'valid.txt', 'test.txt', 'textual_modality.pkl', 'visual_modality.pkl'}
+input_base = '/kaggle/input'
 
-if DATASET_ROOT is not None and os.path.exists(DATASET_ROOT):
-    for ds in DATASET_NAMES:
-        src = os.path.join(DATASET_ROOT, ds)
-        dst = os.path.join(DATA_LOCAL, ds)
-        if os.path.exists(src):
-            if not os.path.exists(dst):
-                try:
-                    os.symlink(src, dst)
-                except Exception:
-                    shutil.copytree(src, dst)
-            present_files = set(os.listdir(dst))
-            missing = REQUIRED_FILES - present_files
-            if missing:
-                print(f"⚠️ [{ds}] Thiếu các file: {missing}")
-            else:
-                print(f"✅ [{ds}] Đầy đủ 5 file dữ liệu bắt buộc.")
-                prepared_datasets[ds] = dst
+print("🔍 Đang quét và đồng bộ dữ liệu vào hệ thống FreeRec...")
+for ds_name in DATASET_NAMES:
+    keywords = DATASET_ALIASES.get(ds_name, [ds_name.lower()])
+
+    # 1. Kiểm tra nếu đã có sẵn tại bất kỳ destination nào
+    found_dir = None
+    for cand_dir in [
+        os.path.join(PROCESSED_ROOT, ds_name),
+        os.path.join(DATA_ROOT, ds_name),
+        os.path.join(LOCAL_PROCESSED, ds_name),
+        os.path.join(LOCAL_DATA, ds_name),
+    ]:
+        if os.path.exists(cand_dir) and len(os.listdir(cand_dir)) >= 5:
+            if REQUIRED_FILES.issubset(set(os.listdir(cand_dir))):
+                found_dir = cand_dir
+                break
+
+    # 2. Tìm kiếm trong /kaggle/input nếu chưa có
+    if found_dir is None and os.path.exists(input_base):
+        # 2a. Tìm theo tên thư mục trực tiếp
+        for root, dirs, files in os.walk(input_base):
+            if ds_name in dirs:
+                candidate = os.path.join(root, ds_name)
+                if REQUIRED_FILES.issubset(set(os.listdir(candidate))):
+                    found_dir = candidate
+                    break
+
+        # 2b. Tìm theo keywords nếu chưa thấy
+        if found_dir is None:
+            for root, dirs, files in os.walk(input_base):
+                has_modals = any('modality.pkl' in f for f in files)
+                has_txt = any(f in files for f in ['train.txt', 'valid.txt', 'test.txt'])
+                dir_lower = root.lower()
+                if (has_modals and has_txt) and any(kw in dir_lower for kw in keywords):
+                    found_dir = root
+                    break
+
+        # 2c. Tìm file nén nếu có
+        if found_dir is None:
+            for search_root in [input_base, DATA_ROOT, '/kaggle/working']:
+                if os.path.exists(search_root):
+                    for r, _, fnames in os.walk(search_root):
+                        for fn in fnames:
+                            if fn.endswith(('.zip', '.tar.gz', '.tar', '.tgz')) and any(kw in fn.lower() for kw in keywords):
+                                arc_path = os.path.join(r, fn)
+                                dst_extract = os.path.join(PROCESSED_ROOT, ds_name)
+                                os.makedirs(dst_extract, exist_ok=True)
+                                print(f"  [Giải nén] {arc_path} -> {dst_extract}...")
+                                if fn.endswith('.zip'):
+                                    with zipfile.ZipFile(arc_path, 'r') as zf:
+                                        zf.extractall(dst_extract)
+                                else:
+                                    with tarfile.open(arc_path, 'r:*') as tf:
+                                        tf.extractall(dst_extract)
+                                subitems = os.listdir(dst_extract)
+                                if len(subitems) == 1 and os.path.isdir(os.path.join(dst_extract, subitems[0])):
+                                    nested = os.path.join(dst_extract, subitems[0])
+                                    for nf in os.listdir(nested):
+                                        shutil.move(os.path.join(nested, nf), os.path.join(dst_extract, nf))
+                                    os.rmdir(nested)
+                                found_dir = dst_extract
+                                break
+                        if found_dir is not None:
+                            break
+                if found_dir is not None:
+                    break
+
+    if found_dir is not None:
+        bridge_directories(found_dir, ds_name)
+        # Xác nhận đủ file
+        target_check = os.path.join(LOCAL_PROCESSED, ds_name)
+        present = set(os.listdir(target_check))
+        missing = REQUIRED_FILES - present
+        if missing:
+            print(f"⚠️ [{ds_name}] Thiếu các file bắt buộc: {missing}")
         else:
-            print(f"ℹ️ [{ds}] Chưa tìm thấy trong {DATASET_ROOT}")
-else:
-    print("❌ Không tìm thấy thư mục dataset trên Kaggle! Vui lòng kiểm tra lại dataset đính kèm.")
-print("=" * 60)"""))
+            print(f"✅ [{ds_name}] Đầy đủ 5 file dữ liệu bắt buộc (Đã đồng bộ Processed/ thành công).")
+            prepared_datasets[ds_name] = target_check
+    else:
+        print(f"ℹ️ [{ds_name}] Chưa tìm thấy trong /kaggle/input. Vui lòng kiểm tra lại dataset đính kèm.")
+
+print("=" * 75)
+print(f"TỔNG KẾT: {len(prepared_datasets)} / {len(DATASET_NAMES)} tập dữ liệu sẵn sàng trong FreeRec Processed/")
+print("=" * 75)"""))
 
     # =========================================================================
     # CELL 5: Static Sanity Check & Pytest
@@ -323,7 +406,7 @@ print("=" * 80 + "\\n")
     # =========================================================================
     # CELL 6: Markdown Hyperparams
     # =========================================================================
-    cells.append(md_cell("""## 📋 3. QUY TRÌNH THỰC NGHIỆM TUẦN TỰ & THIẾT LẬP SIÊU THAM SỐ v4.1-SSB
+    cells.append(md_cell(r"""## 📋 3. QUY TRÌNH THỰC NGHIỆM TUẦN TỰ & THIẾT LẬP SIÊU THAM SỐ v4.1-SSB
 
 Quy trình 4 bước kiểm định khoa học (Strict Sequential Protocol):
 1. **Bước 0: Kiểm tra tĩnh (Static Sanity Check - Chi phí 0s GPU):**
@@ -459,7 +542,7 @@ def run_training_v4_1_ssb(
     t0 = time.time()
 
     cmd = [
-        sys.executable, os.path.join(STAIR_DIR, 'main_stair_sbn_bsc_v4_1_ssb.py'),
+        sys.executable, '-u', os.path.join(STAIR_DIR, 'main_stair_sbn_bsc_v4_1_ssb.py'),
         '--config', yaml_config,
         '--root', data_root,
         '--dataset', dataset_name,
@@ -480,12 +563,15 @@ def run_training_v4_1_ssb(
     if torch.cuda.is_available():
         cmd.extend(['--device', 'cuda:0'])
 
+    proc_env = dict(os.environ, PYTHONUNBUFFERED='1')
+
     with open(log_path, 'w', encoding='utf-8') as logf:
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             cwd=STAIR_DIR,
+            env=proc_env,
             text=True,
             bufsize=1,
             universal_newlines=True
@@ -496,16 +582,29 @@ def run_training_v4_1_ssb(
             logf.write(line)
             logf.flush()
         proc.wait()
+        logf.flush()
+        try:
+            os.fsync(logf.fileno())
+        except Exception:
+            pass
 
     stop_evt.set()
     vram_thread.join(timeout=3)
     elapsed = time.time() - t0
 
     print("\\n" + "=" * 85)
+    log_sz = os.path.getsize(log_path) if os.path.exists(log_path) else 0
     if proc.returncode == 0:
         print(f"✅ [HOÀN TẤT] Huấn luyện {dataset_name} thành công trong {elapsed/60:.1f} phút ({elapsed:.0f}s)!")
+        print(f"  * Log file đã lưu : {log_path} ({log_sz/1024:.1f} KB)")
     else:
         print(f"❌ [THẤT BẠI] Quá trình huấn luyện kết thúc với mã lỗi: {proc.returncode}")
+        print(f"  * Log file : {log_path} ({log_sz} bytes)")
+        if os.path.exists(log_path) and log_sz > 0:
+            print("  --- 30 DÒNG CUỐI FILE LOG ---")
+            with open(log_path, 'r', encoding='utf-8', errors='ignore') as lf:
+                lines = lf.readlines()
+                print(''.join(lines[-30:]))
 
     best_ep, metrics = parse_best_metrics(log_path)
     print(f"  * Checkpoint tối ưu : Epoch {best_ep}")
@@ -830,7 +929,7 @@ print(f"📁 Đã lưu trữ toàn bộ dữ liệu thực nghiệm tại: {out_
     # =========================================================================
     # CELL 16: Summary Markdown
     # =========================================================================
-    cells.append(md_cell("""## 📋 5. Tổng kết Khoa học & Ý nghĩa Khóa Luận
+    cells.append(md_cell(r"""## 📋 5. Tổng kết Khoa học & Ý nghĩa Khóa Luận
 
 ### 💡 Những Đột Phá Khoa Học Đạt Được:
 1. **Khắc phục triệt để hiện tượng Suy đồi Cấu trúc (Structural Degradation)**: Thay vì cắt bỏ 71% số cạnh làm gãy vụn đồ thị như v4, v4.1-SSB bảo tồn 100% tô-pô kNN gốc, giữ nguyên bậc trung bình $6 - 8$, không có nút cô lập.

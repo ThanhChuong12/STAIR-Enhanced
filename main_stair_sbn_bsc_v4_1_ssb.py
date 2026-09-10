@@ -103,7 +103,7 @@ from optimizers.utils import Smoother
 
 from models.stair_sbn_bsc_v4_1_ssb import STAIR_BSC_Reweight_Engine
 
-freerec.declare(version='1.0.1')
+freerec.declare(version='0.8.5')
 
 # ============================================================================
 # Configuration
@@ -167,16 +167,51 @@ if getattr(cfg, 'config', None) is not None:
     if os.path.exists(config_path):
         import yaml
         with open(config_path, 'r', encoding='utf-8') as f:
-            yaml_cfg = yaml.safe_load(f)
-        if yaml_cfg:
-            for key, val in yaml_cfg.items():
-                norm_key = key.replace('-', '_')
+            yaml_cfg = yaml.safe_load(f) or {}
+
+        # Thu thập các tham số được truyền trực tiếp từ CLI để ưu tiên cao nhất (CLI > YAML > Defaults)
+        cli_specified = set()
+        for a in sys.argv[1:]:
+            if a.startswith('--'):
+                clean_a = a.lstrip('-').split('=')[0].replace('-', '_').lower()
+                cli_specified.add(clean_a)
+                if clean_a.startswith('ssb_'):
+                    cli_specified.add(clean_a[4:])
+                else:
+                    cli_specified.add(f"ssb_{clean_a}")
+
+        for raw_key, val in yaml_cfg.items():
+            norm_key = raw_key.replace('-', '_').lower()
+
+            if norm_key in cli_specified or f"ssb_{norm_key}" in cli_specified:
+                print(f"[Config] Giữ nguyên giá trị CLI cho '{norm_key}' (không bị YAML ghi đè)")
+                continue
+
+            matched = False
+            if hasattr(cfg, norm_key):
                 setattr(cfg, norm_key, val)
-                if '-' in key:
-                    setattr(cfg, key, val)
+                matched = True
+            elif hasattr(cfg, f"ssb_{norm_key}"):
+                setattr(cfg, f"ssb_{norm_key}", val)
+                matched = True
+            elif norm_key.startswith("ssb_") and hasattr(cfg, norm_key[4:]):
+                setattr(cfg, norm_key[4:], val)
+                matched = True
+            elif hasattr(cfg, raw_key):
+                setattr(cfg, raw_key, val)
+                matched = True
+
+            if matched:
+                print(f"[Config] Nạp {norm_key} = {val} từ YAML")
+            else:
+                setattr(cfg, norm_key, val)
                 print(f"[Config] Nạp {norm_key} = {val} từ YAML")
     else:
         print(f"[Config Cảnh báo] Không tìm thấy file config: {config_path}")
+
+# Đảm bảo cfg.root luôn là đường dẫn tuyệt đối chuẩn xác
+if hasattr(cfg, 'root') and cfg.root:
+    cfg.root = os.path.abspath(cfg.root)
 
 cfg.mfiles = cfg.mfiles.split(',')
 cfg.num_neighbors = list(map(int, cfg.num_neighbors.split('-')))
@@ -437,7 +472,41 @@ def main():
     print(f"   * Trọng số chặn : [{cfg.ssb_min_weight}, {cfg.ssb_max_weight}]")
     print("=" * 80)
 
-    dataset = freerec.data.datasets.RecDataSet(cfg.root, cfg.dataset)
+    # Robust auto-bridge for FreeRec:
+    # FreeRec expects dataset in os.path.join(cfg.root, "Processed", cfg.dataset).
+    # If it is located in cfg.root/{cfg.dataset} or any candidate location,
+    # symlink or copy it so RecDataSet finds it immediately without FileNotFoundError.
+    processed_dir = os.path.join(cfg.root, "Processed", cfg.dataset)
+    if not os.path.exists(processed_dir) or not os.listdir(processed_dir):
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        candidates = [
+            os.path.join(cfg.root, cfg.dataset),
+            os.path.join("/kaggle/data", cfg.dataset),
+            os.path.join("/kaggle/data/Processed", cfg.dataset),
+            os.path.join("/kaggle/working/STAIR-Enhanced/data", cfg.dataset),
+            os.path.join("/kaggle/working/STAIR-Enhanced/data/Processed", cfg.dataset),
+            os.path.join(script_dir, "data", cfg.dataset),
+            os.path.join(script_dir, "data", "Processed", cfg.dataset),
+            os.path.join("data", cfg.dataset),
+            os.path.join("data/Processed", cfg.dataset),
+        ]
+        for cand in candidates:
+            if os.path.exists(cand) and os.path.isdir(cand) and os.path.abspath(cand) != os.path.abspath(processed_dir) and len(os.listdir(cand)) > 0:
+                os.makedirs(os.path.dirname(processed_dir), exist_ok=True)
+                try:
+                    os.symlink(cand, processed_dir)
+                    print(f"[DataSet] >>> Auto-bridged symlink: {cand} -> {processed_dir}")
+                except Exception:
+                    import shutil
+                    shutil.copytree(cand, processed_dir, dirs_exist_ok=True)
+                    print(f"[DataSet] >>> Auto-bridged copied: {cand} -> {processed_dir}")
+                break
+
+    try:
+        dataset = getattr(freerec.data.datasets, cfg.dataset)(root=cfg.root)
+    except AttributeError:
+        dataset = freerec.data.datasets.RecDataSet(cfg.root, cfg.dataset)
+
     model = STAIR_SBN_BSC_v4_1_SSB(dataset).to(cfg.device)
 
     # Khởi tạo AdamWSEvo optimizer kèm Smoother

@@ -91,7 +91,7 @@ from optimizers.utils import Smoother
 from models.stair_sbn_bsc_v4 import SBN_BSC_Preprocessor
 from models.stair_sbn_bsc_v4_utils import print_graph_stats
 
-freerec.declare(version='1.0.1')
+freerec.declare(version='0.8.5')
 
 # ============================================================================
 # Configuration
@@ -200,6 +200,10 @@ if getattr(cfg, 'config', None) is not None:
                 print(f"[Config] Đặt giá trị mới {norm_key} = {val} từ YAML")
     else:
         print(f"[Config Cảnh báo] Không tìm thấy file config: {config_path}")
+
+# Đảm bảo cfg.root luôn là đường dẫn tuyệt đối chuẩn xác
+if hasattr(cfg, 'root') and cfg.root:
+    cfg.root = os.path.abspath(cfg.root)
 
 cfg.mfiles = cfg.mfiles.split(',')
 cfg.num_neighbors = list(map(int, cfg.num_neighbors.split('-')))
@@ -528,6 +532,36 @@ class CoachForSTAIR_SBN_BSC_v4(freerec.launcher.Coach):
 # ============================================================================
 
 def main():
+
+    # Robust auto-bridge for FreeRec:
+    # FreeRec expects dataset in os.path.join(cfg.root, "Processed", cfg.dataset).
+    # If it is located in cfg.root/{cfg.dataset} or any candidate location,
+    # symlink or copy it so RecDataSet finds it immediately without FileNotFoundError.
+    processed_dir = os.path.join(cfg.root, "Processed", cfg.dataset)
+    if not os.path.exists(processed_dir) or not os.listdir(processed_dir):
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        candidates = [
+            os.path.join(cfg.root, cfg.dataset),
+            os.path.join("/kaggle/data", cfg.dataset),
+            os.path.join("/kaggle/data/Processed", cfg.dataset),
+            os.path.join("/kaggle/working/STAIR-Enhanced/data", cfg.dataset),
+            os.path.join("/kaggle/working/STAIR-Enhanced/data/Processed", cfg.dataset),
+            os.path.join(script_dir, "data", cfg.dataset),
+            os.path.join(script_dir, "data", "Processed", cfg.dataset),
+            os.path.join("data", cfg.dataset),
+            os.path.join("data/Processed", cfg.dataset),
+        ]
+        for cand in candidates:
+            if os.path.exists(cand) and os.path.isdir(cand) and os.path.abspath(cand) != os.path.abspath(processed_dir) and len(os.listdir(cand)) > 0:
+                os.makedirs(os.path.dirname(processed_dir), exist_ok=True)
+                try:
+                    os.symlink(cand, processed_dir)
+                    print(f"[DataSet] >>> Auto-bridged symlink: {cand} -> {processed_dir}")
+                except Exception:
+                    import shutil
+                    shutil.copytree(cand, processed_dir, dirs_exist_ok=True)
+                    print(f"[DataSet] >>> Auto-bridged copied: {cand} -> {processed_dir}")
+                break
 
     try:
         dataset = getattr(freerec.data.datasets, cfg.dataset)(root=cfg.root)
