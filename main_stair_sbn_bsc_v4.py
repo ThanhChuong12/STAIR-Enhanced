@@ -140,13 +140,29 @@ if getattr(cfg, 'config', None) is not None:
 
     if os.path.exists(config_path):
         import yaml
+        import sys
         print(f"[Config] Nạp cấu hình siêu tham số từ YAML: {config_path}")
         with open(config_path, 'r', encoding='utf-8') as f:
             yaml_cfg = yaml.safe_load(f) or {}
 
+        # Thu thập các tham số được truyền trực tiếp từ CLI để ưu tiên cao nhất (CLI > YAML > Defaults)
+        cli_specified = set()
+        for a in sys.argv[1:]:
+            if a.startswith('--'):
+                clean_a = a.lstrip('-').split('=')[0].replace('-', '_').lower()
+                cli_specified.add(clean_a)
+                if clean_a.startswith('sbn_'):
+                    cli_specified.add(clean_a[4:])
+                else:
+                    cli_specified.add(f"sbn_{clean_a}")
+
         for raw_key, val in yaml_cfg.items():
             # Canonical normalization: convert kebab-case and uppercase to snake_case
             norm_key = raw_key.replace('-', '_').lower()
+
+            if norm_key in cli_specified or f"sbn_{norm_key}" in cli_specified:
+                print(f"[Config] Giữ nguyên giá trị CLI cho '{norm_key}' (không bị YAML ghi đè)")
+                continue
 
             matched = False
             # 1. Exact canonical match (e.g. sbn_tau_text)
