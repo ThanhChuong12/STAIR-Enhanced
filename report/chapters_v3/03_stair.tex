@@ -1,81 +1,5 @@
 \section{STAIR: Manipulating Collaborative and Multimodal Information}
 
-\subsection{Kết quả tái lập thực nghiệm gốc}
-\label{sec:stair_reproduction}
-
-\subsubsection{Lý do thực hiện tái lập}
-
-Trước khi thực hiện các phương án cải tiến, nhóm nhận thấy quá trình tái lập baseline ban đầu cần được chuẩn hóa đồng bộ về tiêu chuẩn lựa chọn checkpoint tốt nhất. Cụ thể, tiêu chuẩn lựa chọn checkpoint trên tập validation cần được thống nhất là chỉ số NDCG@20, đồng thời theo dõi đầy đủ bốn chỉ số gồm Recall@10, Recall@20, NDCG@10 và NDCG@20. Việc chạy lại toàn bộ thực nghiệm gốc của STAIR nhằm thiết lập một hệ thống số liệu chuẩn xác, làm nền tảng đối sánh tin cậy cho các cải tiến tiếp theo.
-
-\subsubsection{Thiết lập thực nghiệm}
-
-Quá trình tái lập được thực hiện trên ba tập dữ liệu Amazon2014 gồm Baby, Sports và Electronics, với thời lượng huấn luyện tối đa 500 epoch. Checkpoint tốt nhất được xác định tại thời điểm đạt giá trị NDCG@20 cao nhất trên tập validation, sau đó mô hình tại checkpoint này được đánh giá trên tập test. Toàn bộ số liệu công bố trong phần này đều là kết quả trên tập test tại checkpoint đã chọn.
-
-\subsubsection{Kết quả so sánh với paper gốc}
-
-Bảng~\ref{tab:stair_reproduction} trình bày kết quả tái lập trên ba tập dữ liệu, đối chiếu với số liệu được công bố trong Table 2 của bài báo STAIR.
-
-\renewcommand{\arraystretch}{1.15}
-\begingroup
-\footnotesize
-\setlength{\tabcolsep}{5pt}
-\begin{longtable}{%
-    >{\raggedright\arraybackslash}p{2.0cm}
-    >{\centering\arraybackslash}p{1.8cm}
-    >{\centering\arraybackslash}p{1.9cm}
-    >{\centering\arraybackslash}p{1.9cm}
-    >{\centering\arraybackslash}p{1.9cm}}
-
-    \caption{Kết quả tái lập thực nghiệm STAIR so với paper gốc trên ba tập dữ liệu.}
-    \label{tab:stair_reproduction} \\
-    \hline
-    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{Kết quả tái lập} & \textbf{Paper (Table 2)} & \textbf{Chênh lệch} \\
-    \hline
-    \endfirsthead
-    \multicolumn{5}{c}{{\bfseries Bảng \thetable\ (tiếp theo)}} \\
-    \hline
-    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{Kết quả tái lập} & \textbf{Paper (Table 2)} & \textbf{Chênh lệch} \\
-    \hline
-    \endhead
-    \midrule
-    \multicolumn{5}{r}{\textit{Tiếp tục ở trang sau...}} \\
-    \endfoot
-    \hline
-    \endlastfoot
-
-    Baby & Recall@10 & 0.0674 & 0.0674 & $0.00\%$ \\
-    \midrule
-    {(best epoch 455/500)} & Recall@20 & 0.1042 & 0.1042 & $0.00\%$ \\
-    \midrule
-    & NDCG@10   & 0.0359 & 0.0359 & $0.00\%$ \\
-    \midrule
-    & NDCG@20   & 0.0454 & 0.0453 & $+0.22\%$ \\
-    \hline
-    Sports & Recall@10 & 0.0743 & 0.0743 & $0.00\%$ \\
-    \midrule
-    {(best epoch 500/500)} & Recall@20 & 0.1111 & 0.1117 & $-0.54\%$ \\
-    \midrule
-    & NDCG@10   & 0.0405 & 0.0407 & $-0.49\%$ \\
-    \midrule
-    & NDCG@20   & 0.0500 & 0.0503 & $-0.60\%$ \\
-    \hline
-    Electronics & Recall@10 & 0.0442 & 0.0440 & $+0.45\%$ \\
-    \midrule
-    {(best epoch 490/500)} & Recall@20 & 0.0665 & 0.0663 & $+0.30\%$ \\
-    \midrule
-    & NDCG@10   & 0.0246 & 0.0245 & $+0.41\%$ \\
-    \midrule
-    & NDCG@20   & 0.0303 & 0.0302 & $+0.33\%$ \\
-    \hline
-\end{longtable}
-\endgroup
-
-Trên cả ba tập dữ liệu với đầy đủ mười hai giá trị đo lường, chênh lệch tuyệt đối so với kết quả bài báo đều nhỏ hơn 1\%. Mức sai lệch này nằm trong phạm vi dao động ngẫu nhiên thông thường giữa các lần chạy thực nghiệm độc lập.
-
-\subsubsection{Kết luận}
-
-Kết quả tái lập cho thấy mức độ tương đồng cao với bài báo gốc. Độ lệch nhỏ ghi nhận trên tập Sports xuất phát từ đặc tính hội tụ tiệm cận ở những epoch cuối, không phản ánh sai lệch về cấu hình. Quá trình kiểm tra này xác nhận hệ thống thực nghiệm hoạt động chuẩn xác và sẵn sàng làm baseline cho các nghiên cứu cải tiến tiếp theo.
-
 \subsection{Kết quả thực nghiệm cải tiến 1: Stepwise Spectral-Refined Contrastive Learning (STAIR-SRE)}
 \label{sec:stair_sre}
 
@@ -93,6 +17,7 @@ Khi tìm kiếm giải pháp nâng cao khả năng học biểu diễn, việc c
 Để giải quyết các vấn đề trên, mô hình STAIR-SRE được thiết kế với bốn thành phần kỹ thuật phối hợp chặt chẽ:
 
 \noindent\textcolor{lightblue}{\textbf{1. Zero-rotation Diagonal Spectral Projector.}}
+
 Để thích ứng phương sai của từng dải tần số mà không làm xoay hệ trục tọa độ, mô hình sử dụng toán tử nhân Hadamard với vector trọng số đường chéo:
 \begin{equation}
 \mathbf{e}_i^{(0)} = \mathbf{e}_{i}^{\text{svd}} \odot \mathbf{w}
@@ -100,9 +25,11 @@ Khi tìm kiếm giải pháp nâng cao khả năng học biểu diễn, việc c
 trong đó $\mathbf{w} \in \mathbb{R}^D$ là vector tham số học được, khởi tạo bằng vector $\mathbf{1}$. Ma trận Jacobian của phép chiếu là ma trận đường chéo $\mathbf{J} = \text{diag}(\mathbf{w})$ với tất cả các phần tử ngoài đường chéo bằng 0, đảm bảo tính độc lập giữa các chiều tọa độ được bảo toàn tuyệt đối.
 
 \noindent\textcolor{lightblue}{\textbf{2. Stepwise Contrastive Learning trên các tầng trung gian.}}
+
 Thay vì tạo góc nhìn nhân tạo bằng cách xóa cạnh hoặc ẩn node trên đồ thị, mô hình trích xuất trực tiếp các biểu diễn trung gian từ Forward Stepwise Convolution. Tầng 0 đại diện cho thông tin cục bộ và tầng 1 đại diện cho thông tin láng giềng 1-hop, tạo thành các góc nhìn tự nhiên không phát sinh chi phí tính toán bổ sung.
 
 \noindent\textcolor{lightblue}{\textbf{3. Soft Spectral Swapping.}}
+
 Mô hình tạo mẫu hard negative bằng cách kết hợp có chọn lọc giữa các chiều đặc trưng. Dựa vào vector phân bổ phổ $\boldsymbol{\beta} \in \mathbb{R}^D$ của STAIR, xác suất hoán đổi được xác định theo công thức:
 \begin{equation}
 \mathbf{p}_{\text{swap}} = 1.0 - \boldsymbol{\beta}
@@ -113,6 +40,7 @@ Tại chiều tần số thấp ($d \to 0$), $\beta \approx 0.9$ nên xác suấ
 \end{equation}
 
 \noindent\textcolor{lightblue}{\textbf{4. Adaptive False Negative Attenuation.}}
+
 Để xử lý các false negative trong mini-batch mà không làm gián đoạn đạo hàm bằng ngưỡng nhị phân cứng, mô hình tính toán độ tương đồng giữa centroid sở thích của người dùng $\mathbf{p}_u$ và vector item $\mathbf{m}_k$:
 \begin{equation}
 W_{u, k} = \frac{\mathbf{p}_u \cdot \mathbf{m}_k}{\|\mathbf{p}_u\|_2 \|\mathbf{m}_k\|_2}
@@ -216,7 +144,7 @@ Cấu hình thực nghiệm của mô hình được thiết lập đồng bộ 
     \item Tiêu chí đánh giá: Checkpoint tốt nhất được chọn dựa trên giá trị NDCG@20 cao nhất trên tập validation, sau đó đánh giá trên tập test với bốn chỉ số Recall@10, Recall@20, NDCG@10 và NDCG@20.
 \end{itemize}
 
-\subsubsection{Kết quả thực nghiệm phiên bản v1 và phân tích xung đột gradient}
+\subsubsection{Kết quả thực nghiệm phiên bản v1}
 
 Bảng~\ref{tab:stair_sre_v1_results} trình bày kết quả thực nghiệm của phiên bản STAIR-SRE v1 đối chiếu trực tiếp với STAIR Baseline trên hai tập dữ liệu Amazon Baby và Amazon Sports.
 
@@ -270,6 +198,7 @@ Bảng~\ref{tab:stair_sre_v1_results} trình bày kết quả thực nghiệm c�
 Số liệu thực nghiệm cho thấy phiên bản v1 chưa đạt được mức hiệu năng mong muốn, ghi nhận mức giảm từ $-5.19\%$ đến $-7.49\%$ trên Baby và từ $-7.38\%$ đến $-8.88\%$ trên Sports. Phân tích toán học và cơ chế vận hành của mô hình chỉ ra ba nguyên nhân kỹ thuật chính:
 
 \noindent\textcolor{lightblue}{\textbf{1. Hiện tượng xung đột gradient ký sinh.}}
+
 Trong phiên bản v1, mẫu hard negative được tạo bằng cách hoán đổi giữa sản phẩm dương $i^+$ và sản phẩm dịch vòng trong batch:
 \begin{equation}
 \mathbf{i}_{\text{hard}} = \mathbf{i}^+ \odot (\mathbf{1} - \mathbf{m}) + \mathbf{i}_{\text{rolled}} \odot \mathbf{m}
@@ -291,16 +220,19 @@ Trong khi đó, gradient của hàm InfoNCE đẩy người dùng ra xa mẫu ha
 Vì $\mathbf{i}_{\text{hard}}$ chứa trực tiếp thành phần của $\mathbf{i}^+$, lực đẩy từ InfoNCE đã triệt tiêu một phần đáng kể lực kéo của hàm BPR. Sự giằng co này làm giảm độ sắc nét của không gian embedding và làm suy giảm khả năng phân biệt thứ hạng.
 
 \noindent\textcolor{lightblue}{\textbf{2. Suy giảm tính đồng nhất do attenuation không ngưỡng.}}
+
 Trong v1, hệ số suy giảm $(1 - W)$ được áp dụng trực tiếp lên toàn bộ các mẫu âm trong batch mà không có ngưỡng chọn lọc. Thống kê trên dữ liệu thực tế cho thấy $98.9\%$ các cặp sản phẩm trong batch có độ tương đồng $W \in [0.0, 0.35]$, tức là các true negative hoàn toàn không liên quan đến sở thích người dùng. Việc nhân thêm hệ số $(1 - W)$ đã làm suy yếu lực đẩy cần thiết đối với $98.9\%$ mẫu âm này, làm giảm tính đồng nhất phân bố trên siêu mặt cầu đơn vị.
 
 \noindent\textcolor{lightblue}{\textbf{3. Hiện tượng bão hòa loss sớm trên đồ thị siêu thưa.}}
+
 Trên tập Sports có độ thưa rất cao ($99.95\%$), khoảng cách giữa các node trên đồ thị rất lớn. Giá trị nhiệt độ $\tau = 0.20$ quá nhọn khiến xác suất của các mẫu âm ngẫu nhiên nhanh chóng tiệm cận 0, dẫn đến training loss rơi tự do về mức $0.0045$ tại epoch 150. Khi loss bão hòa, gradient của contrastive learning triệt tiêu gần như hoàn toàn, khiến mô hình đạt đỉnh sớm tại epoch 155 rồi suy giảm dần do overfitting.
 
-\subsubsection{Cải tiến phiên bản v1.1 và phục hồi hiệu năng}
+\subsubsection{Cải tiến phiên bản v1.1}
 
 Dựa trên các phân tích nguyên nhân ở phiên bản v1, phiên bản STAIR-SRE v1.1 được nâng cấp với bốn điều chỉnh kỹ thuật:
 
 \noindent\textcolor{lightblue}{\textbf{1. Cross-Negative Spectral Swapping (CNSS).}}
+
 Để loại bỏ hoàn toàn sự hiện diện của $\mathbf{i}^+$ trong mẫu hard negative, cơ chế hoán đổi được chuyển sang thực hiện giữa hai mẫu âm độc lập trong mini-batch:
 \begin{equation}
 \mathbf{i}_{\text{hard}} = \mathbf{i}_{\text{roll1}} \odot (\mathbf{1} - \mathbf{m}) + \mathbf{i}_{\text{roll2}} \odot \mathbf{m}
@@ -308,6 +240,7 @@ Dựa trên các phân tích nguyên nhân ở phiên bản v1, phiên bản STA
 trong đó $\mathbf{i}_{\text{roll1}}$ và $\mathbf{i}_{\text{roll2}}$ lần lượt là các vector thu được qua phép dịch vòng 1 và 2 vị trí trong batch. Cơ chế này đưa độ phơi nhiễm đối với sản phẩm dương $\mathbf{i}^+$ về đúng 0\%, triệt tiêu hoàn toàn xung đột gradient với hàm BPR.
 
 \noindent\textcolor{lightblue}{\textbf{2. Thresholded Smooth False Negative Attenuation.}}
+
 Mô hình tái lập ngưỡng chọn lọc $\tau_{\text{atten}} = 0.35$. Các mẫu âm có độ tương đồng $W_{u, k} \le 0.35$ giữ nguyên $100\%$ lực đẩy, bảo toàn tính đồng nhất trên siêu mặt cầu. Chỉ những mẫu vượt ngưỡng $0.35$ mới bị làm suy giảm lực đẩy theo công thức:
 \begin{equation}
 \alpha_{u, k} = \begin{cases} 
@@ -317,6 +250,7 @@ Mô hình tái lập ngưỡng chọn lọc $\tau_{\text{atten}} = 0.35$. Các m
 \end{equation}
 
 \noindent\textcolor{lightblue}{\textbf{3. L2 Anchoring Regularization cho Projector.}}
+
 Để ngăn vector trọng số $\mathbf{w}$ bị trôi dạt quá xa khỏi giá trị ban đầu, mô hình bổ sung số hạng điều hòa vào hàm mục tiêu:
 \begin{equation}
 \mathcal{L}_{\text{reg\_w}} = \lambda_w \|\mathbf{w} - \mathbf{1}\|_2^2
@@ -324,6 +258,7 @@ Mô hình tái lập ngưỡng chọn lọc $\tau_{\text{atten}} = 0.35$. Các m
 với $\lambda_w = 10^{-4}$, đồng thời thiết lập tốc độ học riêng $\eta_w = 0.1 \times \text{lr}$ cho tham số này.
 
 \noindent\textcolor{lightblue}{\textbf{4. Điều chỉnh nhiệt độ và trọng số loss trên tập Sports.}}
+
 Trên đồ thị siêu thưa Sports, nhiệt độ được nâng lên $\tau = 0.30$ để làm mềm phân phối softmax, và trọng số được giảm xuống $\lambda_{\text{sre}} = 5 \times 10^{-5}$ nhằm duy trì dòng chảy gradient ổn định trong suốt 500 epoch.
 
 Bảng~\ref{tab:stair_sre_v1_1_results} trình bày kết quả thực nghiệm của phiên bản v1.1 so với phiên bản v1 và STAIR Baseline trên cả hai tập dữ liệu.
@@ -438,19 +373,14 @@ Bảng~\ref{tab:stair_sre_trajectories} theo dõi chi tiết diễn biến của
 
 Phân tích tiến trình cho thấy trong phiên bản v1.1, việc nâng nhiệt độ $\tau = 0.30$ và điều chỉnh trọng số $\lambda_{\text{sre}} = 5 \times 10^{-5}$ đã giữ giá trị loss ổn định ở mức $0.0242$ (cao hơn 5.3 lần so với mức $0.0045$ của v1). Dòng gradient được duy trì liên tục, kéo dài điểm hội tụ tối ưu từ epoch 155 lên tận epoch 415, loại bỏ hiện tượng đạt đỉnh sớm và suy thoái dài hạn.
 
-\subsubsection{Đánh giá chi phí tài nguyên và hướng phát triển tiếp theo}
-
-Về mặt tiêu thụ tài nguyên phần cứng, mô hình STAIR-SRE thể hiện mức độ hiệu quả cao khi chạy thực nghiệm trên GPU NVIDIA T4:
+\subsubsection{Đánh giá chi phí tài nguyên và bài học định hướng}
+Về mặt tiêu thụ phần cứng, mô hình STAIR-SRE đạt hiệu năng tính toán cao và ổn định trên GPU NVIDIA Tesla T4:
 \begin{itemize}[leftmargin=*]
-    \item Trên tập Amazon Baby: Thời gian huấn luyện 500 epoch là 24.3 phút (trung bình 2.65 giây mỗi epoch), mức tiêu thụ VRAM đỉnh là 785 MB, chiếm khoảng 5.1\% dung lượng bộ nhớ GPU.
-    \item Trên tập Amazon Sports: Thời gian huấn luyện 500 epoch là 66.1 phút (trung bình 6.15 giây mỗi epoch), mức tiêu thụ VRAM đỉnh là 995 MB, chiếm khoảng 6.5\% dung lượng bộ nhớ GPU.
-    \item Quá trình huấn luyện trên cả hai tập dữ liệu không ghi nhận hiện tượng tràn bộ nhớ hay rò rỉ tài nguyên, cho thấy các phép tính ma trận và lấy mẫu ngẫu nhiên đã được vector hóa hiệu quả.
+    \item \textbf{Amazon Baby}: Thời gian huấn luyện 500 epochs là 24.3 phút (2.65s/epoch), mức tiêu thụ VRAM đỉnh là 785 MB (chiếm 5.1\% GPU).
+    \item \textbf{Amazon Sports}: Thời gian huấn luyện 500 epochs là 66.1 phút (6.15s/epoch), mức tiêu thụ VRAM đỉnh là 995 MB (chiếm 6.5\% GPU).
+    \item Toàn bộ quá trình huấn luyện diễn ra ổn định tuyệt đối, không xảy ra rò rỉ bộ nhớ nhờ vector hóa triệt để.
 \end{itemize}
+\noindent\textbf{Các bài học rút ra từ thực nghiệm}: Thực nghiệm STAIR-SRE v1.1 chứng minh rằng việc loại bỏ xung đột gradient ký sinh và làm mềm nhiệt độ là điều kiện tiên quyết để ổn định tương phản trên đồ thị thưa. Tuy nhiên, việc mô hình vẫn tiệm cận chứ chưa thể vượt qua Baseline (còn cách $-1.17\%$ Recall@20 trên Sports và $-3.74\%$ trên Baby) phản ánh một giới hạn bản chất: Việc tạo mẫu âm cứng nhân tạo bằng hoán đổi đặc trưng (swapping) và áp dụng tương phản trực tiếp lên embedding node vẫn tạo ra áp lực cạnh tranh không gian biểu diễn với mục tiêu xếp hạng BPR. Đây chính là tiền đề thực nghiệm thúc đẩy nhóm tác giả chuyển hướng sang khai thác không gian tương phản đồ thị thuần túy và tự nhiên ở các phiên bản tiếp theo.
 
-Kết quả thực nghiệm của STAIR-SRE v1.1 đã giải quyết được vấn đề xung đột gradient ký sinh và phục hồi phần lớn hiệu năng bị suy giảm ở phiên bản v1, đặc biệt là trên tập dữ liệu siêu thưa Sports. Mặc dù vậy, hiệu năng tổng thể của mô hình vẫn còn thấp hơn nhẹ so với Baseline (chênh lệch $-1.17\%$ Recall@20 trên Sports và $-3.74\%$ trên Baby), do đó chưa đạt tiêu chuẩn để công nhận là một cải tiến vượt trội hoàn chỉnh.
 
-Các bài học rút ra từ thực nghiệm cung cấp cơ sở quan trọng cho định hướng nghiên cứu tiếp theo:
-\begin{itemize}[leftmargin=*]
-    \item Trên các đồ thị có mật độ tương đối dày hơn như Baby, trọng số contrastive learning cần được điều chỉnh ở mức nhỏ hơn (khoảng $2 \times 10^{-5} \sim 3 \times 10^{-5}$) hoặc áp dụng cơ chế contrastive warm-up (chỉ kích hoạt hàm mất mát tương phản sau khi BPR đã định hình không gian biểu diễn cơ sở trong 50 epoch đầu).
-    \item Tiếp tục nghiên cứu cơ chế lấy mẫu mẫu âm thích ứng theo độ cong phổ và chưng cất thông tin tương hỗ nhằm khai thác sâu hơn tín hiệu đa phương thức mà không gây áp lực cạnh tranh không gian biểu diễn với mục tiêu xếp hạng chính.
-\end{itemize}
+\clearpage
