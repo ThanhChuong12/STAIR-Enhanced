@@ -99,14 +99,6 @@ freerec.declare(version='1.0.1')
 
 cfg = freerec.parser.Parser()
 
-# --- General / Config Override ---
-cfg.add_argument("--config", type=str, default=None,
-                 help="Path to YAML config file overriding defaults")
-cfg.add_argument("--device", type=str, default=None,
-                 help="Computation device (e.g. cuda:0, cpu)")
-cfg.add_argument("--batch-size", "--batch_size", dest="batch_size", type=int, default=1024,
-                 help="Batch size for training")
-
 # --- STAIR Baseline params ---
 cfg.add_argument("--embedding-dim", type=int, default=64)
 cfg.add_argument("--num-layers", type=int, default=3,
@@ -118,18 +110,18 @@ cfg.add_argument("--num-neighbors", type=str, default='5-1',
                  help="for kNN graph")
 cfg.add_argument("--gamma", type=float, default=0.2)
 
-# --- SBN-BSC v4 params (support both --sbn-*, dash, and underscore naming) ---
-cfg.add_argument("--sbn-tau-text", "--tau-text", "--tau_text", dest="sbn_tau_text", type=float, default=0.15,
+# --- SBN-BSC v4 params (support --sbn-*, --sbn_*, and short versions) ---
+cfg.add_argument("--sbn-tau-text", "--tau-text", "--tau_text", "--sbn_tau_text", dest="sbn_tau_text", type=float, default=0.15,
                  help="Text similarity threshold for modal agreement [0.05, 0.30]")
-cfg.add_argument("--sbn-tau-visual", "--tau-visual", "--tau_visual", dest="sbn_tau_visual", type=float, default=0.10,
+cfg.add_argument("--sbn-tau-visual", "--tau-visual", "--tau_visual", "--sbn_tau_visual", dest="sbn_tau_visual", type=float, default=0.10,
                  help="Visual similarity threshold for modal agreement [0.05, 0.25]")
-cfg.add_argument("--sbn-modal-discount", "--modal-discount", "--modal_discount", dest="sbn_modal_discount", type=float, default=0.50,
+cfg.add_argument("--sbn-modal-discount", "--modal-discount", "--modal_discount", "--sbn_modal_discount", dest="sbn_modal_discount", type=float, default=0.50,
                  help="Modal discount factor rho [0.30, 0.80]")
-cfg.add_argument("--sbn-prune-lambda", "--prune-lambda", "--prune_lambda", dest="sbn_prune_lambda", type=float, default=0.50,
+cfg.add_argument("--sbn-prune-lambda", "--prune-lambda", "--prune_lambda", "--sbn_prune_lambda", dest="sbn_prune_lambda", type=float, default=0.50,
                  help="Adaptive pruning lambda multiplier [0.30, 0.90]")
-cfg.add_argument("--sbn-min-edge-threshold", "--min-edge-threshold", "--min_edge_threshold", dest="sbn_min_edge_threshold", type=float, default=0.05,
+cfg.add_argument("--sbn-min-edge-threshold", "--min-edge-threshold", "--min_edge_threshold", "--sbn_min_edge_threshold", dest="sbn_min_edge_threshold", type=float, default=0.05,
                  help="Minimum edge quality threshold tau_min [0.01, 0.10]")
-cfg.add_argument("--sbn-ablation-config", "--ablation-config", "--ablation_config", dest="sbn_ablation_config", type=str, default="A6_full_sbn_bsc_v4",
+cfg.add_argument("--sbn-ablation-config", "--ablation-config", "--ablation_config", "--sbn_ablation_config", dest="sbn_ablation_config", type=str, default="A6_full_sbn_bsc_v4",
                  help="Ablation configuration selector (A0_baseline -> A6_full_sbn_bsc_v4)")
 
 cfg.set_defaults(
