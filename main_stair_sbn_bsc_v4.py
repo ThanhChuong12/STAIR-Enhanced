@@ -63,6 +63,25 @@ except (ImportError, ModuleNotFoundError):
         sys.modules['torchdata.datapipes.iter'] = iter_mod
         sys.modules['torchdata.datapipes.map'] = map_mod
 
+# Idempotent DataPipe registration patch for PyTorch 2.x / FreeRec reload safety
+try:
+    from torch.utils.data.datapipes.datapipe import IterDataPipe as _NativeIterDP, MapDataPipe as _NativeMapDP
+    for _cls in [_NativeIterDP, _NativeMapDP]:
+        if hasattr(_cls, 'register_datapipe_as_function'):
+            _orig_reg = _cls.register_datapipe_as_function
+            def _make_safe_reg(orig_fn):
+                def _safe_reg(cls, function_name, cls_to_register, *args, **kwargs):
+                    if hasattr(cls, 'functions') and function_name in cls.functions:
+                        try:
+                            del cls.functions[function_name]
+                        except Exception:
+                            pass
+                    return orig_fn.__func__(cls, function_name, cls_to_register, *args, **kwargs)
+                return _safe_reg
+            _cls.register_datapipe_as_function = classmethod(_make_safe_reg(_orig_reg))
+except Exception:
+    pass
+
 import freerec
 
 from optimizers.Adam import AdamSEvo
