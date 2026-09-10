@@ -98,6 +98,7 @@ except Exception:
     pass
 
 import freerec
+from optimizers.Adam import AdamSEvo
 from optimizers.AdamW import AdamWSEvo
 from optimizers.utils import Smoother
 
@@ -400,67 +401,119 @@ class STAIR_SBN_BSC_v4_1_SSB(freerec.models.GenRecArch):
         ).to_sparse_csr()
         self.User.embeddings.weight.data.copy_(R_torch @ mfeats_combined)
 
-    def sure_trainpipe(self, batch_size: int):
-        return self.dataset.train().shuffled_pairs_source(
-        ).gen_train_sampling_neg_(
-            num_negatives=1
-        ).batch_(batch_size).tensor_()
-
     def encode(self) -> Tuple[torch.Tensor, torch.Tensor]:
         allEmbds = torch.cat(
             (self.User.embeddings.weight, self.Item.embeddings.weight), dim=0
         )
         features = allEmbds
-        features_list = [features]
-        for _ in range(self.num_layers):
-            features = self.Adj @ features
-            features_list.append(features)
+        smoothed = allEmbds
 
-        features = torch.stack(features_list, dim=0).mean(dim=0)
+        # FSC (Forward Stepwise Convolution)
+        beta = 1 - cfg.beta3
+        norm_correction = 1 - beta ** (self.num_layers + 1)
+        for _ in range(self.num_layers):
+            features = self.Adj @ features * beta
+            smoothed = smoothed + features
+        avgEmbds = smoothed.mul(1 - beta).div(norm_correction)
         userEmbds, itemEmbds = torch.split(
-            features, (self.User.count, self.Item.count), dim=0
+            avgEmbds, (self.User.count, self.Item.count)
         )
         return userEmbds, itemEmbds
 
-    def forward(self, user: torch.Tensor, pos_item: torch.Tensor, neg_item: torch.Tensor):
+    def fit(self, data: Dict[freerec.data.fields.Field, torch.Tensor]):
         userEmbds, itemEmbds = self.encode()
-        uEmbds = userEmbds[user]
-        posEmbds = itemEmbds[pos_item]
-        negEmbds = itemEmbds[neg_item]
+        users, positives, negatives = (
+            data[self.User], data[self.Item], data[self.INeg]
+        )
+        userEmbds = userEmbds[users]  # (B, 1, D)
+        iposEmbds = itemEmbds[positives]  # (B, 1, D)
+        inegEmbds = itemEmbds[negatives]  # (B, K, D)
 
-        pos_score = torch.mul(uEmbds, posEmbds).sum(dim=1)
-        neg_score = torch.mul(uEmbds, negEmbds).sum(dim=1)
+        rec_loss = self.criterion(
+            torch.einsum("BKD,BKD->BK", userEmbds, iposEmbds),
+            torch.einsum("BKD,BKD->BK", userEmbds, inegEmbds)
+        )
+        return rec_loss
 
-        bpr_loss = self.criterion(pos_score, neg_score)
-        return bpr_loss
-
-    def evaluate_(self):
+    def reset_ranking_buffers(self):
+        """This method will be executed before evaluation."""
         userEmbds, itemEmbds = self.encode()
-        return userEmbds, itemEmbds
+        self.ranking_buffer = dict()
+        self.ranking_buffer[self.User] = userEmbds.detach().clone()
+        self.ranking_buffer[self.Item] = itemEmbds.detach().clone()
+
+    def recommend_from_full(
+        self, data: Dict[freerec.data.fields.Field, torch.Tensor]
+    ):
+        userEmbds = self.ranking_buffer[self.User][data[self.User]]  # (B, 1, D)
+        itemEmbds = self.ranking_buffer[self.Item]
+        return torch.einsum("BKD,ND->BN", userEmbds, itemEmbds)
+
+    def recommend_from_pool(
+        self, data: Dict[freerec.data.fields.Field, torch.Tensor]
+    ):
+        userEmbds = self.ranking_buffer[self.User][data[self.User]]  # (B, 1, D)
+        itemEmbds = self.ranking_buffer[self.Item][data[self.IUnseen]]  # (B, 101, D)
+        return torch.einsum("BKD,BKD->BK", userEmbds, itemEmbds)
 
 
 # ============================================================================
-# Main Training Pipeline
+# Coach (Training Loop)
 # ============================================================================
 
-class Coach(freerec.launcher.Coach):
+class CoachForSTAIR_BSC_v4_1_SSB(freerec.launcher.Coach):
+
+    def set_optimizer(self):
+        if self.cfg.optimizer.lower() == 'sgd':
+            self.optimizer = torch.optim.SGD(
+                self.model.marked_params(), lr=self.cfg.lr,
+                momentum=self.cfg.momentum,
+                nesterov=self.cfg.nesterov,
+                weight_decay=self.cfg.weight_decay
+            )
+        elif self.cfg.optimizer.lower() == 'adam':
+            self.optimizer = torch.optim.Adam(
+                self.model.marked_params(), lr=self.cfg.lr,
+                betas=(self.cfg.beta1, self.cfg.beta2),
+                weight_decay=self.cfg.weight_decay
+            )
+        elif self.cfg.optimizer.lower() == 'adamw':
+            self.optimizer = torch.optim.AdamW(
+                self.model.marked_params(), lr=self.cfg.lr,
+                betas=(self.cfg.beta1, self.cfg.beta2),
+                weight_decay=self.cfg.weight_decay
+            )
+        elif self.cfg.optimizer.lower() == 'adamsevo':
+            self.optimizer = AdamSEvo(
+                self.model.marked_params(), lr=self.cfg.lr,
+                betas=(self.cfg.beta1, self.cfg.beta2),
+                weight_decay=self.cfg.weight_decay
+            )
+        elif self.cfg.optimizer.lower() == 'adamwsevo':
+            self.optimizer = AdamWSEvo(
+                self.model.marked_params(), lr=self.cfg.lr,
+                betas=(self.cfg.beta1, self.cfg.beta2),
+                weight_decay=self.cfg.weight_decay
+            )
+        else:
+            raise NotImplementedError(
+                f"Unexpected optimizer {self.cfg.optimizer} ..."
+            )
 
     def train_per_epoch(self, epoch: int):
-        self.model.train()
-        total_loss = 0.0
-        start_time = time.time()
+        for data in self.dataloader:
+            data = self.dict_to_device(data)
+            loss = self.model(data)
 
-        for batch in self.trainpipe:
-            user, pos_item, neg_item = [x.to(cfg.device) for x in batch]
             self.optimizer.zero_grad()
-            loss = self.model(user, pos_item, neg_item)
             loss.backward()
             self.optimizer.step()
-            total_loss += loss.item()
 
-        elapsed = time.time() - start_time
-        avg_loss = total_loss / len(self.trainpipe)
-        print(f"[Epoch {epoch:03d}/{cfg.epochs:03d}] Loss: {avg_loss:.4f} | Thời gian: {elapsed:.2f}s")
+            self.monitor(
+                loss.item(),
+                n=len(data[self.User]), reduction="mean",
+                mode='train', pool=['LOSS']
+            )
 
 
 def main():
@@ -507,23 +560,23 @@ def main():
     except AttributeError:
         dataset = freerec.data.datasets.RecDataSet(cfg.root, cfg.dataset)
 
-    model = STAIR_SBN_BSC_v4_1_SSB(dataset).to(cfg.device)
+    model = STAIR_SBN_BSC_v4_1_SSB(dataset)
 
-    # Khởi tạo AdamWSEvo optimizer kèm Smoother
-    optimizer = AdamWSEvo(
-        model.marked_params(),
-        lr=cfg.lr,
-        weight_decay=cfg.weight_decay,
-    )
+    trainpipe = model.sure_trainpipe(cfg.batch_size)
+    validpipe = model.sure_validpipe(cfg.ranking)
+    testpipe = model.sure_testpipe(cfg.ranking)
 
-    coach = Coach(
+    coach = CoachForSTAIR_BSC_v4_1_SSB(
         dataset=dataset,
+        trainpipe=trainpipe,
+        validpipe=validpipe,
+        testpipe=testpipe,
         model=model,
-        optimizer=optimizer,
-        cfg=cfg,
+        cfg=cfg
     )
     coach.fit()
 
 
 if __name__ == "__main__":
     main()
+
