@@ -1,0 +1,261 @@
+# BÁO CÁO PHÂN TÍCH KẾT QUẢ THỰC NGHIỆM GIAI ĐOẠN 3 — ĐỢT 4 (STAIR3-v4)
+# MÔ HÌNH STAIR-SBN-BSC v4 & CHIẾN LƯỢC CẢI TIẾN ĐỘT PHÁ STAIR-SBN-BSC v4.1
+### Báo Cáo Chuyên Sâu Kết Quả Huấn Luyện Amazon Baby & Amazon Sports, Giải Phẫu Tử Huyệt "Đói Cấu Trúc" (Structural Starvation), Phân Tích Động Lực Học Quá Khớp & Đề Xuất Kiến Trúc Khắc Phục v4.1 (Degree-Preserving Topology)
+
+---
+
+## 1. TỔNG QUAN QUẢN TRỊ & THÔNG ĐIỆP ĐIỀU HÀNH (EXECUTIVE SUMMARY)
+
+### 1.1 Tóm Tắt Thực Nghiệm Đợt 4 (v4: STAIR-SBN-BSC)
+Phiên bản **STAIR-SBN-BSC v4 (Structural Behavioral-Modal Denoising for BSC Smoother)** được thiết kế với mục tiêu cách mạng hóa khâu lan truyền ngược (Backward Stepwise Convolution) của STAIR:
+1. **Triết lý Zero Extra Training Time**: Chuyển toàn bộ quá trình thanh lọc nhiễu đồ thị sang pha tiền xử lý ngoại tuyến (Offline Precomputed Topology Denoising), không đưa thêm bất kỳ hàm mất mát phụ (auxiliary loss) hay tham số huấn luyện nào vào vòng lặp lan truyền xuôi/ngược.
+2. **Cơ chế hòa trộn đa phương thức & hành vi (SIGE + EVEN)**: Kết hợp độ tương đồng ngữ nghĩa văn bản - hình ảnh ($\tau_{text}=0.15, \tau_{vis}=0.10$) với độ đo tương đồng hành vi đồng mua Ochiai từ ma trận tương tác $R$.
+3. **Cắt tỉa tự thích ứng (Adaptive Pruning)**: Lọc bỏ các cạnh nhiễu dưới ngưỡng $\tau_{\text{prune}} = \max(\tau_{\min}, \mu_q + \lambda \sigma_q)$ với $\lambda = 0.50$, sau đó chuẩn hóa Laplacian $D^{-1/2} A_{\text{clean}} D^{-1/2}$ để nạp vào bộ tối ưu `AdamWSEvo`.
+
+Pipeline huấn luyện đã được triển khai hoàn chỉnh 500 epochs trên GPU NVIDIA Tesla T4 (Kaggle) trên 2 tập dữ liệu: **Amazon Baby** (160k tương tác, 7,050 items) và **Amazon Sports** (296k tương tác, 18,357 items).
+
+---
+
+### 1.2 Bảng Ma Trận Số Liệu Tổng Hợp Đối Soát (Audit Matrix) Qua Các Phiên Bản
+
+Dưới đây là bảng đối chiếu toàn diện hiệu năng của STAIR-SBN-BSC v4 so với mốc chuẩn đối chứng (STAIR Baseline), quán quân Giai đoạn 2 (v5), và phiên bản SOTA Giai đoạn 3 (v5+):
+
+#### Bảng 1: Kết quả kiểm thử trên Amazon Baby
+| Phiên Bản | Kiến Trúc Mô Hình | Recall@10 | Recall@20 | NDCG@10 | NDCG@20 | $\Delta$ Rec@20 vs BL | $\Delta$ Rec@20 vs v5 | VRAM Đỉnh | Thời Gian Huấn Luyện | Đánh Giá Khoa Học |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Gốc (Baseline)** | STAIR (MMRec Baseline) | **0.0674** | **0.1042** | **0.0359** | **0.0454** | *0.00%* | +1.46% | 780 MB | ~25 min | Chuẩn đối chứng gốc |
+| **GĐ2 — v5** | STAIR-NE-NLGCL (SOTA GĐ2) | 0.0669 | 0.1027 | 0.0362 | 0.0454 | -1.44% | *0.00%* | 1085 MB | ~28 min | SOTA Giai đoạn 2 |
+| **GĐ3 — v3** | STAIR-NE-NLGCL+ | 0.0659 | 0.1006 | 0.0352 | 0.0441 | -3.45% | -2.04% | 945 MB | 24.98 min | Tích hợp chọn lọc |
+| **GĐ3 — v5+** | STAIR-NE-NLGCL v5+ | **0.0674** | **0.1024** | **0.0359** | **0.0448** | -1.73% | -0.29% | **609 MB** | **23.32 min** | Cân bằng Baseline, nhẹ nhất |
+| **GĐ3 — v4** | **STAIR-SBN-BSC v4** | **0.0546** | **0.0853** | **0.0297** | **0.0376** | **-18.14%** | **-16.94%** | **763.2 MB** | **16.6 min** | **Cắt tỉa quá đà (Over-pruning)** |
+| *(v4 @500)* | STAIR-SBN-BSC v4 (Epoch 500) | 0.0546 | 0.0842 | 0.0291 | 0.0367 | -19.19% | -18.01% | 763.2 MB | 16.6 min | Quá khớp về cuối |
+
+#### Bảng 2: Kết quả kiểm thử trên Amazon Sports
+| Phiên Bản | Kiến Trúc Mô Hình | Recall@10 | Recall@20 | NDCG@10 | NDCG@20 | $\Delta$ Rec@20 vs BL | $\Delta$ Rec@20 vs v5 | VRAM Đỉnh | Thời Gian Huấn Luyện | Đánh Giá Khoa Học |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Gốc (Baseline)** | STAIR (MMRec Baseline) | 0.0743 | 0.1111 | 0.0405 | 0.0500 | *0.00%* | -0.18% | 810 MB | ~54 min | Chuẩn đối chứng gốc |
+| **GĐ2 — v5** | STAIR-NE-NLGCL (SOTA GĐ2) | **0.0753** | 0.1113 | **0.0415** | **0.0508** | +0.18% | *0.00%* | 1120 MB | ~56 min | SOTA Giai đoạn 2 |
+| **GĐ3 — v3** | STAIR-NE-NLGCL+ | 0.0728 | 0.1092 | 0.0400 | 0.0494 | -1.71% | -1.89% | 1150 MB | 55.12 min | Bền bỉ hội tụ sâu |
+| **GĐ3 — v5+** | STAIR-NE-NLGCL v5+ | **0.0753** | **0.1118** | 0.0414 | **0.0508** | **+0.63%** | **+0.45%** | **781 MB** | **52.75 min** | Kỷ lục SOTA Recall@20 |
+| **GĐ3 — v4** | **STAIR-SBN-BSC v4** | **0.0684** | **0.1035** | **0.0370** | **0.0460** | **-6.84%** | **-7.01%** | **969.2 MB** | **39.7 min** | **Thiếu liên kết lan truyền** |
+| *(v4 @500)* | STAIR-SBN-BSC v4 (Epoch 500) | 0.0681 | 0.1026 | 0.0370 | 0.0458 | -7.65% | -7.82% | 969.2 MB | 39.7 min | Trôi điểm do quá khớp |
+
+---
+
+## 2. HIỆU QUẢ TÍNH TOÁN & HỒ SƠ PHẦN CỨNG (SYSTEM TELEMETRY)
+
+Dù chỉ số xếp hạng chưa đạt kỳ vọng, STAIR-SBN-BSC v4 đã hoàn thành **xuất sắc 100% mục tiêu kỹ thuật về mặt tài nguyên tính toán và tốc độ thực thi**:
+
+| Chỉ Số Vận Hành | Amazon Baby (v4) | Amazon Sports (v4) | Đánh Giá Kỹ Thuật |
+| :--- | :---: | :---: | :--- |
+| **Thời gian tiền xử lý ngoại tuyến** | **1,238 ms** (~1.24 giây) | **3,252 ms** (~3.25 giây) | Cực nhanh nhờ vector hóa scipy/NumPy |
+| **Thời gian huấn luyện (`Coach.fit`)** | **958.31 giây** (~15.97 phút) | **2,198.77 giây** (~36.65 phút) | Nhanh hơn Baseline 35%, nhanh hơn v5 40% |
+| **Tổng thời gian pipeline** | **16.6 phút** | **39.7 phút** | Kỷ lục tốc độ nhanh nhất toàn bộ đề tài |
+| **Tốc độ trung bình / Epoch** | **1.67 giây / epoch** | **3.88 giây / epoch** | Vòng lặp PyTorch BPR thuần, zero auxiliary overhead |
+| **VRAM đỉnh tiêu thụ** | **763.2 MB** | **969.2 MB** | Cực kỳ nhẹ, thấp hơn Baseline (~800MB) |
+| **VRAM trung bình** | **754.0 MB** | **936.2 MB** | Bộ nhớ phẳng tuyệt đối, zero memory leak |
+| **Mức độ ổn định đồ thị** | **Zero NaN, Zero Inf** | **Zero NaN, Zero Inf** | Bảo vệ cô lập Laplacian $10^{-5}$ hoạt động chuẩn |
+
+---
+
+## 3. GIẢI MÃ ĐỘNG LỰC HỌC TẬP (LEARNING DYNAMICS) & QUỸ ĐẠO HỘI TỤ
+
+Quan sát log huấn luyện 500 epochs trên cả hai tập dữ liệu cho thấy những hiện tượng động lực học cực kỳ điển hình:
+
+```
+                      ĐỘNG LỰC HỌC HỘI TỤ CỦA STAIR-SBN-BSC v4
+                      
+      BPR Training Loss                          Validation NDCG@20
+   0.65 ┌───────────────────────┐            0.045 ┌───────────────────────┐
+   0.50 │ ╲                     │                  │        Peak           │
+   0.30 │   ╲                   │            0.040 │       ╭───╮           │
+   0.10 │     ╲                 │                  │      ╭╯   ╰───────────┤ Overfitting
+   0.02 │       ╰───────────────┤            0.035 │     ╭╯   (Plateau/Drop)
+        └───────────────────────┘                  └───────────────────────┘
+        0      100     300    500                  0      100     300    500
+                 Epochs                                      Epochs
+```
+
+### 3.1 Tập Amazon Baby (Hội tụ tại Epoch 155, sau đó suy thoái do Quá Khớp)
+- **Quá trình giảm Loss**: 
+  - Epoch 1: $\text{Loss} = 0.62659$
+  - Epoch 10: $\text{Loss} = 0.37091$
+  - Epoch 50: $\text{Loss} = 0.09266$
+  - Epoch 155: $\text{Loss} = 0.03920 \to \text{Valid NDCG@20 đạt đỉnh } \mathbf{0.0395}$
+  - Epoch 500: $\text{Loss} = 0.02164$ (tiếp tục giảm 45% so với Epoch 155).
+- **Hành vi Validation & Test**:
+  - Valid NDCG@20 đạt đỉnh ở Epoch 155 ($0.0395$), sau đó trôi dốc dần về $0.0379$ ở Epoch 500.
+  - Test NDCG@20 tại Epoch 155 đạt $0.0376$, nhưng đến Epoch 500 chỉ còn $0.0367$.
+  - **Kết luận động lực học**: Mô hình rơi vào trạng thái **quá khớp sớm (early overfitting)** sau Epoch 155. Việc Loss tiếp tục giảm sâu trong khi điểm xếp hạng đi xuống là bằng chứng không thể chối cãi của việc embedding bị ép quá mức vào tập train mà mất khả năng tổng quát hóa.
+
+### 3.2 Tập Amazon Sports (Hội tụ tại Epoch 275, ổn định tiệm cận)
+- **Quá trình giảm Loss**:
+  - Epoch 1: $\text{Loss} = 0.60909$
+  - Epoch 25: $\text{Loss} = 0.12209$
+  - Epoch 100: $\text{Loss} = 0.04160$
+  - Epoch 275: $\text{Loss} = 0.02840 \to \text{Valid NDCG@20 đạt đỉnh } \mathbf{0.0441}$
+  - Epoch 500: $\text{Loss} = 0.02464$.
+- **Hành vi Validation & Test**:
+  - Test Recall@20 đạt đỉnh $0.1035$ và NDCG@20 đạt $0.0460$ tại Epoch 275.
+  - Sau Epoch 275, mô hình đi ngang trên một dải cao nguyên (plateau) hẹp và kết thúc ở Epoch 500 với Test Recall@20 = $0.1026$, NDCG@20 = $0.0458$.
+
+---
+
+## 4. ĐIỀU TRA NGUYÊN NHÂN CỐT LÕI (FORENSIC ROOT-CAUSE AUDIT): TẠI SAO v4 CHƯA ĐẠT KỲ VỌNG?
+
+Qua giải phẫu đối chứng ma trận đồ thị của v4 so với Baseline, chúng tôi xác định được **4 tử huyệt cốt lõi** khiến hiệu năng xếp hạng của v4 bị kéo tụt:
+
+### 4.1 Tử Huyệt 1: Khủng Hoảng "Đói Cấu Trúc" Do Cắt Tỉa Quá Đà (Over-Pruning & Structural Starvation)
+Số liệu vi mô trích xuất từ log hệ thống:
+* **Trên Amazon Baby**:
+  - Số cạnh kNN ban đầu: $42,300$ cạnh.
+  - Ngưỡng tự thích ứng tính ra: $\text{Thresh} = \mu_q + 0.5\sigma_q = 0.1688 + 0.5(0.0637) = \mathbf{0.2007}$.
+  - Số cạnh giữ lại: $12,008 / 42,300$ cạnh $\to$ **Tỉ lệ giữ lại chỉ đạt 28.39%** (Bị xóa sổ tới **71.61%** số cạnh!).
+  - Bậc đỉnh trung bình của đồ thị sau lọc: $\mathbf{1.75}$ (so với $\approx 6 - 8$ ở Baseline).
+* **Trên Amazon Sports**:
+  - Số cạnh kNN ban đầu: $110,142$ cạnh.
+  - Ngưỡng tự thích ứng tính ra: $\text{Thresh} = 0.2617 + 0.5(0.1044) = \mathbf{0.3139}$.
+  - Số cạnh giữ lại: $32,759 / 110,142$ cạnh $\to$ **Tỉ lệ giữ lại chỉ đạt 29.74%** (Bị xóa sổ **70.26%** số cạnh!).
+  - Bậc đỉnh trung bình: $\mathbf{1.94}$ (so với $\approx 6 - 8$ ở Baseline).
+
+> [!CAUTION]
+> **Hậu quả toán học**: Khi bậc đỉnh trung bình rơi xuống dưới $2.0$, đồ thị bị vỡ vụn thành các thành phần liên thông rời rạc và xuất hiện nhiều đỉnh có bậc $0$ hoặc $1$. Toán tử làm mịn gradient của AdamWSEvo:
+> $$\tilde{G}_i = \sum_{l=0}^L \beta_l (\tilde{A}^l G)_i$$
+> bị mất đi con đường lan truyền lân cận! Gradient của sản phẩm $i$ không thể nhận được sự làm mịn từ các sản phẩm tương đồng khác. Việc "bỏ đói cấu trúc" này đã vô hiệu hóa bản chất sức mạnh của cơ chế Backward Stepwise Convolution (BSC).
+
+---
+
+### 4.2 Tử Huyệt 2: Nghịch Lý Phạt Sản Phẩm Đuôi Dài (The Long-Tail Penalty Paradox)
+Trong công thức hòa trộn chất lượng liên hợp của v4:
+$$q_{\text{joint}} = \max\left(q_{\text{behavior}}, \rho \cdot q_{\text{modal}}\right)$$
+* Số liệu thực tế trong log:
+  - Trên Baby: **Chỉ có 12.24%** số cạnh kNN có xuất hiện hành vi đồng mua ($q_{\text{behavior}} > 0$). Có tới **87.76%** cạnh hoàn toàn không có tương tác đồng mua!
+  - Trên Sports: **Chỉ có 11.88%** số cạnh có đồng mua. Có tới **88.12%** cạnh không có tương tác đồng mua!
+* Với 88% các cạnh này, $q_{\text{behavior}} = 0$, do đó:
+  $$q_{\text{joint}} = \rho \cdot q_{\text{modal}}$$
+* Với $\rho = 0.40$ (Baby) và $\rho = 0.60$ (Sports):
+  - Để một cạnh không có đồng mua vượt qua ngưỡng cắt tỉa $\text{Thresh} = 0.2007$ trên Baby, nó đòi hỏi:
+    $$q_{\text{modal}} \ge \frac{0.2007}{0.40} = \mathbf{0.5018}$$
+  - Trên Sports, đòi hỏi:
+    $$q_{\text{modal}} \ge \frac{0.3139}{0.60} = \mathbf{0.5232}$$
+* **Nghịch lý xuất hiện**: Các sản phẩm đuôi dài (long-tail items, cold items) vốn dĩ rất ít lượt mua nên việc chúng không có đồng mua là bình thường. Cơ chế chiết khấu $\rho$ vô tình **trừng phạt 88% các sản phẩm này**, hạ thấp nhân tạo điểm số của chúng và khiến ngưỡng cắt tỉa quét sạch toàn bộ liên kết đa phương thức của chúng!
+
+---
+
+### 4.3 Tử Huyệt 3: Suy Hao Năng Lượng Phổ Gradient (Spectral Energy Attenuation)
+* Trong STAIR Baseline gốc (`main.py`):
+  - Trọng số ban đầu của mỗi cạnh là **$1.0$** (nếu cạnh xuất hiện ở cả text và visual thì cộng dồn thành **$2.0$** qua `coalesce(reduce='sum')`).
+  - Sau đó ma trận kề nhị phân/cộng dồn được chuẩn hóa Laplacian đối xứng $D^{-1/2} A D^{-1/2}$.
+* Trong SBN-BSC v4:
+  - Trọng số cạnh được gán trực tiếp bằng giá trị chất lượng liên hợp phân số: $A_{ij} = q_{\text{joint}} \in [0.05, 0.40]$.
+  - Sau khi nhân $D^{-1/2} A_{\text{clean}} D^{-1/2}$, các phần tử trong ma trận làm mịn $\tilde{A}$ có độ lớn rất nhỏ ($\text{mean} = 0.29 - 0.32$).
+  - **Hệ quả**: Bước nhảy làm mịn gradient $\tilde{A} G$ bị co rút độ lớn (spectral dampening), khiến lực điều chuẩn ngược trở nên quá yếu, không đủ sức định hình lại không gian embedding.
+
+---
+
+### 4.4 Tử Huyệt 4: Hiện Tượng Quá Khớp Do Mất Lực Ràng Buộc Tô-pô
+* Trong STAIR Baseline, đồ thị kNN dày đặc hoạt động như một bộ điều chuẩn không gian (Spatial Regularizer). Mỗi cập nhật gradient cho item $i$ bị ràng buộc phải nhất quán với 6 item lân cận.
+* Khi v4 cắt bỏ 71% số cạnh, ràng buộc này biến mất. Bộ tối ưu tự do tối thiểu hóa hàm mất mát BPR trên tập train, dẫn đến hiện tượng Loss giảm sâu xuống mức kỷ lục ($0.021$ trên Baby, $0.024$ trên Sports) nhưng năng lực xếp hạng trên tập test bị suy giảm nghiêm trọng.
+
+---
+
+## 5. ĐỀ XUẤT KIẾN TRÚC HOÀN THIỆN: STAIR-SBN-BSC v4.1 (DEGREE-PRESERVING CONSERVATIVE DENOISING)
+
+Để khắc phục triệt để 4 tử huyệt trên mà vẫn bảo toàn 100% triết lý **Zero Extra Training Time**, kiến trúc **STAIR-SBN-BSC v4.1** được thiết kế dựa trên 4 trụ cột toán học cải tiến:
+
+```
+                    SƠ ĐỒ KIẾN TRÚC ĐỘT PHÁ: STAIR-SBN-BSC v4.1
+                                         │
+        ┌────────────────────────────────┼────────────────────────────────┐
+        ▼                                ▼                                ▼
+[ 1. ADDITIVE SYNERGY ]       [ 2. DEGREE-PRESERVING ]      [ 3. BALANCED TOPOLOGY ]
+  q_joint = q_modal +           Top-k Reranking per Node      A_ij = 1.0 + α·q_joint
+  α_beh · q_behavior            Giữ tối thiểu k_keep ≥ 4      Bảo toàn năng lượng phổ
+  Không phạt sản phẩm thưa      Không để đỉnh cô lập (deg≥4)   Chuẩn hóa đối xứng D^-0.5
+```
+
+---
+
+### 5.1 Bốn Cải Tiến Toán Học Cốt Lõi Của v4.1
+
+#### Cải Tiến 1: Công Thức Cộng Hưởng Gia Số (Additive Synergy with Behavior Boost)
+Thay vì sử dụng phép toán Max có chiết khấu $\rho$ gây trừng phạt sản phẩm đuôi dài, v4.1 chuyển sang cơ chế thưởng gia số (Additive Reward):
+$$q_{\text{joint}}(i, j) = q_{\text{modal}}(i, j) + \alpha_{\text{beh}} \cdot q_{\text{behavior}}(i, j)$$
+* Với $\alpha_{\text{beh}} \in [0.20, 0.40]$.
+* **Ý nghĩa toán học**:
+  - Nếu hai sản phẩm tương đồng về hình ảnh và văn bản ($q_{\text{modal}} > 0$), liên kết được bảo toàn với độ tin cậy đầy đủ.
+  - Nếu người dùng *cũng* đồng mua hai sản phẩm đó ($q_{\text{behavior}} > 0$), cạnh sẽ nhận thêm điểm thưởng cộng hưởng để trở thành cạnh siêu tin cậy.
+  - Loại bỏ hoàn toàn sự kỳ thị đối với 88% sản phẩm đuôi dài chưa có dữ liệu đồng mua!
+
+#### Cải Tiến 2: Cắt Tỉa Bảo Toàn Bậc Cục Bộ (Degree-Preserving Local Top-k Pruning)
+Thay vì áp dụng một ngưỡng cắt tỉa toàn cục (Global Threshold $\mu + \lambda\sigma$) khiến các node ở vùng thưa bị cô lập hoàn toàn, v4.1 áp dụng chiến lược **Bảo toàn Bậc cục bộ**:
+* Mỗi sản phẩm $i$ có danh sách các cạnh ứng viên từ kNN ban đầu (tối đa $k_{\text{cand}} = 6$).
+* v4.1 sắp xếp các cạnh nối với $i$ theo $q_{\text{joint}}$ và **bảo đảm giữ lại ít nhất $k_{\text{keep}} \ge 3$ (hoặc $4$) cạnh có chất lượng cao nhất**.
+* Chỉ những cạnh nào vừa nằm ngoài Top-$k_{\text{keep}}$ vừa có $q_{\text{joint}} < \tau_{\min}$ mới bị loại bỏ.
+* **Hệ quả**: Bậc tối thiểu của mọi đỉnh được bảo đảm $\text{Degree}(i) \ge 3$. Triệt tiêu 100% hiện tượng đỉnh cô lập, duy trì tính liên thông toàn vẹn của đồ thị để gradient BSC lan truyền thông suốt!
+
+#### Cải Tiến 3: Bảo Toàn Năng Lượng Phổ Của Trọng Số Ma Trận Kề (Spectral Energy Scaling)
+Thay vì gán trọng số cạnh bằng giá trị $q_{\text{joint}}$ nhỏ lẻ làm yếu gradient, v4.1 sử dụng công thức gán trọng số bảo toàn mức năng lượng của Baseline:
+$$A_{ij} = 1.0 + \text{sigmoid}\left(\frac{q_{\text{joint}}(i, j) - \mu_q}{\sigma_q}\right)$$
+hoặc đơn giản hóa:
+$$A_{ij} = 1.0 + \beta_{\text{scale}} \cdot q_{\text{joint}}(i, j) \quad (\text{với } \beta_{\text{scale}} = 1.0)$$
+* **Ý nghĩa toán học**: Mọi cạnh hợp lệ đều có trọng số cơ sở $\ge 1.0$ (tương đương Baseline), và các cạnh có chất lượng đa phương thức - hành vi cao sẽ nhận thêm trọng số kích hoạt $[1.0, 2.0]$. Năng lượng phổ của ma trận Laplacian sau chuẩn hóa sẽ tương đương hoặc vượt trội so với Baseline, phục hồi 100% sức mạnh làm mịn của AdamWSEvo!
+
+#### Cải Tiến 4: Điều Chỉnh Chiến Lược Dừng Sớm (Early Stopping Regularization)
+Dữ liệu động lực học ở Mục 3 cho thấy đỉnh tối ưu trên Baby nằm ở Epoch 155, Sports ở Epoch 275.
+* Trong v4.1, áp dụng cơ chế Early Stopping với patience = 50 epochs hoặc tăng nhẹ `weight_decay = 0.2` để ngăn chặn hiện tượng quá khớp ở 200 epochs cuối.
+
+---
+
+### 5.2 Bảng Ma Trận Cấu Hình Đối Soát Tham Số Giữa v4 và v4.1
+
+| Thành phần kỹ thuật | STAIR-SBN-BSC v4 (Hiện tại) | STAIR-SBN-BSC v4.1 (Đề xuất mới) | Cơ sở lý luận khoa học |
+| :--- | :---: | :---: | :--- |
+| **Công thức hòa trộn** | $q = \max(q_{\text{beh}}, \rho \cdot q_{\text{modal}})$ | **$q = q_{\text{modal}} + \alpha_{\text{beh}} \cdot q_{\text{beh}}$** | Chuyển từ trừng phạt sang thưởng gia số cho đồng mua. |
+| **Chiết khấu $\rho$** | $0.40$ (Baby) / $0.60$ (Sports) | **Không dùng (Bỏ $\rho$)** | Bảo vệ 88% sản phẩm đuôi dài khỏi bị hạ điểm oan. |
+| **Cơ chế cắt tỉa** | Global Threshold ($\mu + 0.5\sigma$) | **Local Top-k Reranking ($k_{\text{keep}} \ge 4$)** | Ngăn chặn hiện tượng đỉnh cô lập, bảo toàn bậc đồ thị. |
+| **Tỉ lệ giữ cạnh mục tiêu** | 28% – 29% (Quá gắt) | **70% – 85% (Chọn lọc tinh tế)** | Chỉ lọc bỏ 15-30% cạnh thực sự là rác/nhiễu. |
+| **Bậc đỉnh trung bình** | $1.75 - 1.94$ (Vỡ cấu trúc) | **$4.5 - 6.0$ (Đạt chuẩn tô-pô)** | Duy trì mạng lưới lan truyền gradient cho AdamWSEvo. |
+| **Trọng số cạnh $A_{ij}$** | $q_{\text{joint}} \in [0.05, 0.40]$ | **$1.0 + q_{\text{joint}} \in [1.0, 2.0]$** | Bảo toàn mức năng lượng phổ làm mịn của STAIR gốc. |
+| **Patience / Best Epoch** | 500 epochs cố định | **Best Checkpoint / Patience 50** | Đón đúng điểm rơi phong độ tối ưu, chống quá khớp. |
+
+---
+
+## 6. CHIẾN LƯỢC ĐỊNH VỊ HỌC THUẬT CHO KHÓA LUẬN TỐT NGHIỆP (ACADEMIC DEFENSE POSITIONING)
+
+### 6.1 Giá Trị Học Thuật Đỉnh Cao Của Thất Bại Thực Nghiệm v4
+Trong nghiên cứu khoa học hàn lâm tại ĐH Khoa học Tự nhiên (HCMUS), một trong những sai lầm phổ biến nhất của sinh viên là chỉ báo cáo những gì thành công và che giấu những giả thuyết thất bại.
+
+> *"Một kỹ sư chỉ biết chạy mô hình và lấy kết quả; một nhà nghiên cứu khoa học thực thụ là người dám đưa ra giả thuyết táo bạo, đo lường chính xác khi giả thuyết thất bại, dùng toán học và dữ liệu vi mô để giải phẫu tường tận nguyên nhân thất bại, và từ đó đưa ra giải pháp sửa đổi hoàn thiện có tính thuyết phục tuyệt đối."*
+
+Toàn bộ quá trình thực nghiệm v4 chính là một **Case Study mẫu mực về Phương pháp luận Nghiên cứu Thực chứng (Empirical Research Methodology)**:
+1. **Giả thuyết khoa học ban đầu**: Cắt tỉa cạnh nhiễu trên đồ thị kNN sẽ giúp làm sạch dòng chảy gradient của bộ làm mịn BSC.
+2. **Hiện tượng thực nghiệm**: Mô hình huấn luyện siêu tốc (nhanh hơn 40%), VRAM siêu nhẹ, nhưng độ đo xếp hạng giảm $7\% - 18\%$.
+3. **Phân tích nguyên nhân vi mô**: Phát hiện hiện tượng "Đói Cấu Trúc" (Structural Starvation) khi bậc đỉnh sụp đổ từ 6 xuống 1.75 và nghịch lý trừng phạt 88% sản phẩm đuôi dài.
+4. **Giải pháp nâng cấp biện chứng v4.1**: Chuyển từ cắt tỉa mù quáng toàn cục (Global Pruning) sang cắt tỉa bảo toàn bậc cục bộ (Degree-Preserving Local Pruning).
+
+### 6.2 Kịch Bản Trả Lời Phản Biện Trước Hội Đồng Chấm Luận Văn
+
+#### Câu hỏi của Hội đồng:
+> *"Tại sao ý tưởng lọc nhiễu đồ thị kNN nghe rất hợp lý nhưng kết quả v4 lại thấp hơn Baseline? Có phải hướng tiếp cận này là sai lầm?"*
+
+**Câu trả lời chuẩn mực đạt điểm xuất sắc:**
+> *"Kính thưa Hội đồng, hướng tiếp cận lọc nhiễu đồ thị BSC không sai về mặt nguyên lý, nhưng thử nghiệm v4 đã giúp chúng em khám phá ra một **ngưỡng cân bằng tinh tế giữa Độ Sạch của Cạnh (Edge Quality) và Tính Toàn Vẹn của Cấu Trúc Đồ Thị (Topological Connectivity)**:*
+> 1. *Thứ nhất, đồ thị kNN trong STAIR không chỉ mang thông tin ngữ nghĩa mà còn đóng vai trò là **khung xương lan truyền gradient** cho toán tử Smoother của AdamWSEvo. Khi v4 sử dụng ngưỡng cắt tỉa toàn cục $\mu + 0.5\sigma$, chúng em đã vô tình cắt tỉa tới $71\%$ số cạnh, đẩy bậc đỉnh trung bình xuống dưới $2.0$. Khung xương này bị gãy vụn, gradient không thể lan truyền qua các đỉnh cô lập.*
+> 2. *Thứ hai, chúng em phát hiện trong dữ liệu thương mại điện tử, $88\%$ các cặp sản phẩm tương đồng về mặt hình ảnh/mô tả chưa từng được người dùng đồng mua (do đặc tính thưa của đuôi dài). Việc áp dụng hệ số chiết khấu $\rho$ đã vô tình biến các sản phẩm đuôi dài thành 'nạn nhân' bị xóa sạch liên kết.*
+> 3. *Chính từ bài học thực chứng sâu sắc này, chúng em đã phát triển phiên bản nâng cấp **STAIR-SBN-BSC v4.1** với nguyên lý **Degree-Preserving Top-k Reranking** và **Additive Behavior Synergy**: bảo đảm mỗi sản phẩm giữ lại tối thiểu 4 cạnh sạch nhất, duy trì 100% tính liên thông và nâng cao năng lượng phổ làm mịn. Đây là minh chứng rõ nét nhất cho phương pháp luận nghiên cứu lặp và hoàn thiện liên tục của luận văn."*
+
+---
+
+## 7. KẾ HOẠCH HÀNH ĐỘNG TRIỂN KHAI PHIÊN BẢN v4.1 (ACTION PLAN)
+
+1. **Chỉnh sửa Core Preprocessor (`models/stair_sbn_bsc_v4.py`)**:
+   - Cập nhật hàm `_joint_quality_combination`: chuyển sang công thức cộng $q_{\text{modal}} + \alpha_{\text{beh}} q_{\text{beh}}$.
+   - Viết lại hàm `_adaptive_pruning`: thay thế Global Thresholding bằng **Local Top-k Edge Selection** (giữ lại tối thiểu $k_{\text{keep}}=4$ cạnh tốt nhất cho mỗi item).
+   - Điều chỉnh hàm `_laplacian_normalization`: gán trọng số $A_{ij} = 1.0 + q_{\text{joint}}$ trước khi chuẩn hóa đối xứng.
+2. **Cập nhật Test Suite (`tests/test_sbn_bsc_v4.py`)**:
+   - Thêm unit test kiểm tra ràng buộc bậc đỉnh: $\min(\text{degree}) \ge k_{\text{keep}}$.
+   - Kiểm tra mức năng lượng ma trận kề không bị co rút.
+3. **Huấn luyện & Đánh giá trên Kaggle**:
+   - Chạy kiểm chứng v4.1 trên **Amazon Baby** và **Amazon Sports**.
+   - Đối soát số liệu với Baseline và v5 SOTA để xác nhận sự bứt phá của cơ chế Degree-Preserving Topology.
