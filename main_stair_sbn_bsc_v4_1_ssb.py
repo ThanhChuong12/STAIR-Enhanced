@@ -401,6 +401,12 @@ class STAIR_SBN_BSC_v4_1_SSB(freerec.models.GenRecArch):
         ).to_sparse_csr()
         self.User.embeddings.weight.data.copy_(R_torch @ mfeats_combined)
 
+    def sure_trainpipe(self, batch_size: int):
+        return self.dataset.train().shuffled_pairs_source(
+        ).gen_train_sampling_neg_(
+            num_negatives=1
+        ).batch_(batch_size).tensor_()
+
     def encode(self) -> Tuple[torch.Tensor, torch.Tensor]:
         allEmbds = torch.cat(
             (self.User.embeddings.weight, self.Item.embeddings.weight), dim=0
@@ -558,7 +564,9 @@ def main():
     try:
         dataset = getattr(freerec.data.datasets, cfg.dataset)(root=cfg.root)
     except AttributeError:
-        dataset = freerec.data.datasets.RecDataSet(cfg.root, cfg.dataset)
+        dataset = freerec.data.datasets.RecDataSet(
+            cfg.root, cfg.dataset, tasktag=getattr(cfg, 'tasktag', None)
+        )
 
     model = STAIR_SBN_BSC_v4_1_SSB(dataset)
 
