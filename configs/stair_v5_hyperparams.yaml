@@ -1,0 +1,26 @@
+# ===========================================================================
+# STAIR-BSC-Reweight (STAIR-v5) Hyperparameters Configuration
+# ===========================================================================
+# Reference: docs/giai_doan_3/STAIR3_v5_Report.md
+#
+# Usage:
+#   python mainS3_v5.py --config configs/stair_v5_hyperparams.yaml \
+#       --dataset Amazon2014Sports_550_MMRec
+# ===========================================================================
+
+# === STAIR-BSC-Reweight (v5) Core Hyperparameters ===
+ssb_mode: "full_ssb"            # ['baseline', 'modal_only', 'behavior_only', 'full_ssb']
+ssb_alpha: 0.40                 # [0.0, 1.0] Modal consensus boost weight (alpha)
+ssb_beta: 0.20                  # [0.0, 1.0] Behavioral Ochiai co-occurrence boost weight (beta)
+ssb_tau_text: 0.10              # [0.05, 0.25] Text cosine similarity threshold
+ssb_tau_visual: 0.10            # [0.05, 0.25] Visual cosine similarity threshold
+
+# Multiplicative Bounded Scaling (Preserves Consensus Ordering)
+ssb_min_weight: 1.00            # Strictly bounded: min w_ij = 1.0
+ssb_max_weight: 3.60            # Strictly bounded: max w_ij = 3.6 (cho cạnh đồng thuận kép w_base=2.0)
+
+# === Experimental Protocol & Ablation Configurations ===
+# Bước 0: Baseline Check (ssb_mode: "baseline")
+# Bước A: Modal Only     (ssb_mode: "modal_only", ssb_alpha: 0.40, ssb_beta: 0.00)
+# Bước B: Behavior Only  (ssb_mode: "behavior_only", ssb_alpha: 0.00, ssb_beta: 0.20)
+# Bước C: Full Reweight  (ssb_mode: "full_ssb", ssb_alpha: 0.40, ssb_beta: 0.20)

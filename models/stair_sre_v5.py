@@ -42,6 +42,7 @@ class STAIR_BSC_Reweight_Engine:
     """
     def __init__(
         self,
+        mode: str = "full_ssb",
         alpha: float = 0.40,
         beta: float = 0.20,
         tau_t: float = 0.10,
@@ -51,6 +52,7 @@ class STAIR_BSC_Reweight_Engine:
         eps: float = 1e-8,
         verbose: bool = True,
     ):
+        self.mode = str(mode).lower()
         self.alpha = float(alpha)
         self.beta = float(beta)
         self.tau_t = float(tau_t)
@@ -146,39 +148,73 @@ class STAIR_BSC_Reweight_Engine:
         text_feats: torch.Tensor,
         vis_feats: torch.Tensor,
         train_user_item_matrix: sp.csr_matrix,
-        raw_knn_adj: sp.csr_matrix,
+        raw_knn_adj: Union[sp.spmatrix, torch.Tensor, np.ndarray],
+        raw_edge_weight: Optional[Union[torch.Tensor, np.ndarray]] = None,
+        num_items: Optional[int] = None,
+        target_device: Optional[torch.device] = None,
     ) -> torch.Tensor:
         """
         Quy trình tiền xử lý hoàn chỉnh xây dựng ma trận BSC Smoother:
           1. Trích xuất toàn bộ cạnh kNN gốc (Bảo tồn 100% tô-pô, 0% cắt tỉa).
           2. Bảo toàn trọng số cơ sở w_base in {1.0, 2.0}.
-          3. Tính q_modal và q_behavior O(|E|).
+          3. Tính q_modal và q_behavior O(|E|) theo chế độ mode.
           4. Tăng cường trọng số theo phép nhân bảo toàn đơn điệu (Multiplicative Boost).
           5. Đối xứng hóa qua SciPy CSR C++ kernel (W_sym = max(W, W^T)).
           6. Chuẩn hóa Symmetric Laplacian: D^(-1/2) W_sym D^(-1/2).
           7. Chuyển đổi sang định dạng PyTorch Sparse CSR tensor.
         """
-        device = text_feats.device
-        num_items = text_feats.size(0)
+        # Tương thích linh hoạt nếu người dùng truyền positional arguments: (text, vis, R, raw_knn, num_items, target_device)
+        if isinstance(raw_edge_weight, int):
+            if isinstance(num_items, (torch.device, str)):
+                target_device = torch.device(num_items) if isinstance(num_items, str) else num_items
+            num_items = raw_edge_weight
+            raw_edge_weight = None
 
-        # 1. Trích xuất danh sách cạnh và trọng số gốc từ raw_knn_adj
-        coo_knn = raw_knn_adj.tocoo()
-        row_np = coo_knn.row.astype(np.int64)
-        col_np = coo_knn.col.astype(np.int64)
+        device = target_device if target_device is not None else text_feats.device
+        if num_items is None:
+            num_items = text_feats.size(0)
 
-        # 2. Bảo toàn Baseline Consensus Weights (1.0 = single modal, 2.0 = dual modal)
-        w_base = torch.from_numpy(coo_knn.data.astype(np.float32)).to(device)
+        # 1. Trích xuất danh sách cạnh và trọng số gốc
+        if isinstance(raw_knn_adj, torch.Tensor):
+            edge_idx_np = raw_knn_adj.cpu().numpy().astype(np.int64)
+            row_np = edge_idx_np[0]
+            col_np = edge_idx_np[1]
+            if raw_edge_weight is not None:
+                if isinstance(raw_edge_weight, torch.Tensor):
+                    w_base = raw_edge_weight.float().to(device)
+                else:
+                    w_base = torch.from_numpy(raw_edge_weight.astype(np.float32)).to(device)
+            else:
+                w_base = torch.ones(len(row_np), dtype=torch.float32, device=device)
+        elif sp.issparse(raw_knn_adj):
+            coo_knn = raw_knn_adj.tocoo()
+            row_np = coo_knn.row.astype(np.int64)
+            col_np = coo_knn.col.astype(np.int64)
+            w_base = torch.from_numpy(coo_knn.data.astype(np.float32)).to(device)
+        else:
+            raise ValueError(f"raw_knn_adj kiểu dữ liệu không hỗ trợ: {type(raw_knn_adj)}")
 
-        self._log(f"Tổng số cạnh kNN gốc tiếp nhận: {len(row_np):,} (0% pruning).")
+        self._log(f"Tổng số cạnh kNN gốc tiếp nhận: {len(row_np):,} (0% pruning, mode='{self.mode}').")
 
-        # 3. Tính q_modal và q_behavior
-        q_modal = self.compute_modal_quality(text_feats, vis_feats, row_np, col_np)
-        q_behavior = self.compute_behavioral_quality(
-            train_user_item_matrix, row_np, col_np, num_items, device
-        )
+        # 2. Tính hệ số boost theo chế độ thực nghiệm
+        if self.mode == "baseline":
+            boost_factor = 1.0
+        elif self.mode == "modal_only":
+            q_modal = self.compute_modal_quality(text_feats, vis_feats, row_np, col_np)
+            boost_factor = 1.0 + self.alpha * q_modal
+        elif self.mode == "behavior_only":
+            q_behavior = self.compute_behavioral_quality(
+                train_user_item_matrix, row_np, col_np, num_items, device
+            )
+            boost_factor = 1.0 + self.beta * q_behavior
+        else:  # full_ssb
+            q_modal = self.compute_modal_quality(text_feats, vis_feats, row_np, col_np)
+            q_behavior = self.compute_behavioral_quality(
+                train_user_item_matrix, row_np, col_np, num_items, device
+            )
+            boost_factor = 1.0 + self.alpha * q_modal + self.beta * q_behavior
 
-        # 4. Multiplicative Safe Boost bảo toàn tính đơn điệu: W_ij = W_base * (1 + alpha*q_m + beta*q_b)
-        boost_factor = 1.0 + self.alpha * q_modal + self.beta * q_behavior
+        # 3. Multiplicative Safe Boost bảo toàn tính đơn điệu
         w_boosted = w_base * boost_factor
         w_boosted = torch.clamp(w_boosted, min=self.min_weight, max=self.max_weight)
 
