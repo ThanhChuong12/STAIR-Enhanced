@@ -149,10 +149,50 @@ def test_gradient_density_bpr_vs_saml():
     print("✅ TEST 4 PASSED: Chứng minh giải tích BPR bảo toàn gradient dày đặc (100%) cho BSC Smoother, trong khi SAML làm đói gradient.")
 
 
+def test_svd_whitening_isotropic():
+    """
+    Test 5: Kiểm chứng toán học SVD Whitening chuẩn tắc (Khắc phục Lỗi 5).
+    Kiểm tra:
+      1. Ma trận hiệp phương sai là ma trận đường chéo đồng nhất (Isotropic Covariance).
+      2. Mọi chiều đều có phương sai bằng nhau (= 1/d), loại bỏ hoàn toàn sự chi phối của Singular Values S.
+      3. Các chiều trực giao với nhau (off-diagonal covariance ~ 0).
+    """
+    num_items = 500
+    in_dim = 128
+    out_dim = 64
+
+    # Tạo ma trận có tương quan mạnh và phương sai không đều giữa các chiều
+    raw_feats = torch.randn(num_items, in_dim) * torch.linspace(10.0, 0.1, in_dim)
+
+    whitened = STAIR_v5.svd_whitening(raw_feats, target_dim=out_dim)
+
+    assert whitened.shape == (num_items, out_dim), f"Shape sai lệch: {whitened.shape}"
+
+    # Tính ma trận hiệp phương sai: Cov = (1/N) * X^T * X
+    cov = torch.matmul(whitened.t(), whitened) / num_items
+
+    # 1. Kiểm tra tính trực giao (Off-diagonal ~ 0)
+    diag_mask = torch.eye(out_dim, dtype=torch.bool)
+    off_diag = cov[~diag_mask]
+    max_off_diag = off_diag.abs().max().item()
+    assert max_off_diag < 1e-4, f"LỖI: Các chiều sau whitening chưa trực giao! Max off-diagonal={max_off_diag}"
+
+    # 2. Kiểm tra tính đồng nhất phương sai (Isotropic: mọi phần tử trên đường chéo bằng nhau = 1/out_dim)
+    diag_vals = cov[diag_mask]
+    expected_var = 1.0 / out_dim
+    assert torch.allclose(diag_vals, torch.tensor(expected_var), atol=1e-3), (
+        f"LỖI: Phương sai các chiều sau whitening không đồng nhất! "
+        f"Min={diag_vals.min():.6f}, Max={diag_vals.max():.6f}, Expected={expected_var:.6f}"
+    )
+
+    print(f"✅ TEST 5 PASSED: SVD Whitening chuẩn tắc đạt Isotropic tuyệt đối. Covariance = {expected_var:.6f} * I_{out_dim} (Max off-diag: {max_off_diag:.2e}).")
+
+
 if __name__ == "__main__":
-    print("Khởi chạy kiểm thử đơn vị STAIR-v5...")
+    print("Khởi chạy kiểm thử đơn vị STAIR-v5 (5/5 Tests)...")
     test_symmetrization_2d_shape()
     test_spsd_and_spectral_radius()
     test_monotonicity_preservation()
     test_gradient_density_bpr_vs_saml()
-    print("\n🎉 TOÀN BỘ 4/4 BÀI KIỂM THỬ ĐƠN VỊ ĐẠT 100% SẴN SÀNG TRIỂN KHAI!")
+    test_svd_whitening_isotropic()
+    print("\n🎉 TOÀN BỘ 5/5 BÀI KIỂM THỬ ĐƠN VỊ & TOÁN HỌC ĐẠT 100% SẴN SÀNG TRIỂN KHAI!")
