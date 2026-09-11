@@ -76,19 +76,25 @@ class STAIR_BSC_Reweight_Engine:
         vis_feats: torch.Tensor,
         row_np: np.ndarray,
         col_np: np.ndarray,
+        device: Optional[Union[torch.device, str]] = None,
     ) -> torch.Tensor:
         """
         Tính toán điểm đồng thuận đa phương thức ngưỡng hóa (Thresholded Geometric Mean):
           q_modal_ij = sqrt( relu(s_t - tau_t) * relu(s_v - tau_v) )
         Thực thi O(|E|) vectorized, không tạo ma trận dense N x N.
+        Đảm bảo 100% tensors nằm trên cùng device được chỉ định.
         """
-        device = text_feats.device
+        if device is None:
+            device = text_feats.device
+        elif isinstance(device, str):
+            device = torch.device(device)
+
         row_t = torch.from_numpy(row_np).long().to(device)
         col_t = torch.from_numpy(col_np).long().to(device)
 
         with torch.no_grad():
-            t_norm = F.normalize(text_feats.float(), p=2, dim=-1)
-            v_norm = F.normalize(vis_feats.float(), p=2, dim=-1)
+            t_norm = F.normalize(text_feats.float().to(device), p=2, dim=-1)
+            v_norm = F.normalize(vis_feats.float().to(device), p=2, dim=-1)
 
             sim_t = (t_norm[row_t] * t_norm[col_t]).sum(dim=-1)
             sim_v = (v_norm[row_t] * v_norm[col_t]).sum(dim=-1)
@@ -97,7 +103,7 @@ class STAIR_BSC_Reweight_Engine:
             s_v_thresh = F.relu(sim_v - self.tau_v)
             q_modal = torch.sqrt(s_t_thresh * s_v_thresh + self.eps)
 
-        return q_modal
+        return q_modal.to(device)
 
     def compute_behavioral_quality(
         self,
@@ -105,13 +111,19 @@ class STAIR_BSC_Reweight_Engine:
         row_np: np.ndarray,
         col_np: np.ndarray,
         num_items: int,
-        device: torch.device,
+        device: Optional[Union[torch.device, str]] = None,
     ) -> torch.Tensor:
         """
         Tính toán độ tin cậy đồng mua chuẩn hóa Ochiai từ ma trận tương tác R^T @ R:
           q_behavior_ij = C_ij / (sqrt(D_i * D_j) + eps)
         Thực thi sparse searchsorted O(|E| log |E_C|), tối ưu hóa RAM.
+        Đảm bảo tensor kết quả trả về đúng target device.
         """
+        if device is None:
+            device = torch.device("cpu")
+        elif isinstance(device, str):
+            device = torch.device(device)
+
         R = train_user_item_matrix.tocsr()
         degrees = np.array(R.sum(axis=0)).flatten().astype(np.float32)
 
@@ -141,7 +153,7 @@ class STAIR_BSC_Reweight_Engine:
         del C_matrix, sorted_keys, c_key, edge_key, degrees, cooccur_counts, ochiai_scores
         gc.collect()
 
-        return q_behavior
+        return q_behavior.to(device)
 
     def build_boosted_mAdj(
         self,
@@ -151,7 +163,7 @@ class STAIR_BSC_Reweight_Engine:
         raw_knn_adj: Union[sp.spmatrix, torch.Tensor, np.ndarray],
         raw_edge_weight: Optional[Union[torch.Tensor, np.ndarray]] = None,
         num_items: Optional[int] = None,
-        target_device: Optional[torch.device] = None,
+        target_device: Optional[Union[torch.device, str]] = None,
     ) -> torch.Tensor:
         """
         Quy trình tiền xử lý hoàn chỉnh xây dựng ma trận BSC Smoother:
@@ -161,7 +173,7 @@ class STAIR_BSC_Reweight_Engine:
           4. Tăng cường trọng số theo phép nhân bảo toàn đơn điệu (Multiplicative Boost).
           5. Đối xứng hóa qua SciPy CSR C++ kernel (W_sym = max(W, W^T)).
           6. Chuẩn hóa Symmetric Laplacian: D^(-1/2) W_sym D^(-1/2).
-          7. Chuyển đổi sang định dạng PyTorch Sparse CSR tensor.
+          7. Chuyển đổi sang định dạng PyTorch Sparse CSR tensor trên target_device.
         """
         # Tương thích linh hoạt nếu người dùng truyền positional arguments: (text, vis, R, raw_knn, num_items, target_device)
         if isinstance(raw_edge_weight, int):
@@ -171,6 +183,8 @@ class STAIR_BSC_Reweight_Engine:
             raw_edge_weight = None
 
         device = target_device if target_device is not None else text_feats.device
+        if isinstance(device, str):
+            device = torch.device(device)
         if num_items is None:
             num_items = text_feats.size(0)
 
@@ -196,25 +210,27 @@ class STAIR_BSC_Reweight_Engine:
 
         self._log(f"Tổng số cạnh kNN gốc tiếp nhận: {len(row_np):,} (0% pruning, mode='{self.mode}').")
 
-        # 2. Tính hệ số boost theo chế độ thực nghiệm
+        # 2. Tính hệ số boost theo chế độ thực nghiệm (100% tensors trên cùng device)
         if self.mode == "baseline":
-            boost_factor = 1.0
+            boost_factor = torch.tensor(1.0, dtype=torch.float32, device=device)
         elif self.mode == "modal_only":
-            q_modal = self.compute_modal_quality(text_feats, vis_feats, row_np, col_np)
-            boost_factor = 1.0 + self.alpha * q_modal
+            q_modal = self.compute_modal_quality(text_feats, vis_feats, row_np, col_np, device=device)
+            boost_factor = 1.0 + self.alpha * q_modal.to(device)
         elif self.mode == "behavior_only":
             q_behavior = self.compute_behavioral_quality(
-                train_user_item_matrix, row_np, col_np, num_items, device
+                train_user_item_matrix, row_np, col_np, num_items, device=device
             )
-            boost_factor = 1.0 + self.beta * q_behavior
+            boost_factor = 1.0 + self.beta * q_behavior.to(device)
         else:  # full_ssb
-            q_modal = self.compute_modal_quality(text_feats, vis_feats, row_np, col_np)
+            q_modal = self.compute_modal_quality(text_feats, vis_feats, row_np, col_np, device=device)
             q_behavior = self.compute_behavioral_quality(
-                train_user_item_matrix, row_np, col_np, num_items, device
+                train_user_item_matrix, row_np, col_np, num_items, device=device
             )
-            boost_factor = 1.0 + self.alpha * q_modal + self.beta * q_behavior
+            boost_factor = 1.0 + self.alpha * q_modal.to(device) + self.beta * q_behavior.to(device)
 
         # 3. Multiplicative Safe Boost bảo toàn tính đơn điệu
+        w_base = w_base.to(device)
+        boost_factor = boost_factor.to(device)
         w_boosted = w_base * boost_factor
         w_boosted = torch.clamp(w_boosted, min=self.min_weight, max=self.max_weight)
 
@@ -343,6 +359,7 @@ class STAIR_v5_Reweight(nn.Module):
             vis_feats=vis_feats,
             train_user_item_matrix=train_user_item_matrix,
             raw_knn_adj=raw_knn_adj,
+            target_device=device,
         )
         self.mAdj_csr = mAdj
 

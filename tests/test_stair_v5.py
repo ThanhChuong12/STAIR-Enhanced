@@ -188,11 +188,55 @@ def test_svd_whitening_isotropic():
     print(f"✅ TEST 5 PASSED: SVD Whitening chuẩn tắc đạt Isotropic tuyệt đối. Covariance = {expected_var:.6f} * I_{out_dim} (Max off-diag: {max_off_diag:.2e}).")
 
 
+def test_device_consistency_across_modes():
+    """
+    Test 6: Kiểm thử tính đồng nhất thiết bị (Device Consistency) cho toàn bộ 4 modes:
+      ['baseline', 'modal_only', 'behavior_only', 'full_ssb'].
+    Đảm bảo tuyệt đối không gặp lỗi:
+      RuntimeError: Expected all tensors to be on the same device, but found at least two devices!
+    """
+    num_items = 20
+    row = np.array([0, 1, 2, 3, 4, 5], dtype=np.int64)
+    col = np.array([1, 2, 3, 4, 5, 0], dtype=np.int64)
+    data = np.array([1.0, 2.0, 1.0, 2.0, 1.0, 2.0], dtype=np.float32)
+    raw_knn = sp.coo_matrix((data, (row, col)), shape=(num_items, num_items)).tocsr()
+
+    t_feat = torch.randn(num_items, 32)
+    v_feat = torch.randn(num_items, 32)
+    R = sp.csr_matrix((np.random.rand(10, num_items) > 0.8).astype(np.float32))
+
+    devices_to_test = ["cpu"]
+    if torch.cuda.is_available():
+        devices_to_test.append("cuda:0")
+
+    for dev in devices_to_test:
+        for mode in ["baseline", "modal_only", "behavior_only", "full_ssb"]:
+            engine = STAIR_v5_SingleMatrixEngine(
+                mode=mode, alpha=0.40, beta=0.20, verbose=False
+            )
+            mAdj = engine.build_boosted_mAdj(
+                text_feats=t_feat,
+                vis_feats=v_feat,
+                train_user_item_matrix=R,
+                raw_knn_adj=raw_knn,
+                target_device=dev,
+            )
+            expected_device_type = torch.device(dev).type
+            assert mAdj.device.type == expected_device_type, (
+                f"LỖI: mAdj device {mAdj.device} không khớp target {dev} ở mode {mode}!"
+            )
+            assert mAdj.is_sparse_csr, f"LỖI: mAdj phải là sparse CSR ở mode {mode}!"
+
+    print(f"✅ TEST 6 PASSED: Device consistency được đảm bảo tuyệt đối trên 4/4 modes ({devices_to_test}).")
+
+
 if __name__ == "__main__":
-    print("Khởi chạy kiểm thử đơn vị STAIR-v5 (5/5 Tests)...")
+    print("Khởi chạy kiểm thử đơn vị STAIR-v5 (6/6 Tests)...")
     test_symmetrization_2d_shape()
     test_spsd_and_spectral_radius()
     test_monotonicity_preservation()
     test_gradient_density_bpr_vs_saml()
     test_svd_whitening_isotropic()
-    print("\n🎉 TOÀN BỘ 5/5 BÀI KIỂM THỬ ĐƠN VỊ & TOÁN HỌC ĐẠT 100% SẴN SÀNG TRIỂN KHAI!")
+    test_device_consistency_across_modes()
+    print("\n🎉 TOÀN BỘ 6/6 BÀI KIỂM THỬ ĐƠN VỊ & TOÁN HỌC ĐẠT 100% SẴN SÀNG TRIỂN KHAI!")
+
