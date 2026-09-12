@@ -37,6 +37,9 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+# Tối ưu hóa bộ nhớ CUDA chống phân mảnh trên các đồ thị quy mô lớn (Electronics 63K items)
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 import numpy as np
 import scipy.sparse as sp
 import torch
@@ -440,6 +443,10 @@ class STAIR_v5_Arch(freerec.models.GenRecArch):
         assert self.mAdj._nnz() > 0, "Lỗi: mAdj không được rỗng!"
         print(f"[STAIR-v5] Đã đăng ký mAdj thành công: nnz={self.mAdj._nnz():,} trên device={self.mAdj.device}")
 
+        del raw_edge_index, raw_edge_weight, edge_weight, mAdj_boosted
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
         # 5. SVD Whitening chuẩn xác (Khắc phục triệt để Lỗi 5)
         mfeats_whitened = [
             self.whitening(mfeat) * k
@@ -458,6 +465,12 @@ class STAIR_v5_Arch(freerec.models.GenRecArch):
         ).to_sparse_csr()
         self.User.embeddings.weight.data.copy_(R_torch @ mfeats_combined)
         print("[STAIR-v5] Khởi tạo Item & User embeddings từ SVD Whitening hoàn tất 100%.")
+
+        del mfeats, mfeats_whitened, mfeats_combined, R_torch, edge_index_norm, edge_weight_norm, train_R
+        import gc
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def sure_trainpipe(self, batch_size: int):
         return self.dataset.train().shuffled_pairs_source().gen_train_sampling_neg_(
