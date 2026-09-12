@@ -1,0 +1,2285 @@
+[Wall TIME] >>> Parser.parse takes 0.046798 seconds ...
+[Wall TIME] >>> Parser.load takes 0.002591 seconds ...
+[Benchmark] >>> cudnn.benchmark == False | cudnn.deterministic == True
+[Seed] >>> Set seed: 1
+[PARSER] >>>
+[SAVED_FILENAME: model.pt] 
+[BEST_FILENAME: best.pt] 
+[CHECKPOINT_FREQ: 1] 
+[CHECKPOINT_MODULES: ['model', 'optimizer', 'lr_scheduler']] 
+[CHECKPOINT_FILENAME: checkpoint.tar] 
+[SUMMARY_FILENAME: SUMMARY.md] 
+[MONITOR_FILENAME: monitors.pkl] 
+[MONITOR_BEST_FILENAME: best.pkl] 
+[monitors: ['LOSS', 'Recall@1', 'Recall@10', 'Recall@20', 'NDCG@10', 'NDCG@20']] 
+[which4best: NDCG@20] 
+[root: /kaggle/data] 
+[dataset: Amazon2014Electronics_550_MMRec] 
+[tasktag: None] 
+[config: /kaggle/working/STAIR-Enhanced/configs/Amazon2014Electronics_550_MMRec.yaml] 
+[ranking: full] 
+[retain_seen: False] 
+[device: cuda:0] 
+[ddp_backend: nccl] 
+[optimizer: adamwsevo] 
+[nesterov: False] 
+[momentum: 0.9] 
+[beta1: 0.9] 
+[beta2: 0.999] 
+[weight_decay: 0.1] 
+[lr: 0.001] 
+[batch_size: 4096] 
+[epochs: 500] 
+[log2file: True] 
+[log2console: True] 
+[eval_valid: True] 
+[eval_test: False] 
+[eval_freq: 5] 
+[num_workers: 4] 
+[seed: 1] 
+[benchmark: False] 
+[resume: False] 
+[id: 0912004801] 
+[description: STAIR-BSC-Reweight (STAIR-v5)] 
+[embedding_dim: 64] 
+[num_layers: 3] 
+[mfiles: textual_modality.pkl,visual_modality.pkl] 
+[num_neighbors: 5-1] 
+[gamma: 0.4] 
+[ssb_mode: full_ssb] 
+[ssb_alpha: 0.4] 
+[ssb_beta: 0.2] 
+[ssb_tau_text: 0.1] 
+[ssb_tau_visual: 0.1] 
+[ssb_min_weight: 1.0] 
+[ssb_max_weight: 3.6] 
+[DATA_DIR: data] 
+[SUMMARY_DIR: summary] 
+[CHECKPOINT_PATH: ./infos/STAIR-BSC-Reweight (STAIR-v5)/Amazon2014Electronics_550_MMRec/cuda:0] 
+[LOG_PATH: ./logs/STAIR-BSC-Reweight (STAIR-v5)/Amazon2014Electronics_550_MMRec/0912004801] 
+
+[Wall TIME] >>> Parser.compile takes 0.213457 seconds ...
+[Config] Giữ nguyên giá trị CLI cho 'root' (không bị YAML ghi đè)
+[Config] Giữ nguyên giá trị CLI cho 'dataset' (không bị YAML ghi đè)
+[Config] Nạp embedding_dim = 64 từ YAML
+[Config] Nạp num_layers = 3 từ YAML
+[Config] Giữ nguyên giá trị CLI cho 'epochs' (không bị YAML ghi đè)
+[Config] Giữ nguyên giá trị CLI cho 'batch_size' (không bị YAML ghi đè)
+[Config] Nạp optimizer = adamwsevo từ YAML
+[Config] Giữ nguyên giá trị CLI cho 'lr' (không bị YAML ghi đè)
+[Config] Nạp weight_decay = 0.1 từ YAML
+[Config] Nạp gamma = 0.4 từ YAML
+[Config] Nạp mfiles = textual_modality.pkl,visual_modality.pkl từ YAML
+[Config] Nạp num_neighbors = 5-1 từ YAML
+[Config] Nạp monitors = ['LOSS', 'Recall@1', 'Recall@10', 'Recall@20', 'NDCG@10', 'NDCG@20'] từ YAML
+[Config] Nạp which4best = NDCG@20 từ YAML
+=====================================================================================
+🚀 KHỞI CHẠY HUẤN LUYỆN STAIR-BSC-REWEIGHT (STAIR-v5)
+   * Tập dữ liệu      : Amazon2014Electronics_550_MMRec
+   * Chế độ Reweight  : full_ssb
+   * Hệ số tăng cường : alpha=0.4, beta=0.2
+   * Ngưỡng tương đồng: tau_text=0.1, tau_visual=0.1
+   * Trọng số chặn    : [1.0, 3.6]
+   * Cấu hình STAIR   : Layers=3, Dim=64, Gamma=0.4
+   * Tối ưu hóa       : LR=0.001, WeightDecay=0.1, BatchSize=4096
+=====================================================================================
+[Amazon2014Electronics_550_MMRec] >>> USER:ID,USER | ITEM:ID,ITEM | TIMESTAMP:TIMESTAMP
++--------+--------+-------------------+---------------+---------+--------+--------+------------------------+
+| #Users | #Items |      Avg.Len      | #Interactions |  #Train | #Valid | #Test  |        Density         |
++--------+--------+-------------------+---------------+---------+--------+--------+------------------------+
+| 192403 | 63001  | 8.779426516218562 |    1689188    | 1254441 | 211296 | 223451 | 0.00013935376448339807 |
++--------+--------+-------------------+---------------+---------+--------+--------+------------------------+
+[Wall TIME] >>> BaseSet.compile takes 7.112145 seconds ...
+[Wall TIME] >>> RecDataSet.to_heterograph takes 0.256816 seconds ...
+/usr/local/lib/python3.12/dist-packages/freerec/graph.py:57: UserWarning: Sparse CSR tensor support is in beta state. If you miss a functionality in the sparse tensor support, please submit a feature request to https://github.com/pytorch/pytorch/issues. (Triggered internally at /pytorch/aten/src/ATen/SparseCsrTensorImpl.cpp:49.)
+  ).to_sparse_csr()
+[STAIR-v5] Đang xây dựng đồ thị kNN gốc: k_neighbors=[5, 1]...
+[STAIR-v5] Baseline kNN hoàn tất: 361,797 cạnh gốc (Trọng số: 1.0 - 2.0).
+[Wall TIME] >>> RecDataSet.to_heterograph takes 0.230910 seconds ...
+[STAIR-BSC-Reweight] Tổng số cạnh kNN gốc tiếp nhận: 361,797 (0% pruning, mode='full_ssb').
+[STAIR-BSC-Reweight] Hoàn tất xây dựng ma trận Laplacian SPSD duy nhất: 542,714 cạnh đối xứng.
+[STAIR-v5] Đã đăng ký mAdj thành công: nnz=542,714 trên device=cuda:0
+[STAIR-v5] Khởi tạo Item & User embeddings từ SVD Whitening hoàn tất 100%.
+[Wall TIME] >>> GenTrainPositiveSampler.prepare takes 0.481430 seconds ...
+[Wall TIME] >>> ValidSampler.prepare takes 0.331152 seconds ...
+[Wall TIME] >>> TestSampler.prepare takes 0.385541 seconds ...
+[Coach] >>> Set best meter: NDCG@20 
+[Wall TIME] >>> ChiefCoach.valid takes 33.956722 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0128*** 
+[Coach] >>> TRAIN @Epoch: 0    >>> 
+[Coach] >>> VALID @Epoch: 0    >>>  || RECALL@1 Avg: 0.0043 || RECALL@10 Avg: 0.0186 || RECALL@20 Avg: 0.0268 || NDCG@10 Avg: 0.0106 || NDCG@20 Avg: 0.0128
+[Coach] >>> TEST  @Epoch: 0    >>> 
+[Wall TIME] >>> ChiefCoach.train takes 32.624846 seconds ...
+[Coach] >>> TRAIN @Epoch: 1    >>>  || LOSS Avg: 0.60675
+[Coach] >>> VALID @Epoch: 1    >>> 
+[Coach] >>> TEST  @Epoch: 1    >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.030491 seconds ...
+[Coach] >>> TRAIN @Epoch: 2    >>>  || LOSS Avg: 0.52541
+[Coach] >>> VALID @Epoch: 2    >>> 
+[Coach] >>> TEST  @Epoch: 2    >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.967693 seconds ...
+[Coach] >>> TRAIN @Epoch: 3    >>>  || LOSS Avg: 0.43710
+[Coach] >>> VALID @Epoch: 3    >>> 
+[Coach] >>> TEST  @Epoch: 3    >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.879570 seconds ...
+[Coach] >>> TRAIN @Epoch: 4    >>>  || LOSS Avg: 0.37180
+[Coach] >>> VALID @Epoch: 4    >>> 
+[Coach] >>> TEST  @Epoch: 4    >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.867386 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.148127 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0197*** 
+[Coach] >>> TRAIN @Epoch: 5    >>>  || LOSS Avg: 0.32765
+[Coach] >>> VALID @Epoch: 5    >>>  || RECALL@1 Avg: 0.0052 || RECALL@10 Avg: 0.0297 || RECALL@20 Avg: 0.0460 || NDCG@10 Avg: 0.0156 || NDCG@20 Avg: 0.0197
+[Coach] >>> TEST  @Epoch: 5    >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.224377 seconds ...
+[Coach] >>> TRAIN @Epoch: 6    >>>  || LOSS Avg: 0.29599
+[Coach] >>> VALID @Epoch: 6    >>> 
+[Coach] >>> TEST  @Epoch: 6    >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.998237 seconds ...
+[Coach] >>> TRAIN @Epoch: 7    >>>  || LOSS Avg: 0.27136
+[Coach] >>> VALID @Epoch: 7    >>> 
+[Coach] >>> TEST  @Epoch: 7    >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.914993 seconds ...
+[Coach] >>> TRAIN @Epoch: 8    >>>  || LOSS Avg: 0.25122
+[Coach] >>> VALID @Epoch: 8    >>> 
+[Coach] >>> TEST  @Epoch: 8    >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.795416 seconds ...
+[Coach] >>> TRAIN @Epoch: 9    >>>  || LOSS Avg: 0.23379
+[Coach] >>> VALID @Epoch: 9    >>> 
+[Coach] >>> TEST  @Epoch: 9    >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.852763 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 21.997710 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0214*** 
+[Coach] >>> TRAIN @Epoch: 10   >>>  || LOSS Avg: 0.21854
+[Coach] >>> VALID @Epoch: 10   >>>  || RECALL@1 Avg: 0.0058 || RECALL@10 Avg: 0.0318 || RECALL@20 Avg: 0.0498 || NDCG@10 Avg: 0.0168 || NDCG@20 Avg: 0.0214
+[Coach] >>> TEST  @Epoch: 10   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.694844 seconds ...
+[Coach] >>> TRAIN @Epoch: 11   >>>  || LOSS Avg: 0.20539
+[Coach] >>> VALID @Epoch: 11   >>> 
+[Coach] >>> TEST  @Epoch: 11   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.982271 seconds ...
+[Coach] >>> TRAIN @Epoch: 12   >>>  || LOSS Avg: 0.19332
+[Coach] >>> VALID @Epoch: 12   >>> 
+[Coach] >>> TEST  @Epoch: 12   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.807408 seconds ...
+[Coach] >>> TRAIN @Epoch: 13   >>>  || LOSS Avg: 0.18286
+[Coach] >>> VALID @Epoch: 13   >>> 
+[Coach] >>> TEST  @Epoch: 13   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.956696 seconds ...
+[Coach] >>> TRAIN @Epoch: 14   >>>  || LOSS Avg: 0.17341
+[Coach] >>> VALID @Epoch: 14   >>> 
+[Coach] >>> TEST  @Epoch: 14   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.978137 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.124385 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0231*** 
+[Coach] >>> TRAIN @Epoch: 15   >>>  || LOSS Avg: 0.16466
+[Coach] >>> VALID @Epoch: 15   >>>  || RECALL@1 Avg: 0.0064 || RECALL@10 Avg: 0.0344 || RECALL@20 Avg: 0.0535 || NDCG@10 Avg: 0.0183 || NDCG@20 Avg: 0.0231
+[Coach] >>> TEST  @Epoch: 15   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.887932 seconds ...
+[Coach] >>> TRAIN @Epoch: 16   >>>  || LOSS Avg: 0.15683
+[Coach] >>> VALID @Epoch: 16   >>> 
+[Coach] >>> TEST  @Epoch: 16   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.017553 seconds ...
+[Coach] >>> TRAIN @Epoch: 17   >>>  || LOSS Avg: 0.14955
+[Coach] >>> VALID @Epoch: 17   >>> 
+[Coach] >>> TEST  @Epoch: 17   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.164402 seconds ...
+[Coach] >>> TRAIN @Epoch: 18   >>>  || LOSS Avg: 0.14325
+[Coach] >>> VALID @Epoch: 18   >>> 
+[Coach] >>> TEST  @Epoch: 18   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.923206 seconds ...
+[Coach] >>> TRAIN @Epoch: 19   >>>  || LOSS Avg: 0.13737
+[Coach] >>> VALID @Epoch: 19   >>> 
+[Coach] >>> TEST  @Epoch: 19   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.553547 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.195431 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0242*** 
+[Coach] >>> TRAIN @Epoch: 20   >>>  || LOSS Avg: 0.13154
+[Coach] >>> VALID @Epoch: 20   >>>  || RECALL@1 Avg: 0.0066 || RECALL@10 Avg: 0.0359 || RECALL@20 Avg: 0.0558 || NDCG@10 Avg: 0.0192 || NDCG@20 Avg: 0.0242
+[Coach] >>> TEST  @Epoch: 20   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.774449 seconds ...
+[Coach] >>> TRAIN @Epoch: 21   >>>  || LOSS Avg: 0.12664
+[Coach] >>> VALID @Epoch: 21   >>> 
+[Coach] >>> TEST  @Epoch: 21   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.793049 seconds ...
+[Coach] >>> TRAIN @Epoch: 22   >>>  || LOSS Avg: 0.12212
+[Coach] >>> VALID @Epoch: 22   >>> 
+[Coach] >>> TEST  @Epoch: 22   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.962725 seconds ...
+[Coach] >>> TRAIN @Epoch: 23   >>>  || LOSS Avg: 0.11792
+[Coach] >>> VALID @Epoch: 23   >>> 
+[Coach] >>> TEST  @Epoch: 23   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.917389 seconds ...
+[Coach] >>> TRAIN @Epoch: 24   >>>  || LOSS Avg: 0.11382
+[Coach] >>> VALID @Epoch: 24   >>> 
+[Coach] >>> TEST  @Epoch: 24   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.946985 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.102216 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0249*** 
+[Coach] >>> TRAIN @Epoch: 25   >>>  || LOSS Avg: 0.11026
+[Coach] >>> VALID @Epoch: 25   >>>  || RECALL@1 Avg: 0.0070 || RECALL@10 Avg: 0.0371 || RECALL@20 Avg: 0.0570 || NDCG@10 Avg: 0.0198 || NDCG@20 Avg: 0.0249
+[Coach] >>> TEST  @Epoch: 25   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.756299 seconds ...
+[Coach] >>> TRAIN @Epoch: 26   >>>  || LOSS Avg: 0.10691
+[Coach] >>> VALID @Epoch: 26   >>> 
+[Coach] >>> TEST  @Epoch: 26   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.932212 seconds ...
+[Coach] >>> TRAIN @Epoch: 27   >>>  || LOSS Avg: 0.10382
+[Coach] >>> VALID @Epoch: 27   >>> 
+[Coach] >>> TEST  @Epoch: 27   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.271732 seconds ...
+[Coach] >>> TRAIN @Epoch: 28   >>>  || LOSS Avg: 0.10065
+[Coach] >>> VALID @Epoch: 28   >>> 
+[Coach] >>> TEST  @Epoch: 28   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.547772 seconds ...
+[Coach] >>> TRAIN @Epoch: 29   >>>  || LOSS Avg: 0.09792
+[Coach] >>> VALID @Epoch: 29   >>> 
+[Coach] >>> TEST  @Epoch: 29   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.913749 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.144566 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0255*** 
+[Coach] >>> TRAIN @Epoch: 30   >>>  || LOSS Avg: 0.09538
+[Coach] >>> VALID @Epoch: 30   >>>  || RECALL@1 Avg: 0.0071 || RECALL@10 Avg: 0.0378 || RECALL@20 Avg: 0.0582 || NDCG@10 Avg: 0.0203 || NDCG@20 Avg: 0.0255
+[Coach] >>> TEST  @Epoch: 30   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.130103 seconds ...
+[Coach] >>> TRAIN @Epoch: 31   >>>  || LOSS Avg: 0.09291
+[Coach] >>> VALID @Epoch: 31   >>> 
+[Coach] >>> TEST  @Epoch: 31   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.178740 seconds ...
+[Coach] >>> TRAIN @Epoch: 32   >>>  || LOSS Avg: 0.09087
+[Coach] >>> VALID @Epoch: 32   >>> 
+[Coach] >>> TEST  @Epoch: 32   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.113551 seconds ...
+[Coach] >>> TRAIN @Epoch: 33   >>>  || LOSS Avg: 0.08874
+[Coach] >>> VALID @Epoch: 33   >>> 
+[Coach] >>> TEST  @Epoch: 33   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.122694 seconds ...
+[Coach] >>> TRAIN @Epoch: 34   >>>  || LOSS Avg: 0.08680
+[Coach] >>> VALID @Epoch: 34   >>> 
+[Coach] >>> TEST  @Epoch: 34   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.239642 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.083889 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0259*** 
+[Coach] >>> TRAIN @Epoch: 35   >>>  || LOSS Avg: 0.08478
+[Coach] >>> VALID @Epoch: 35   >>>  || RECALL@1 Avg: 0.0073 || RECALL@10 Avg: 0.0383 || RECALL@20 Avg: 0.0588 || NDCG@10 Avg: 0.0206 || NDCG@20 Avg: 0.0259
+[Coach] >>> TEST  @Epoch: 35   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.934211 seconds ...
+[Coach] >>> TRAIN @Epoch: 36   >>>  || LOSS Avg: 0.08322
+[Coach] >>> VALID @Epoch: 36   >>> 
+[Coach] >>> TEST  @Epoch: 36   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.765195 seconds ...
+[Coach] >>> TRAIN @Epoch: 37   >>>  || LOSS Avg: 0.08150
+[Coach] >>> VALID @Epoch: 37   >>> 
+[Coach] >>> TEST  @Epoch: 37   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.041020 seconds ...
+[Coach] >>> TRAIN @Epoch: 38   >>>  || LOSS Avg: 0.07997
+[Coach] >>> VALID @Epoch: 38   >>> 
+[Coach] >>> TEST  @Epoch: 38   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.055999 seconds ...
+[Coach] >>> TRAIN @Epoch: 39   >>>  || LOSS Avg: 0.07835
+[Coach] >>> VALID @Epoch: 39   >>> 
+[Coach] >>> TEST  @Epoch: 39   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.678680 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.094538 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0263*** 
+[Coach] >>> TRAIN @Epoch: 40   >>>  || LOSS Avg: 0.07712
+[Coach] >>> VALID @Epoch: 40   >>>  || RECALL@1 Avg: 0.0074 || RECALL@10 Avg: 0.0388 || RECALL@20 Avg: 0.0599 || NDCG@10 Avg: 0.0210 || NDCG@20 Avg: 0.0263
+[Coach] >>> TEST  @Epoch: 40   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.000394 seconds ...
+[Coach] >>> TRAIN @Epoch: 41   >>>  || LOSS Avg: 0.07563
+[Coach] >>> VALID @Epoch: 41   >>> 
+[Coach] >>> TEST  @Epoch: 41   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.771683 seconds ...
+[Coach] >>> TRAIN @Epoch: 42   >>>  || LOSS Avg: 0.07465
+[Coach] >>> VALID @Epoch: 42   >>> 
+[Coach] >>> TEST  @Epoch: 42   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.328396 seconds ...
+[Coach] >>> TRAIN @Epoch: 43   >>>  || LOSS Avg: 0.07327
+[Coach] >>> VALID @Epoch: 43   >>> 
+[Coach] >>> TEST  @Epoch: 43   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.532144 seconds ...
+[Coach] >>> TRAIN @Epoch: 44   >>>  || LOSS Avg: 0.07218
+[Coach] >>> VALID @Epoch: 44   >>> 
+[Coach] >>> TEST  @Epoch: 44   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.469741 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.153707 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0267*** 
+[Coach] >>> TRAIN @Epoch: 45   >>>  || LOSS Avg: 0.07115
+[Coach] >>> VALID @Epoch: 45   >>>  || RECALL@1 Avg: 0.0076 || RECALL@10 Avg: 0.0393 || RECALL@20 Avg: 0.0606 || NDCG@10 Avg: 0.0213 || NDCG@20 Avg: 0.0267
+[Coach] >>> TEST  @Epoch: 45   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.849552 seconds ...
+[Coach] >>> TRAIN @Epoch: 46   >>>  || LOSS Avg: 0.07004
+[Coach] >>> VALID @Epoch: 46   >>> 
+[Coach] >>> TEST  @Epoch: 46   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.206017 seconds ...
+[Coach] >>> TRAIN @Epoch: 47   >>>  || LOSS Avg: 0.06897
+[Coach] >>> VALID @Epoch: 47   >>> 
+[Coach] >>> TEST  @Epoch: 47   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.940151 seconds ...
+[Coach] >>> TRAIN @Epoch: 48   >>>  || LOSS Avg: 0.06840
+[Coach] >>> VALID @Epoch: 48   >>> 
+[Coach] >>> TEST  @Epoch: 48   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.431168 seconds ...
+[Coach] >>> TRAIN @Epoch: 49   >>>  || LOSS Avg: 0.06722
+[Coach] >>> VALID @Epoch: 49   >>> 
+[Coach] >>> TEST  @Epoch: 49   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.065996 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.126825 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0270*** 
+[Coach] >>> TRAIN @Epoch: 50   >>>  || LOSS Avg: 0.06665
+[Coach] >>> VALID @Epoch: 50   >>>  || RECALL@1 Avg: 0.0078 || RECALL@10 Avg: 0.0398 || RECALL@20 Avg: 0.0611 || NDCG@10 Avg: 0.0215 || NDCG@20 Avg: 0.0270
+[Coach] >>> TEST  @Epoch: 50   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.408484 seconds ...
+[Coach] >>> TRAIN @Epoch: 51   >>>  || LOSS Avg: 0.06571
+[Coach] >>> VALID @Epoch: 51   >>> 
+[Coach] >>> TEST  @Epoch: 51   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.904529 seconds ...
+[Coach] >>> TRAIN @Epoch: 52   >>>  || LOSS Avg: 0.06493
+[Coach] >>> VALID @Epoch: 52   >>> 
+[Coach] >>> TEST  @Epoch: 52   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 29.121428 seconds ...
+[Coach] >>> TRAIN @Epoch: 53   >>>  || LOSS Avg: 0.06425
+[Coach] >>> VALID @Epoch: 53   >>> 
+[Coach] >>> TEST  @Epoch: 53   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.997441 seconds ...
+[Coach] >>> TRAIN @Epoch: 54   >>>  || LOSS Avg: 0.06340
+[Coach] >>> VALID @Epoch: 54   >>> 
+[Coach] >>> TEST  @Epoch: 54   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.521790 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.096026 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0273*** 
+[Coach] >>> TRAIN @Epoch: 55   >>>  || LOSS Avg: 0.06322
+[Coach] >>> VALID @Epoch: 55   >>>  || RECALL@1 Avg: 0.0079 || RECALL@10 Avg: 0.0400 || RECALL@20 Avg: 0.0618 || NDCG@10 Avg: 0.0217 || NDCG@20 Avg: 0.0273
+[Coach] >>> TEST  @Epoch: 55   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.053309 seconds ...
+[Coach] >>> TRAIN @Epoch: 56   >>>  || LOSS Avg: 0.06231
+[Coach] >>> VALID @Epoch: 56   >>> 
+[Coach] >>> TEST  @Epoch: 56   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.826061 seconds ...
+[Coach] >>> TRAIN @Epoch: 57   >>>  || LOSS Avg: 0.06163
+[Coach] >>> VALID @Epoch: 57   >>> 
+[Coach] >>> TEST  @Epoch: 57   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.754457 seconds ...
+[Coach] >>> TRAIN @Epoch: 58   >>>  || LOSS Avg: 0.06086
+[Coach] >>> VALID @Epoch: 58   >>> 
+[Coach] >>> TEST  @Epoch: 58   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.221392 seconds ...
+[Coach] >>> TRAIN @Epoch: 59   >>>  || LOSS Avg: 0.06027
+[Coach] >>> VALID @Epoch: 59   >>> 
+[Coach] >>> TEST  @Epoch: 59   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.728054 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.138218 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0275*** 
+[Coach] >>> TRAIN @Epoch: 60   >>>  || LOSS Avg: 0.05976
+[Coach] >>> VALID @Epoch: 60   >>>  || RECALL@1 Avg: 0.0081 || RECALL@10 Avg: 0.0402 || RECALL@20 Avg: 0.0623 || NDCG@10 Avg: 0.0219 || NDCG@20 Avg: 0.0275
+[Coach] >>> TEST  @Epoch: 60   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.889082 seconds ...
+[Coach] >>> TRAIN @Epoch: 61   >>>  || LOSS Avg: 0.05931
+[Coach] >>> VALID @Epoch: 61   >>> 
+[Coach] >>> TEST  @Epoch: 61   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.788293 seconds ...
+[Coach] >>> TRAIN @Epoch: 62   >>>  || LOSS Avg: 0.05876
+[Coach] >>> VALID @Epoch: 62   >>> 
+[Coach] >>> TEST  @Epoch: 62   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.858738 seconds ...
+[Coach] >>> TRAIN @Epoch: 63   >>>  || LOSS Avg: 0.05820
+[Coach] >>> VALID @Epoch: 63   >>> 
+[Coach] >>> TEST  @Epoch: 63   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.803488 seconds ...
+[Coach] >>> TRAIN @Epoch: 64   >>>  || LOSS Avg: 0.05797
+[Coach] >>> VALID @Epoch: 64   >>> 
+[Coach] >>> TEST  @Epoch: 64   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.125388 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.140194 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0276*** 
+[Coach] >>> TRAIN @Epoch: 65   >>>  || LOSS Avg: 0.05748
+[Coach] >>> VALID @Epoch: 65   >>>  || RECALL@1 Avg: 0.0081 || RECALL@10 Avg: 0.0407 || RECALL@20 Avg: 0.0626 || NDCG@10 Avg: 0.0221 || NDCG@20 Avg: 0.0276
+[Coach] >>> TEST  @Epoch: 65   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.959649 seconds ...
+[Coach] >>> TRAIN @Epoch: 66   >>>  || LOSS Avg: 0.05693
+[Coach] >>> VALID @Epoch: 66   >>> 
+[Coach] >>> TEST  @Epoch: 66   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.559422 seconds ...
+[Coach] >>> TRAIN @Epoch: 67   >>>  || LOSS Avg: 0.05672
+[Coach] >>> VALID @Epoch: 67   >>> 
+[Coach] >>> TEST  @Epoch: 67   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.066114 seconds ...
+[Coach] >>> TRAIN @Epoch: 68   >>>  || LOSS Avg: 0.05624
+[Coach] >>> VALID @Epoch: 68   >>> 
+[Coach] >>> TEST  @Epoch: 68   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.990926 seconds ...
+[Coach] >>> TRAIN @Epoch: 69   >>>  || LOSS Avg: 0.05573
+[Coach] >>> VALID @Epoch: 69   >>> 
+[Coach] >>> TEST  @Epoch: 69   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.166449 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.126927 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0277*** 
+[Coach] >>> TRAIN @Epoch: 70   >>>  || LOSS Avg: 0.05555
+[Coach] >>> VALID @Epoch: 70   >>>  || RECALL@1 Avg: 0.0081 || RECALL@10 Avg: 0.0408 || RECALL@20 Avg: 0.0627 || NDCG@10 Avg: 0.0222 || NDCG@20 Avg: 0.0277
+[Coach] >>> TEST  @Epoch: 70   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.591114 seconds ...
+[Coach] >>> TRAIN @Epoch: 71   >>>  || LOSS Avg: 0.05503
+[Coach] >>> VALID @Epoch: 71   >>> 
+[Coach] >>> TEST  @Epoch: 71   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.915081 seconds ...
+[Coach] >>> TRAIN @Epoch: 72   >>>  || LOSS Avg: 0.05461
+[Coach] >>> VALID @Epoch: 72   >>> 
+[Coach] >>> TEST  @Epoch: 72   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.872376 seconds ...
+[Coach] >>> TRAIN @Epoch: 73   >>>  || LOSS Avg: 0.05430
+[Coach] >>> VALID @Epoch: 73   >>> 
+[Coach] >>> TEST  @Epoch: 73   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.188812 seconds ...
+[Coach] >>> TRAIN @Epoch: 74   >>>  || LOSS Avg: 0.05413
+[Coach] >>> VALID @Epoch: 74   >>> 
+[Coach] >>> TEST  @Epoch: 74   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.879230 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.061808 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0279*** 
+[Coach] >>> TRAIN @Epoch: 75   >>>  || LOSS Avg: 0.05381
+[Coach] >>> VALID @Epoch: 75   >>>  || RECALL@1 Avg: 0.0081 || RECALL@10 Avg: 0.0411 || RECALL@20 Avg: 0.0630 || NDCG@10 Avg: 0.0223 || NDCG@20 Avg: 0.0279
+[Coach] >>> TEST  @Epoch: 75   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.493184 seconds ...
+[Coach] >>> TRAIN @Epoch: 76   >>>  || LOSS Avg: 0.05368
+[Coach] >>> VALID @Epoch: 76   >>> 
+[Coach] >>> TEST  @Epoch: 76   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.071104 seconds ...
+[Coach] >>> TRAIN @Epoch: 77   >>>  || LOSS Avg: 0.05328
+[Coach] >>> VALID @Epoch: 77   >>> 
+[Coach] >>> TEST  @Epoch: 77   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.743021 seconds ...
+[Coach] >>> TRAIN @Epoch: 78   >>>  || LOSS Avg: 0.05284
+[Coach] >>> VALID @Epoch: 78   >>> 
+[Coach] >>> TEST  @Epoch: 78   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.943832 seconds ...
+[Coach] >>> TRAIN @Epoch: 79   >>>  || LOSS Avg: 0.05250
+[Coach] >>> VALID @Epoch: 79   >>> 
+[Coach] >>> TEST  @Epoch: 79   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.722210 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.193473 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0280*** 
+[Coach] >>> TRAIN @Epoch: 80   >>>  || LOSS Avg: 0.05223
+[Coach] >>> VALID @Epoch: 80   >>>  || RECALL@1 Avg: 0.0081 || RECALL@10 Avg: 0.0413 || RECALL@20 Avg: 0.0633 || NDCG@10 Avg: 0.0224 || NDCG@20 Avg: 0.0280
+[Coach] >>> TEST  @Epoch: 80   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.961469 seconds ...
+[Coach] >>> TRAIN @Epoch: 81   >>>  || LOSS Avg: 0.05214
+[Coach] >>> VALID @Epoch: 81   >>> 
+[Coach] >>> TEST  @Epoch: 81   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 29.073052 seconds ...
+[Coach] >>> TRAIN @Epoch: 82   >>>  || LOSS Avg: 0.05179
+[Coach] >>> VALID @Epoch: 82   >>> 
+[Coach] >>> TEST  @Epoch: 82   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.000908 seconds ...
+[Coach] >>> TRAIN @Epoch: 83   >>>  || LOSS Avg: 0.05159
+[Coach] >>> VALID @Epoch: 83   >>> 
+[Coach] >>> TEST  @Epoch: 83   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.167218 seconds ...
+[Coach] >>> TRAIN @Epoch: 84   >>>  || LOSS Avg: 0.05135
+[Coach] >>> VALID @Epoch: 84   >>> 
+[Coach] >>> TEST  @Epoch: 84   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.510767 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.127106 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0281*** 
+[Coach] >>> TRAIN @Epoch: 85   >>>  || LOSS Avg: 0.05107
+[Coach] >>> VALID @Epoch: 85   >>>  || RECALL@1 Avg: 0.0082 || RECALL@10 Avg: 0.0413 || RECALL@20 Avg: 0.0637 || NDCG@10 Avg: 0.0224 || NDCG@20 Avg: 0.0281
+[Coach] >>> TEST  @Epoch: 85   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.906411 seconds ...
+[Coach] >>> TRAIN @Epoch: 86   >>>  || LOSS Avg: 0.05073
+[Coach] >>> VALID @Epoch: 86   >>> 
+[Coach] >>> TEST  @Epoch: 86   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.015137 seconds ...
+[Coach] >>> TRAIN @Epoch: 87   >>>  || LOSS Avg: 0.05065
+[Coach] >>> VALID @Epoch: 87   >>> 
+[Coach] >>> TEST  @Epoch: 87   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.226140 seconds ...
+[Coach] >>> TRAIN @Epoch: 88   >>>  || LOSS Avg: 0.05040
+[Coach] >>> VALID @Epoch: 88   >>> 
+[Coach] >>> TEST  @Epoch: 88   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.966455 seconds ...
+[Coach] >>> TRAIN @Epoch: 89   >>>  || LOSS Avg: 0.05011
+[Coach] >>> VALID @Epoch: 89   >>> 
+[Coach] >>> TEST  @Epoch: 89   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.047039 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.160083 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0282*** 
+[Coach] >>> TRAIN @Epoch: 90   >>>  || LOSS Avg: 0.04994
+[Coach] >>> VALID @Epoch: 90   >>>  || RECALL@1 Avg: 0.0082 || RECALL@10 Avg: 0.0415 || RECALL@20 Avg: 0.0637 || NDCG@10 Avg: 0.0225 || NDCG@20 Avg: 0.0282
+[Coach] >>> TEST  @Epoch: 90   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.790927 seconds ...
+[Coach] >>> TRAIN @Epoch: 91   >>>  || LOSS Avg: 0.04970
+[Coach] >>> VALID @Epoch: 91   >>> 
+[Coach] >>> TEST  @Epoch: 91   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.058357 seconds ...
+[Coach] >>> TRAIN @Epoch: 92   >>>  || LOSS Avg: 0.04953
+[Coach] >>> VALID @Epoch: 92   >>> 
+[Coach] >>> TEST  @Epoch: 92   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.261452 seconds ...
+[Coach] >>> TRAIN @Epoch: 93   >>>  || LOSS Avg: 0.04932
+[Coach] >>> VALID @Epoch: 93   >>> 
+[Coach] >>> TEST  @Epoch: 93   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.463429 seconds ...
+[Coach] >>> TRAIN @Epoch: 94   >>>  || LOSS Avg: 0.04919
+[Coach] >>> VALID @Epoch: 94   >>> 
+[Coach] >>> TEST  @Epoch: 94   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.106543 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.159171 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0283*** 
+[Coach] >>> TRAIN @Epoch: 95   >>>  || LOSS Avg: 0.04892
+[Coach] >>> VALID @Epoch: 95   >>>  || RECALL@1 Avg: 0.0084 || RECALL@10 Avg: 0.0417 || RECALL@20 Avg: 0.0636 || NDCG@10 Avg: 0.0227 || NDCG@20 Avg: 0.0283
+[Coach] >>> TEST  @Epoch: 95   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.406955 seconds ...
+[Coach] >>> TRAIN @Epoch: 96   >>>  || LOSS Avg: 0.04859
+[Coach] >>> VALID @Epoch: 96   >>> 
+[Coach] >>> TEST  @Epoch: 96   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.141558 seconds ...
+[Coach] >>> TRAIN @Epoch: 97   >>>  || LOSS Avg: 0.04851
+[Coach] >>> VALID @Epoch: 97   >>> 
+[Coach] >>> TEST  @Epoch: 97   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.734195 seconds ...
+[Coach] >>> TRAIN @Epoch: 98   >>>  || LOSS Avg: 0.04840
+[Coach] >>> VALID @Epoch: 98   >>> 
+[Coach] >>> TEST  @Epoch: 98   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.951104 seconds ...
+[Coach] >>> TRAIN @Epoch: 99   >>>  || LOSS Avg: 0.04831
+[Coach] >>> VALID @Epoch: 99   >>> 
+[Coach] >>> TEST  @Epoch: 99   >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.937232 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.196830 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0283*** 
+[Coach] >>> TRAIN @Epoch: 100  >>>  || LOSS Avg: 0.04813
+[Coach] >>> VALID @Epoch: 100  >>>  || RECALL@1 Avg: 0.0084 || RECALL@10 Avg: 0.0417 || RECALL@20 Avg: 0.0639 || NDCG@10 Avg: 0.0226 || NDCG@20 Avg: 0.0283
+[Coach] >>> TEST  @Epoch: 100  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.994154 seconds ...
+[Coach] >>> TRAIN @Epoch: 101  >>>  || LOSS Avg: 0.04795
+[Coach] >>> VALID @Epoch: 101  >>> 
+[Coach] >>> TEST  @Epoch: 101  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.004341 seconds ...
+[Coach] >>> TRAIN @Epoch: 102  >>>  || LOSS Avg: 0.04762
+[Coach] >>> VALID @Epoch: 102  >>> 
+[Coach] >>> TEST  @Epoch: 102  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.358725 seconds ...
+[Coach] >>> TRAIN @Epoch: 103  >>>  || LOSS Avg: 0.04756
+[Coach] >>> VALID @Epoch: 103  >>> 
+[Coach] >>> TEST  @Epoch: 103  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.890144 seconds ...
+[Coach] >>> TRAIN @Epoch: 104  >>>  || LOSS Avg: 0.04744
+[Coach] >>> VALID @Epoch: 104  >>> 
+[Coach] >>> TEST  @Epoch: 104  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.592245 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.201910 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0284*** 
+[Coach] >>> TRAIN @Epoch: 105  >>>  || LOSS Avg: 0.04706
+[Coach] >>> VALID @Epoch: 105  >>>  || RECALL@1 Avg: 0.0084 || RECALL@10 Avg: 0.0418 || RECALL@20 Avg: 0.0642 || NDCG@10 Avg: 0.0227 || NDCG@20 Avg: 0.0284
+[Coach] >>> TEST  @Epoch: 105  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.898220 seconds ...
+[Coach] >>> TRAIN @Epoch: 106  >>>  || LOSS Avg: 0.04729
+[Coach] >>> VALID @Epoch: 106  >>> 
+[Coach] >>> TEST  @Epoch: 106  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.944728 seconds ...
+[Coach] >>> TRAIN @Epoch: 107  >>>  || LOSS Avg: 0.04717
+[Coach] >>> VALID @Epoch: 107  >>> 
+[Coach] >>> TEST  @Epoch: 107  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.938397 seconds ...
+[Coach] >>> TRAIN @Epoch: 108  >>>  || LOSS Avg: 0.04686
+[Coach] >>> VALID @Epoch: 108  >>> 
+[Coach] >>> TEST  @Epoch: 108  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.801691 seconds ...
+[Coach] >>> TRAIN @Epoch: 109  >>>  || LOSS Avg: 0.04686
+[Coach] >>> VALID @Epoch: 109  >>> 
+[Coach] >>> TEST  @Epoch: 109  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.315458 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.162315 seconds ...
+[Coach] >>> TRAIN @Epoch: 110  >>>  || LOSS Avg: 0.04642
+[Coach] >>> VALID @Epoch: 110  >>>  || RECALL@1 Avg: 0.0084 || RECALL@10 Avg: 0.0421 || RECALL@20 Avg: 0.0641 || NDCG@10 Avg: 0.0228 || NDCG@20 Avg: 0.0284
+[Coach] >>> TEST  @Epoch: 110  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.775081 seconds ...
+[Coach] >>> TRAIN @Epoch: 111  >>>  || LOSS Avg: 0.04643
+[Coach] >>> VALID @Epoch: 111  >>> 
+[Coach] >>> TEST  @Epoch: 111  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.190656 seconds ...
+[Coach] >>> TRAIN @Epoch: 112  >>>  || LOSS Avg: 0.04646
+[Coach] >>> VALID @Epoch: 112  >>> 
+[Coach] >>> TEST  @Epoch: 112  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.902860 seconds ...
+[Coach] >>> TRAIN @Epoch: 113  >>>  || LOSS Avg: 0.04636
+[Coach] >>> VALID @Epoch: 113  >>> 
+[Coach] >>> TEST  @Epoch: 113  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.537354 seconds ...
+[Coach] >>> TRAIN @Epoch: 114  >>>  || LOSS Avg: 0.04617
+[Coach] >>> VALID @Epoch: 114  >>> 
+[Coach] >>> TEST  @Epoch: 114  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.813208 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.233614 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0286*** 
+[Coach] >>> TRAIN @Epoch: 115  >>>  || LOSS Avg: 0.04589
+[Coach] >>> VALID @Epoch: 115  >>>  || RECALL@1 Avg: 0.0084 || RECALL@10 Avg: 0.0422 || RECALL@20 Avg: 0.0644 || NDCG@10 Avg: 0.0229 || NDCG@20 Avg: 0.0286
+[Coach] >>> TEST  @Epoch: 115  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.983831 seconds ...
+[Coach] >>> TRAIN @Epoch: 116  >>>  || LOSS Avg: 0.04584
+[Coach] >>> VALID @Epoch: 116  >>> 
+[Coach] >>> TEST  @Epoch: 116  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.291431 seconds ...
+[Coach] >>> TRAIN @Epoch: 117  >>>  || LOSS Avg: 0.04584
+[Coach] >>> VALID @Epoch: 117  >>> 
+[Coach] >>> TEST  @Epoch: 117  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.036377 seconds ...
+[Coach] >>> TRAIN @Epoch: 118  >>>  || LOSS Avg: 0.04562
+[Coach] >>> VALID @Epoch: 118  >>> 
+[Coach] >>> TEST  @Epoch: 118  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.734205 seconds ...
+[Coach] >>> TRAIN @Epoch: 119  >>>  || LOSS Avg: 0.04545
+[Coach] >>> VALID @Epoch: 119  >>> 
+[Coach] >>> TEST  @Epoch: 119  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.157036 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.210401 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0287*** 
+[Coach] >>> TRAIN @Epoch: 120  >>>  || LOSS Avg: 0.04547
+[Coach] >>> VALID @Epoch: 120  >>>  || RECALL@1 Avg: 0.0083 || RECALL@10 Avg: 0.0423 || RECALL@20 Avg: 0.0647 || NDCG@10 Avg: 0.0229 || NDCG@20 Avg: 0.0287
+[Coach] >>> TEST  @Epoch: 120  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.218514 seconds ...
+[Coach] >>> TRAIN @Epoch: 121  >>>  || LOSS Avg: 0.04532
+[Coach] >>> VALID @Epoch: 121  >>> 
+[Coach] >>> TEST  @Epoch: 121  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.116642 seconds ...
+[Coach] >>> TRAIN @Epoch: 122  >>>  || LOSS Avg: 0.04515
+[Coach] >>> VALID @Epoch: 122  >>> 
+[Coach] >>> TEST  @Epoch: 122  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.534137 seconds ...
+[Coach] >>> TRAIN @Epoch: 123  >>>  || LOSS Avg: 0.04502
+[Coach] >>> VALID @Epoch: 123  >>> 
+[Coach] >>> TEST  @Epoch: 123  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.142812 seconds ...
+[Coach] >>> TRAIN @Epoch: 124  >>>  || LOSS Avg: 0.04501
+[Coach] >>> VALID @Epoch: 124  >>> 
+[Coach] >>> TEST  @Epoch: 124  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.187850 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.173702 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0287*** 
+[Coach] >>> TRAIN @Epoch: 125  >>>  || LOSS Avg: 0.04494
+[Coach] >>> VALID @Epoch: 125  >>>  || RECALL@1 Avg: 0.0084 || RECALL@10 Avg: 0.0424 || RECALL@20 Avg: 0.0646 || NDCG@10 Avg: 0.0230 || NDCG@20 Avg: 0.0287
+[Coach] >>> TEST  @Epoch: 125  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.766809 seconds ...
+[Coach] >>> TRAIN @Epoch: 126  >>>  || LOSS Avg: 0.04479
+[Coach] >>> VALID @Epoch: 126  >>> 
+[Coach] >>> TEST  @Epoch: 126  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.112765 seconds ...
+[Coach] >>> TRAIN @Epoch: 127  >>>  || LOSS Avg: 0.04474
+[Coach] >>> VALID @Epoch: 127  >>> 
+[Coach] >>> TEST  @Epoch: 127  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.169719 seconds ...
+[Coach] >>> TRAIN @Epoch: 128  >>>  || LOSS Avg: 0.04464
+[Coach] >>> VALID @Epoch: 128  >>> 
+[Coach] >>> TEST  @Epoch: 128  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.834064 seconds ...
+[Coach] >>> TRAIN @Epoch: 129  >>>  || LOSS Avg: 0.04429
+[Coach] >>> VALID @Epoch: 129  >>> 
+[Coach] >>> TEST  @Epoch: 129  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.945416 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.441913 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0287*** 
+[Coach] >>> TRAIN @Epoch: 130  >>>  || LOSS Avg: 0.04447
+[Coach] >>> VALID @Epoch: 130  >>>  || RECALL@1 Avg: 0.0085 || RECALL@10 Avg: 0.0426 || RECALL@20 Avg: 0.0647 || NDCG@10 Avg: 0.0231 || NDCG@20 Avg: 0.0287
+[Coach] >>> TEST  @Epoch: 130  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.075945 seconds ...
+[Coach] >>> TRAIN @Epoch: 131  >>>  || LOSS Avg: 0.04427
+[Coach] >>> VALID @Epoch: 131  >>> 
+[Coach] >>> TEST  @Epoch: 131  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.638506 seconds ...
+[Coach] >>> TRAIN @Epoch: 132  >>>  || LOSS Avg: 0.04419
+[Coach] >>> VALID @Epoch: 132  >>> 
+[Coach] >>> TEST  @Epoch: 132  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.954648 seconds ...
+[Coach] >>> TRAIN @Epoch: 133  >>>  || LOSS Avg: 0.04406
+[Coach] >>> VALID @Epoch: 133  >>> 
+[Coach] >>> TEST  @Epoch: 133  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.810602 seconds ...
+[Coach] >>> TRAIN @Epoch: 134  >>>  || LOSS Avg: 0.04409
+[Coach] >>> VALID @Epoch: 134  >>> 
+[Coach] >>> TEST  @Epoch: 134  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.130359 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.241583 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0289*** 
+[Coach] >>> TRAIN @Epoch: 135  >>>  || LOSS Avg: 0.04400
+[Coach] >>> VALID @Epoch: 135  >>>  || RECALL@1 Avg: 0.0085 || RECALL@10 Avg: 0.0429 || RECALL@20 Avg: 0.0651 || NDCG@10 Avg: 0.0232 || NDCG@20 Avg: 0.0289
+[Coach] >>> TEST  @Epoch: 135  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.034061 seconds ...
+[Coach] >>> TRAIN @Epoch: 136  >>>  || LOSS Avg: 0.04372
+[Coach] >>> VALID @Epoch: 136  >>> 
+[Coach] >>> TEST  @Epoch: 136  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.113585 seconds ...
+[Coach] >>> TRAIN @Epoch: 137  >>>  || LOSS Avg: 0.04369
+[Coach] >>> VALID @Epoch: 137  >>> 
+[Coach] >>> TEST  @Epoch: 137  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.998947 seconds ...
+[Coach] >>> TRAIN @Epoch: 138  >>>  || LOSS Avg: 0.04373
+[Coach] >>> VALID @Epoch: 138  >>> 
+[Coach] >>> TEST  @Epoch: 138  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.165696 seconds ...
+[Coach] >>> TRAIN @Epoch: 139  >>>  || LOSS Avg: 0.04363
+[Coach] >>> VALID @Epoch: 139  >>> 
+[Coach] >>> TEST  @Epoch: 139  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.058533 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.150187 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0290*** 
+[Coach] >>> TRAIN @Epoch: 140  >>>  || LOSS Avg: 0.04363
+[Coach] >>> VALID @Epoch: 140  >>>  || RECALL@1 Avg: 0.0086 || RECALL@10 Avg: 0.0430 || RECALL@20 Avg: 0.0654 || NDCG@10 Avg: 0.0233 || NDCG@20 Avg: 0.0290
+[Coach] >>> TEST  @Epoch: 140  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.557917 seconds ...
+[Coach] >>> TRAIN @Epoch: 141  >>>  || LOSS Avg: 0.04343
+[Coach] >>> VALID @Epoch: 141  >>> 
+[Coach] >>> TEST  @Epoch: 141  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.238815 seconds ...
+[Coach] >>> TRAIN @Epoch: 142  >>>  || LOSS Avg: 0.04323
+[Coach] >>> VALID @Epoch: 142  >>> 
+[Coach] >>> TEST  @Epoch: 142  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.602974 seconds ...
+[Coach] >>> TRAIN @Epoch: 143  >>>  || LOSS Avg: 0.04337
+[Coach] >>> VALID @Epoch: 143  >>> 
+[Coach] >>> TEST  @Epoch: 143  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.856272 seconds ...
+[Coach] >>> TRAIN @Epoch: 144  >>>  || LOSS Avg: 0.04315
+[Coach] >>> VALID @Epoch: 144  >>> 
+[Coach] >>> TEST  @Epoch: 144  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.020355 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.262757 seconds ...
+[Coach] >>> TRAIN @Epoch: 145  >>>  || LOSS Avg: 0.04318
+[Coach] >>> VALID @Epoch: 145  >>>  || RECALL@1 Avg: 0.0085 || RECALL@10 Avg: 0.0430 || RECALL@20 Avg: 0.0652 || NDCG@10 Avg: 0.0233 || NDCG@20 Avg: 0.0289
+[Coach] >>> TEST  @Epoch: 145  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.828957 seconds ...
+[Coach] >>> TRAIN @Epoch: 146  >>>  || LOSS Avg: 0.04298
+[Coach] >>> VALID @Epoch: 146  >>> 
+[Coach] >>> TEST  @Epoch: 146  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.960878 seconds ...
+[Coach] >>> TRAIN @Epoch: 147  >>>  || LOSS Avg: 0.04301
+[Coach] >>> VALID @Epoch: 147  >>> 
+[Coach] >>> TEST  @Epoch: 147  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.983129 seconds ...
+[Coach] >>> TRAIN @Epoch: 148  >>>  || LOSS Avg: 0.04272
+[Coach] >>> VALID @Epoch: 148  >>> 
+[Coach] >>> TEST  @Epoch: 148  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.935725 seconds ...
+[Coach] >>> TRAIN @Epoch: 149  >>>  || LOSS Avg: 0.04297
+[Coach] >>> VALID @Epoch: 149  >>> 
+[Coach] >>> TEST  @Epoch: 149  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.005358 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.358675 seconds ...
+[Coach] >>> TRAIN @Epoch: 150  >>>  || LOSS Avg: 0.04267
+[Coach] >>> VALID @Epoch: 150  >>>  || RECALL@1 Avg: 0.0085 || RECALL@10 Avg: 0.0431 || RECALL@20 Avg: 0.0652 || NDCG@10 Avg: 0.0233 || NDCG@20 Avg: 0.0289
+[Coach] >>> TEST  @Epoch: 150  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.885479 seconds ...
+[Coach] >>> TRAIN @Epoch: 151  >>>  || LOSS Avg: 0.04274
+[Coach] >>> VALID @Epoch: 151  >>> 
+[Coach] >>> TEST  @Epoch: 151  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 29.074810 seconds ...
+[Coach] >>> TRAIN @Epoch: 152  >>>  || LOSS Avg: 0.04257
+[Coach] >>> VALID @Epoch: 152  >>> 
+[Coach] >>> TEST  @Epoch: 152  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.985279 seconds ...
+[Coach] >>> TRAIN @Epoch: 153  >>>  || LOSS Avg: 0.04248
+[Coach] >>> VALID @Epoch: 153  >>> 
+[Coach] >>> TEST  @Epoch: 153  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.903530 seconds ...
+[Coach] >>> TRAIN @Epoch: 154  >>>  || LOSS Avg: 0.04252
+[Coach] >>> VALID @Epoch: 154  >>> 
+[Coach] >>> TEST  @Epoch: 154  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.043313 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.204882 seconds ...
+[Coach] >>> TRAIN @Epoch: 155  >>>  || LOSS Avg: 0.04245
+[Coach] >>> VALID @Epoch: 155  >>>  || RECALL@1 Avg: 0.0084 || RECALL@10 Avg: 0.0430 || RECALL@20 Avg: 0.0654 || NDCG@10 Avg: 0.0233 || NDCG@20 Avg: 0.0290
+[Coach] >>> TEST  @Epoch: 155  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.805357 seconds ...
+[Coach] >>> TRAIN @Epoch: 156  >>>  || LOSS Avg: 0.04244
+[Coach] >>> VALID @Epoch: 156  >>> 
+[Coach] >>> TEST  @Epoch: 156  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.052446 seconds ...
+[Coach] >>> TRAIN @Epoch: 157  >>>  || LOSS Avg: 0.04237
+[Coach] >>> VALID @Epoch: 157  >>> 
+[Coach] >>> TEST  @Epoch: 157  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.424698 seconds ...
+[Coach] >>> TRAIN @Epoch: 158  >>>  || LOSS Avg: 0.04228
+[Coach] >>> VALID @Epoch: 158  >>> 
+[Coach] >>> TEST  @Epoch: 158  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.233738 seconds ...
+[Coach] >>> TRAIN @Epoch: 159  >>>  || LOSS Avg: 0.04212
+[Coach] >>> VALID @Epoch: 159  >>> 
+[Coach] >>> TEST  @Epoch: 159  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.307096 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.253682 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0290*** 
+[Coach] >>> TRAIN @Epoch: 160  >>>  || LOSS Avg: 0.04186
+[Coach] >>> VALID @Epoch: 160  >>>  || RECALL@1 Avg: 0.0085 || RECALL@10 Avg: 0.0428 || RECALL@20 Avg: 0.0654 || NDCG@10 Avg: 0.0232 || NDCG@20 Avg: 0.0290
+[Coach] >>> TEST  @Epoch: 160  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.491305 seconds ...
+[Coach] >>> TRAIN @Epoch: 161  >>>  || LOSS Avg: 0.04208
+[Coach] >>> VALID @Epoch: 161  >>> 
+[Coach] >>> TEST  @Epoch: 161  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.177473 seconds ...
+[Coach] >>> TRAIN @Epoch: 162  >>>  || LOSS Avg: 0.04199
+[Coach] >>> VALID @Epoch: 162  >>> 
+[Coach] >>> TEST  @Epoch: 162  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.918373 seconds ...
+[Coach] >>> TRAIN @Epoch: 163  >>>  || LOSS Avg: 0.04182
+[Coach] >>> VALID @Epoch: 163  >>> 
+[Coach] >>> TEST  @Epoch: 163  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.986962 seconds ...
+[Coach] >>> TRAIN @Epoch: 164  >>>  || LOSS Avg: 0.04197
+[Coach] >>> VALID @Epoch: 164  >>> 
+[Coach] >>> TEST  @Epoch: 164  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.689355 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.081261 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0290*** 
+[Coach] >>> TRAIN @Epoch: 165  >>>  || LOSS Avg: 0.04189
+[Coach] >>> VALID @Epoch: 165  >>>  || RECALL@1 Avg: 0.0085 || RECALL@10 Avg: 0.0430 || RECALL@20 Avg: 0.0654 || NDCG@10 Avg: 0.0233 || NDCG@20 Avg: 0.0290
+[Coach] >>> TEST  @Epoch: 165  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.982793 seconds ...
+[Coach] >>> TRAIN @Epoch: 166  >>>  || LOSS Avg: 0.04186
+[Coach] >>> VALID @Epoch: 166  >>> 
+[Coach] >>> TEST  @Epoch: 166  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.964114 seconds ...
+[Coach] >>> TRAIN @Epoch: 167  >>>  || LOSS Avg: 0.04166
+[Coach] >>> VALID @Epoch: 167  >>> 
+[Coach] >>> TEST  @Epoch: 167  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.970678 seconds ...
+[Coach] >>> TRAIN @Epoch: 168  >>>  || LOSS Avg: 0.04152
+[Coach] >>> VALID @Epoch: 168  >>> 
+[Coach] >>> TEST  @Epoch: 168  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.179707 seconds ...
+[Coach] >>> TRAIN @Epoch: 169  >>>  || LOSS Avg: 0.04185
+[Coach] >>> VALID @Epoch: 169  >>> 
+[Coach] >>> TEST  @Epoch: 169  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.870836 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.246297 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0291*** 
+[Coach] >>> TRAIN @Epoch: 170  >>>  || LOSS Avg: 0.04154
+[Coach] >>> VALID @Epoch: 170  >>>  || RECALL@1 Avg: 0.0086 || RECALL@10 Avg: 0.0430 || RECALL@20 Avg: 0.0655 || NDCG@10 Avg: 0.0234 || NDCG@20 Avg: 0.0291
+[Coach] >>> TEST  @Epoch: 170  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.204085 seconds ...
+[Coach] >>> TRAIN @Epoch: 171  >>>  || LOSS Avg: 0.04142
+[Coach] >>> VALID @Epoch: 171  >>> 
+[Coach] >>> TEST  @Epoch: 171  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 29.015996 seconds ...
+[Coach] >>> TRAIN @Epoch: 172  >>>  || LOSS Avg: 0.04157
+[Coach] >>> VALID @Epoch: 172  >>> 
+[Coach] >>> TEST  @Epoch: 172  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.255702 seconds ...
+[Coach] >>> TRAIN @Epoch: 173  >>>  || LOSS Avg: 0.04139
+[Coach] >>> VALID @Epoch: 173  >>> 
+[Coach] >>> TEST  @Epoch: 173  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 29.109557 seconds ...
+[Coach] >>> TRAIN @Epoch: 174  >>>  || LOSS Avg: 0.04117
+[Coach] >>> VALID @Epoch: 174  >>> 
+[Coach] >>> TEST  @Epoch: 174  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.005044 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.230573 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0291*** 
+[Coach] >>> TRAIN @Epoch: 175  >>>  || LOSS Avg: 0.04131
+[Coach] >>> VALID @Epoch: 175  >>>  || RECALL@1 Avg: 0.0085 || RECALL@10 Avg: 0.0430 || RECALL@20 Avg: 0.0658 || NDCG@10 Avg: 0.0233 || NDCG@20 Avg: 0.0291
+[Coach] >>> TEST  @Epoch: 175  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.721495 seconds ...
+[Coach] >>> TRAIN @Epoch: 176  >>>  || LOSS Avg: 0.04132
+[Coach] >>> VALID @Epoch: 176  >>> 
+[Coach] >>> TEST  @Epoch: 176  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.135030 seconds ...
+[Coach] >>> TRAIN @Epoch: 177  >>>  || LOSS Avg: 0.04124
+[Coach] >>> VALID @Epoch: 177  >>> 
+[Coach] >>> TEST  @Epoch: 177  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.391353 seconds ...
+[Coach] >>> TRAIN @Epoch: 178  >>>  || LOSS Avg: 0.04118
+[Coach] >>> VALID @Epoch: 178  >>> 
+[Coach] >>> TEST  @Epoch: 178  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.591517 seconds ...
+[Coach] >>> TRAIN @Epoch: 179  >>>  || LOSS Avg: 0.04116
+[Coach] >>> VALID @Epoch: 179  >>> 
+[Coach] >>> TEST  @Epoch: 179  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.978855 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.154801 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0291*** 
+[Coach] >>> TRAIN @Epoch: 180  >>>  || LOSS Avg: 0.04105
+[Coach] >>> VALID @Epoch: 180  >>>  || RECALL@1 Avg: 0.0086 || RECALL@10 Avg: 0.0433 || RECALL@20 Avg: 0.0657 || NDCG@10 Avg: 0.0234 || NDCG@20 Avg: 0.0291
+[Coach] >>> TEST  @Epoch: 180  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.537175 seconds ...
+[Coach] >>> TRAIN @Epoch: 181  >>>  || LOSS Avg: 0.04080
+[Coach] >>> VALID @Epoch: 181  >>> 
+[Coach] >>> TEST  @Epoch: 181  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.074046 seconds ...
+[Coach] >>> TRAIN @Epoch: 182  >>>  || LOSS Avg: 0.04093
+[Coach] >>> VALID @Epoch: 182  >>> 
+[Coach] >>> TEST  @Epoch: 182  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.065597 seconds ...
+[Coach] >>> TRAIN @Epoch: 183  >>>  || LOSS Avg: 0.04105
+[Coach] >>> VALID @Epoch: 183  >>> 
+[Coach] >>> TEST  @Epoch: 183  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.394620 seconds ...
+[Coach] >>> TRAIN @Epoch: 184  >>>  || LOSS Avg: 0.04086
+[Coach] >>> VALID @Epoch: 184  >>> 
+[Coach] >>> TEST  @Epoch: 184  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.906617 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.138135 seconds ...
+[Coach] >>> TRAIN @Epoch: 185  >>>  || LOSS Avg: 0.04077
+[Coach] >>> VALID @Epoch: 185  >>>  || RECALL@1 Avg: 0.0085 || RECALL@10 Avg: 0.0433 || RECALL@20 Avg: 0.0657 || NDCG@10 Avg: 0.0234 || NDCG@20 Avg: 0.0291
+[Coach] >>> TEST  @Epoch: 185  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.977310 seconds ...
+[Coach] >>> TRAIN @Epoch: 186  >>>  || LOSS Avg: 0.04066
+[Coach] >>> VALID @Epoch: 186  >>> 
+[Coach] >>> TEST  @Epoch: 186  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.310451 seconds ...
+[Coach] >>> TRAIN @Epoch: 187  >>>  || LOSS Avg: 0.04076
+[Coach] >>> VALID @Epoch: 187  >>> 
+[Coach] >>> TEST  @Epoch: 187  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.929775 seconds ...
+[Coach] >>> TRAIN @Epoch: 188  >>>  || LOSS Avg: 0.04058
+[Coach] >>> VALID @Epoch: 188  >>> 
+[Coach] >>> TEST  @Epoch: 188  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.968814 seconds ...
+[Coach] >>> TRAIN @Epoch: 189  >>>  || LOSS Avg: 0.04070
+[Coach] >>> VALID @Epoch: 189  >>> 
+[Coach] >>> TEST  @Epoch: 189  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.869261 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.263847 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0292*** 
+[Coach] >>> TRAIN @Epoch: 190  >>>  || LOSS Avg: 0.04055
+[Coach] >>> VALID @Epoch: 190  >>>  || RECALL@1 Avg: 0.0085 || RECALL@10 Avg: 0.0429 || RECALL@20 Avg: 0.0657 || NDCG@10 Avg: 0.0234 || NDCG@20 Avg: 0.0292
+[Coach] >>> TEST  @Epoch: 190  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.054613 seconds ...
+[Coach] >>> TRAIN @Epoch: 191  >>>  || LOSS Avg: 0.04053
+[Coach] >>> VALID @Epoch: 191  >>> 
+[Coach] >>> TEST  @Epoch: 191  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.725249 seconds ...
+[Coach] >>> TRAIN @Epoch: 192  >>>  || LOSS Avg: 0.04059
+[Coach] >>> VALID @Epoch: 192  >>> 
+[Coach] >>> TEST  @Epoch: 192  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.120888 seconds ...
+[Coach] >>> TRAIN @Epoch: 193  >>>  || LOSS Avg: 0.04056
+[Coach] >>> VALID @Epoch: 193  >>> 
+[Coach] >>> TEST  @Epoch: 193  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.452023 seconds ...
+[Coach] >>> TRAIN @Epoch: 194  >>>  || LOSS Avg: 0.04036
+[Coach] >>> VALID @Epoch: 194  >>> 
+[Coach] >>> TEST  @Epoch: 194  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.268473 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.246951 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0292*** 
+[Coach] >>> TRAIN @Epoch: 195  >>>  || LOSS Avg: 0.04037
+[Coach] >>> VALID @Epoch: 195  >>>  || RECALL@1 Avg: 0.0085 || RECALL@10 Avg: 0.0431 || RECALL@20 Avg: 0.0657 || NDCG@10 Avg: 0.0234 || NDCG@20 Avg: 0.0292
+[Coach] >>> TEST  @Epoch: 195  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.156553 seconds ...
+[Coach] >>> TRAIN @Epoch: 196  >>>  || LOSS Avg: 0.04040
+[Coach] >>> VALID @Epoch: 196  >>> 
+[Coach] >>> TEST  @Epoch: 196  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.771106 seconds ...
+[Coach] >>> TRAIN @Epoch: 197  >>>  || LOSS Avg: 0.04022
+[Coach] >>> VALID @Epoch: 197  >>> 
+[Coach] >>> TEST  @Epoch: 197  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.380176 seconds ...
+[Coach] >>> TRAIN @Epoch: 198  >>>  || LOSS Avg: 0.04009
+[Coach] >>> VALID @Epoch: 198  >>> 
+[Coach] >>> TEST  @Epoch: 198  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.977600 seconds ...
+[Coach] >>> TRAIN @Epoch: 199  >>>  || LOSS Avg: 0.04039
+[Coach] >>> VALID @Epoch: 199  >>> 
+[Coach] >>> TEST  @Epoch: 199  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.936505 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.160115 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0292*** 
+[Coach] >>> TRAIN @Epoch: 200  >>>  || LOSS Avg: 0.04016
+[Coach] >>> VALID @Epoch: 200  >>>  || RECALL@1 Avg: 0.0087 || RECALL@10 Avg: 0.0432 || RECALL@20 Avg: 0.0656 || NDCG@10 Avg: 0.0235 || NDCG@20 Avg: 0.0292
+[Coach] >>> TEST  @Epoch: 200  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.480381 seconds ...
+[Coach] >>> TRAIN @Epoch: 201  >>>  || LOSS Avg: 0.04017
+[Coach] >>> VALID @Epoch: 201  >>> 
+[Coach] >>> TEST  @Epoch: 201  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.173105 seconds ...
+[Coach] >>> TRAIN @Epoch: 202  >>>  || LOSS Avg: 0.04004
+[Coach] >>> VALID @Epoch: 202  >>> 
+[Coach] >>> TEST  @Epoch: 202  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.925133 seconds ...
+[Coach] >>> TRAIN @Epoch: 203  >>>  || LOSS Avg: 0.04017
+[Coach] >>> VALID @Epoch: 203  >>> 
+[Coach] >>> TEST  @Epoch: 203  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.422253 seconds ...
+[Coach] >>> TRAIN @Epoch: 204  >>>  || LOSS Avg: 0.04004
+[Coach] >>> VALID @Epoch: 204  >>> 
+[Coach] >>> TEST  @Epoch: 204  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.908784 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.151054 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0294*** 
+[Coach] >>> TRAIN @Epoch: 205  >>>  || LOSS Avg: 0.04003
+[Coach] >>> VALID @Epoch: 205  >>>  || RECALL@1 Avg: 0.0087 || RECALL@10 Avg: 0.0433 || RECALL@20 Avg: 0.0659 || NDCG@10 Avg: 0.0236 || NDCG@20 Avg: 0.0294
+[Coach] >>> TEST  @Epoch: 205  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.700699 seconds ...
+[Coach] >>> TRAIN @Epoch: 206  >>>  || LOSS Avg: 0.03996
+[Coach] >>> VALID @Epoch: 206  >>> 
+[Coach] >>> TEST  @Epoch: 206  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.011632 seconds ...
+[Coach] >>> TRAIN @Epoch: 207  >>>  || LOSS Avg: 0.04005
+[Coach] >>> VALID @Epoch: 207  >>> 
+[Coach] >>> TEST  @Epoch: 207  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.852051 seconds ...
+[Coach] >>> TRAIN @Epoch: 208  >>>  || LOSS Avg: 0.03982
+[Coach] >>> VALID @Epoch: 208  >>> 
+[Coach] >>> TEST  @Epoch: 208  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.125249 seconds ...
+[Coach] >>> TRAIN @Epoch: 209  >>>  || LOSS Avg: 0.04002
+[Coach] >>> VALID @Epoch: 209  >>> 
+[Coach] >>> TEST  @Epoch: 209  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.396033 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.121449 seconds ...
+[Coach] >>> TRAIN @Epoch: 210  >>>  || LOSS Avg: 0.03974
+[Coach] >>> VALID @Epoch: 210  >>>  || RECALL@1 Avg: 0.0086 || RECALL@10 Avg: 0.0434 || RECALL@20 Avg: 0.0659 || NDCG@10 Avg: 0.0236 || NDCG@20 Avg: 0.0293
+[Coach] >>> TEST  @Epoch: 210  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.966605 seconds ...
+[Coach] >>> TRAIN @Epoch: 211  >>>  || LOSS Avg: 0.03984
+[Coach] >>> VALID @Epoch: 211  >>> 
+[Coach] >>> TEST  @Epoch: 211  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.653700 seconds ...
+[Coach] >>> TRAIN @Epoch: 212  >>>  || LOSS Avg: 0.03969
+[Coach] >>> VALID @Epoch: 212  >>> 
+[Coach] >>> TEST  @Epoch: 212  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.014203 seconds ...
+[Coach] >>> TRAIN @Epoch: 213  >>>  || LOSS Avg: 0.03973
+[Coach] >>> VALID @Epoch: 213  >>> 
+[Coach] >>> TEST  @Epoch: 213  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.382222 seconds ...
+[Coach] >>> TRAIN @Epoch: 214  >>>  || LOSS Avg: 0.03955
+[Coach] >>> VALID @Epoch: 214  >>> 
+[Coach] >>> TEST  @Epoch: 214  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.429486 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.265598 seconds ...
+[Coach] >>> TRAIN @Epoch: 215  >>>  || LOSS Avg: 0.03959
+[Coach] >>> VALID @Epoch: 215  >>>  || RECALL@1 Avg: 0.0086 || RECALL@10 Avg: 0.0432 || RECALL@20 Avg: 0.0658 || NDCG@10 Avg: 0.0235 || NDCG@20 Avg: 0.0293
+[Coach] >>> TEST  @Epoch: 215  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.887758 seconds ...
+[Coach] >>> TRAIN @Epoch: 216  >>>  || LOSS Avg: 0.03973
+[Coach] >>> VALID @Epoch: 216  >>> 
+[Coach] >>> TEST  @Epoch: 216  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.426994 seconds ...
+[Coach] >>> TRAIN @Epoch: 217  >>>  || LOSS Avg: 0.03969
+[Coach] >>> VALID @Epoch: 217  >>> 
+[Coach] >>> TEST  @Epoch: 217  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.394780 seconds ...
+[Coach] >>> TRAIN @Epoch: 218  >>>  || LOSS Avg: 0.03952
+[Coach] >>> VALID @Epoch: 218  >>> 
+[Coach] >>> TEST  @Epoch: 218  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.848453 seconds ...
+[Coach] >>> TRAIN @Epoch: 219  >>>  || LOSS Avg: 0.03959
+[Coach] >>> VALID @Epoch: 219  >>> 
+[Coach] >>> TEST  @Epoch: 219  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.936563 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.166166 seconds ...
+[Coach] >>> TRAIN @Epoch: 220  >>>  || LOSS Avg: 0.03956
+[Coach] >>> VALID @Epoch: 220  >>>  || RECALL@1 Avg: 0.0086 || RECALL@10 Avg: 0.0434 || RECALL@20 Avg: 0.0659 || NDCG@10 Avg: 0.0236 || NDCG@20 Avg: 0.0293
+[Coach] >>> TEST  @Epoch: 220  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.480338 seconds ...
+[Coach] >>> TRAIN @Epoch: 221  >>>  || LOSS Avg: 0.03941
+[Coach] >>> VALID @Epoch: 221  >>> 
+[Coach] >>> TEST  @Epoch: 221  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.063205 seconds ...
+[Coach] >>> TRAIN @Epoch: 222  >>>  || LOSS Avg: 0.03951
+[Coach] >>> VALID @Epoch: 222  >>> 
+[Coach] >>> TEST  @Epoch: 222  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.370125 seconds ...
+[Coach] >>> TRAIN @Epoch: 223  >>>  || LOSS Avg: 0.03942
+[Coach] >>> VALID @Epoch: 223  >>> 
+[Coach] >>> TEST  @Epoch: 223  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.848557 seconds ...
+[Coach] >>> TRAIN @Epoch: 224  >>>  || LOSS Avg: 0.03934
+[Coach] >>> VALID @Epoch: 224  >>> 
+[Coach] >>> TEST  @Epoch: 224  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.853625 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.006990 seconds ...
+[Coach] >>> TRAIN @Epoch: 225  >>>  || LOSS Avg: 0.03950
+[Coach] >>> VALID @Epoch: 225  >>>  || RECALL@1 Avg: 0.0086 || RECALL@10 Avg: 0.0436 || RECALL@20 Avg: 0.0658 || NDCG@10 Avg: 0.0237 || NDCG@20 Avg: 0.0293
+[Coach] >>> TEST  @Epoch: 225  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.260149 seconds ...
+[Coach] >>> TRAIN @Epoch: 226  >>>  || LOSS Avg: 0.03925
+[Coach] >>> VALID @Epoch: 226  >>> 
+[Coach] >>> TEST  @Epoch: 226  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.040707 seconds ...
+[Coach] >>> TRAIN @Epoch: 227  >>>  || LOSS Avg: 0.03939
+[Coach] >>> VALID @Epoch: 227  >>> 
+[Coach] >>> TEST  @Epoch: 227  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.933670 seconds ...
+[Coach] >>> TRAIN @Epoch: 228  >>>  || LOSS Avg: 0.03933
+[Coach] >>> VALID @Epoch: 228  >>> 
+[Coach] >>> TEST  @Epoch: 228  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.884121 seconds ...
+[Coach] >>> TRAIN @Epoch: 229  >>>  || LOSS Avg: 0.03922
+[Coach] >>> VALID @Epoch: 229  >>> 
+[Coach] >>> TEST  @Epoch: 229  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 30.091896 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.200947 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0294*** 
+[Coach] >>> TRAIN @Epoch: 230  >>>  || LOSS Avg: 0.03922
+[Coach] >>> VALID @Epoch: 230  >>>  || RECALL@1 Avg: 0.0087 || RECALL@10 Avg: 0.0437 || RECALL@20 Avg: 0.0659 || NDCG@10 Avg: 0.0237 || NDCG@20 Avg: 0.0294
+[Coach] >>> TEST  @Epoch: 230  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.041225 seconds ...
+[Coach] >>> TRAIN @Epoch: 231  >>>  || LOSS Avg: 0.03937
+[Coach] >>> VALID @Epoch: 231  >>> 
+[Coach] >>> TEST  @Epoch: 231  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.555936 seconds ...
+[Coach] >>> TRAIN @Epoch: 232  >>>  || LOSS Avg: 0.03923
+[Coach] >>> VALID @Epoch: 232  >>> 
+[Coach] >>> TEST  @Epoch: 232  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.272614 seconds ...
+[Coach] >>> TRAIN @Epoch: 233  >>>  || LOSS Avg: 0.03932
+[Coach] >>> VALID @Epoch: 233  >>> 
+[Coach] >>> TEST  @Epoch: 233  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.098026 seconds ...
+[Coach] >>> TRAIN @Epoch: 234  >>>  || LOSS Avg: 0.03902
+[Coach] >>> VALID @Epoch: 234  >>> 
+[Coach] >>> TEST  @Epoch: 234  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.656262 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.222352 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0294*** 
+[Coach] >>> TRAIN @Epoch: 235  >>>  || LOSS Avg: 0.03900
+[Coach] >>> VALID @Epoch: 235  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0438 || RECALL@20 Avg: 0.0658 || NDCG@10 Avg: 0.0238 || NDCG@20 Avg: 0.0294
+[Coach] >>> TEST  @Epoch: 235  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.824589 seconds ...
+[Coach] >>> TRAIN @Epoch: 236  >>>  || LOSS Avg: 0.03918
+[Coach] >>> VALID @Epoch: 236  >>> 
+[Coach] >>> TEST  @Epoch: 236  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.795236 seconds ...
+[Coach] >>> TRAIN @Epoch: 237  >>>  || LOSS Avg: 0.03906
+[Coach] >>> VALID @Epoch: 237  >>> 
+[Coach] >>> TEST  @Epoch: 237  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.275671 seconds ...
+[Coach] >>> TRAIN @Epoch: 238  >>>  || LOSS Avg: 0.03891
+[Coach] >>> VALID @Epoch: 238  >>> 
+[Coach] >>> TEST  @Epoch: 238  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.461273 seconds ...
+[Coach] >>> TRAIN @Epoch: 239  >>>  || LOSS Avg: 0.03895
+[Coach] >>> VALID @Epoch: 239  >>> 
+[Coach] >>> TEST  @Epoch: 239  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.924678 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.125045 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0295*** 
+[Coach] >>> TRAIN @Epoch: 240  >>>  || LOSS Avg: 0.03905
+[Coach] >>> VALID @Epoch: 240  >>>  || RECALL@1 Avg: 0.0089 || RECALL@10 Avg: 0.0436 || RECALL@20 Avg: 0.0660 || NDCG@10 Avg: 0.0237 || NDCG@20 Avg: 0.0295
+[Coach] >>> TEST  @Epoch: 240  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.421689 seconds ...
+[Coach] >>> TRAIN @Epoch: 241  >>>  || LOSS Avg: 0.03898
+[Coach] >>> VALID @Epoch: 241  >>> 
+[Coach] >>> TEST  @Epoch: 241  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.016693 seconds ...
+[Coach] >>> TRAIN @Epoch: 242  >>>  || LOSS Avg: 0.03900
+[Coach] >>> VALID @Epoch: 242  >>> 
+[Coach] >>> TEST  @Epoch: 242  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.166688 seconds ...
+[Coach] >>> TRAIN @Epoch: 243  >>>  || LOSS Avg: 0.03891
+[Coach] >>> VALID @Epoch: 243  >>> 
+[Coach] >>> TEST  @Epoch: 243  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.484384 seconds ...
+[Coach] >>> TRAIN @Epoch: 244  >>>  || LOSS Avg: 0.03884
+[Coach] >>> VALID @Epoch: 244  >>> 
+[Coach] >>> TEST  @Epoch: 244  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.241450 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.248311 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0295*** 
+[Coach] >>> TRAIN @Epoch: 245  >>>  || LOSS Avg: 0.03874
+[Coach] >>> VALID @Epoch: 245  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0437 || RECALL@20 Avg: 0.0661 || NDCG@10 Avg: 0.0238 || NDCG@20 Avg: 0.0295
+[Coach] >>> TEST  @Epoch: 245  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.155653 seconds ...
+[Coach] >>> TRAIN @Epoch: 246  >>>  || LOSS Avg: 0.03877
+[Coach] >>> VALID @Epoch: 246  >>> 
+[Coach] >>> TEST  @Epoch: 246  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.069696 seconds ...
+[Coach] >>> TRAIN @Epoch: 247  >>>  || LOSS Avg: 0.03877
+[Coach] >>> VALID @Epoch: 247  >>> 
+[Coach] >>> TEST  @Epoch: 247  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.825561 seconds ...
+[Coach] >>> TRAIN @Epoch: 248  >>>  || LOSS Avg: 0.03881
+[Coach] >>> VALID @Epoch: 248  >>> 
+[Coach] >>> TEST  @Epoch: 248  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.942905 seconds ...
+[Coach] >>> TRAIN @Epoch: 249  >>>  || LOSS Avg: 0.03877
+[Coach] >>> VALID @Epoch: 249  >>> 
+[Coach] >>> TEST  @Epoch: 249  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.492565 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.212824 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0295*** 
+[Coach] >>> TRAIN @Epoch: 250  >>>  || LOSS Avg: 0.03884
+[Coach] >>> VALID @Epoch: 250  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0439 || RECALL@20 Avg: 0.0662 || NDCG@10 Avg: 0.0238 || NDCG@20 Avg: 0.0295
+[Coach] >>> TEST  @Epoch: 250  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.050455 seconds ...
+[Coach] >>> TRAIN @Epoch: 251  >>>  || LOSS Avg: 0.03874
+[Coach] >>> VALID @Epoch: 251  >>> 
+[Coach] >>> TEST  @Epoch: 251  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.162580 seconds ...
+[Coach] >>> TRAIN @Epoch: 252  >>>  || LOSS Avg: 0.03862
+[Coach] >>> VALID @Epoch: 252  >>> 
+[Coach] >>> TEST  @Epoch: 252  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.475280 seconds ...
+[Coach] >>> TRAIN @Epoch: 253  >>>  || LOSS Avg: 0.03868
+[Coach] >>> VALID @Epoch: 253  >>> 
+[Coach] >>> TEST  @Epoch: 253  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.133367 seconds ...
+[Coach] >>> TRAIN @Epoch: 254  >>>  || LOSS Avg: 0.03864
+[Coach] >>> VALID @Epoch: 254  >>> 
+[Coach] >>> TEST  @Epoch: 254  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.499140 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.272620 seconds ...
+[Coach] >>> TRAIN @Epoch: 255  >>>  || LOSS Avg: 0.03864
+[Coach] >>> VALID @Epoch: 255  >>>  || RECALL@1 Avg: 0.0086 || RECALL@10 Avg: 0.0439 || RECALL@20 Avg: 0.0661 || NDCG@10 Avg: 0.0237 || NDCG@20 Avg: 0.0294
+[Coach] >>> TEST  @Epoch: 255  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.986333 seconds ...
+[Coach] >>> TRAIN @Epoch: 256  >>>  || LOSS Avg: 0.03852
+[Coach] >>> VALID @Epoch: 256  >>> 
+[Coach] >>> TEST  @Epoch: 256  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.702850 seconds ...
+[Coach] >>> TRAIN @Epoch: 257  >>>  || LOSS Avg: 0.03846
+[Coach] >>> VALID @Epoch: 257  >>> 
+[Coach] >>> TEST  @Epoch: 257  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.226242 seconds ...
+[Coach] >>> TRAIN @Epoch: 258  >>>  || LOSS Avg: 0.03850
+[Coach] >>> VALID @Epoch: 258  >>> 
+[Coach] >>> TEST  @Epoch: 258  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.564311 seconds ...
+[Coach] >>> TRAIN @Epoch: 259  >>>  || LOSS Avg: 0.03860
+[Coach] >>> VALID @Epoch: 259  >>> 
+[Coach] >>> TEST  @Epoch: 259  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.107831 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.312657 seconds ...
+[Coach] >>> TRAIN @Epoch: 260  >>>  || LOSS Avg: 0.03865
+[Coach] >>> VALID @Epoch: 260  >>>  || RECALL@1 Avg: 0.0087 || RECALL@10 Avg: 0.0438 || RECALL@20 Avg: 0.0663 || NDCG@10 Avg: 0.0238 || NDCG@20 Avg: 0.0295
+[Coach] >>> TEST  @Epoch: 260  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.756532 seconds ...
+[Coach] >>> TRAIN @Epoch: 261  >>>  || LOSS Avg: 0.03850
+[Coach] >>> VALID @Epoch: 261  >>> 
+[Coach] >>> TEST  @Epoch: 261  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.889587 seconds ...
+[Coach] >>> TRAIN @Epoch: 262  >>>  || LOSS Avg: 0.03850
+[Coach] >>> VALID @Epoch: 262  >>> 
+[Coach] >>> TEST  @Epoch: 262  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.052853 seconds ...
+[Coach] >>> TRAIN @Epoch: 263  >>>  || LOSS Avg: 0.03848
+[Coach] >>> VALID @Epoch: 263  >>> 
+[Coach] >>> TEST  @Epoch: 263  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.728226 seconds ...
+[Coach] >>> TRAIN @Epoch: 264  >>>  || LOSS Avg: 0.03839
+[Coach] >>> VALID @Epoch: 264  >>> 
+[Coach] >>> TEST  @Epoch: 264  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.036671 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.228659 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0295*** 
+[Coach] >>> TRAIN @Epoch: 265  >>>  || LOSS Avg: 0.03849
+[Coach] >>> VALID @Epoch: 265  >>>  || RECALL@1 Avg: 0.0087 || RECALL@10 Avg: 0.0438 || RECALL@20 Avg: 0.0664 || NDCG@10 Avg: 0.0237 || NDCG@20 Avg: 0.0295
+[Coach] >>> TEST  @Epoch: 265  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.024082 seconds ...
+[Coach] >>> TRAIN @Epoch: 266  >>>  || LOSS Avg: 0.03839
+[Coach] >>> VALID @Epoch: 266  >>> 
+[Coach] >>> TEST  @Epoch: 266  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.929074 seconds ...
+[Coach] >>> TRAIN @Epoch: 267  >>>  || LOSS Avg: 0.03823
+[Coach] >>> VALID @Epoch: 267  >>> 
+[Coach] >>> TEST  @Epoch: 267  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.786724 seconds ...
+[Coach] >>> TRAIN @Epoch: 268  >>>  || LOSS Avg: 0.03818
+[Coach] >>> VALID @Epoch: 268  >>> 
+[Coach] >>> TEST  @Epoch: 268  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.062523 seconds ...
+[Coach] >>> TRAIN @Epoch: 269  >>>  || LOSS Avg: 0.03838
+[Coach] >>> VALID @Epoch: 269  >>> 
+[Coach] >>> TEST  @Epoch: 269  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.257958 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.161431 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0296*** 
+[Coach] >>> TRAIN @Epoch: 270  >>>  || LOSS Avg: 0.03833
+[Coach] >>> VALID @Epoch: 270  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0437 || RECALL@20 Avg: 0.0664 || NDCG@10 Avg: 0.0238 || NDCG@20 Avg: 0.0296
+[Coach] >>> TEST  @Epoch: 270  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.902522 seconds ...
+[Coach] >>> TRAIN @Epoch: 271  >>>  || LOSS Avg: 0.03804
+[Coach] >>> VALID @Epoch: 271  >>> 
+[Coach] >>> TEST  @Epoch: 271  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.049684 seconds ...
+[Coach] >>> TRAIN @Epoch: 272  >>>  || LOSS Avg: 0.03817
+[Coach] >>> VALID @Epoch: 272  >>> 
+[Coach] >>> TEST  @Epoch: 272  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.878003 seconds ...
+[Coach] >>> TRAIN @Epoch: 273  >>>  || LOSS Avg: 0.03816
+[Coach] >>> VALID @Epoch: 273  >>> 
+[Coach] >>> TEST  @Epoch: 273  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.051986 seconds ...
+[Coach] >>> TRAIN @Epoch: 274  >>>  || LOSS Avg: 0.03811
+[Coach] >>> VALID @Epoch: 274  >>> 
+[Coach] >>> TEST  @Epoch: 274  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.787115 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.238901 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0296*** 
+[Coach] >>> TRAIN @Epoch: 275  >>>  || LOSS Avg: 0.03821
+[Coach] >>> VALID @Epoch: 275  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0438 || RECALL@20 Avg: 0.0663 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0296
+[Coach] >>> TEST  @Epoch: 275  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.072985 seconds ...
+[Coach] >>> TRAIN @Epoch: 276  >>>  || LOSS Avg: 0.03797
+[Coach] >>> VALID @Epoch: 276  >>> 
+[Coach] >>> TEST  @Epoch: 276  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.262132 seconds ...
+[Coach] >>> TRAIN @Epoch: 277  >>>  || LOSS Avg: 0.03813
+[Coach] >>> VALID @Epoch: 277  >>> 
+[Coach] >>> TEST  @Epoch: 277  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.041779 seconds ...
+[Coach] >>> TRAIN @Epoch: 278  >>>  || LOSS Avg: 0.03822
+[Coach] >>> VALID @Epoch: 278  >>> 
+[Coach] >>> TEST  @Epoch: 278  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.325773 seconds ...
+[Coach] >>> TRAIN @Epoch: 279  >>>  || LOSS Avg: 0.03798
+[Coach] >>> VALID @Epoch: 279  >>> 
+[Coach] >>> TEST  @Epoch: 279  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.735024 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.244960 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0296*** 
+[Coach] >>> TRAIN @Epoch: 280  >>>  || LOSS Avg: 0.03801
+[Coach] >>> VALID @Epoch: 280  >>>  || RECALL@1 Avg: 0.0087 || RECALL@10 Avg: 0.0439 || RECALL@20 Avg: 0.0665 || NDCG@10 Avg: 0.0238 || NDCG@20 Avg: 0.0296
+[Coach] >>> TEST  @Epoch: 280  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.095881 seconds ...
+[Coach] >>> TRAIN @Epoch: 281  >>>  || LOSS Avg: 0.03801
+[Coach] >>> VALID @Epoch: 281  >>> 
+[Coach] >>> TEST  @Epoch: 281  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.131850 seconds ...
+[Coach] >>> TRAIN @Epoch: 282  >>>  || LOSS Avg: 0.03808
+[Coach] >>> VALID @Epoch: 282  >>> 
+[Coach] >>> TEST  @Epoch: 282  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.432571 seconds ...
+[Coach] >>> TRAIN @Epoch: 283  >>>  || LOSS Avg: 0.03797
+[Coach] >>> VALID @Epoch: 283  >>> 
+[Coach] >>> TEST  @Epoch: 283  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.338431 seconds ...
+[Coach] >>> TRAIN @Epoch: 284  >>>  || LOSS Avg: 0.03810
+[Coach] >>> VALID @Epoch: 284  >>> 
+[Coach] >>> TEST  @Epoch: 284  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.006961 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.286381 seconds ...
+[Coach] >>> TRAIN @Epoch: 285  >>>  || LOSS Avg: 0.03792
+[Coach] >>> VALID @Epoch: 285  >>>  || RECALL@1 Avg: 0.0087 || RECALL@10 Avg: 0.0439 || RECALL@20 Avg: 0.0664 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0296
+[Coach] >>> TEST  @Epoch: 285  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.513647 seconds ...
+[Coach] >>> TRAIN @Epoch: 286  >>>  || LOSS Avg: 0.03789
+[Coach] >>> VALID @Epoch: 286  >>> 
+[Coach] >>> TEST  @Epoch: 286  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.050340 seconds ...
+[Coach] >>> TRAIN @Epoch: 287  >>>  || LOSS Avg: 0.03778
+[Coach] >>> VALID @Epoch: 287  >>> 
+[Coach] >>> TEST  @Epoch: 287  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.292817 seconds ...
+[Coach] >>> TRAIN @Epoch: 288  >>>  || LOSS Avg: 0.03773
+[Coach] >>> VALID @Epoch: 288  >>> 
+[Coach] >>> TEST  @Epoch: 288  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.317193 seconds ...
+[Coach] >>> TRAIN @Epoch: 289  >>>  || LOSS Avg: 0.03802
+[Coach] >>> VALID @Epoch: 289  >>> 
+[Coach] >>> TEST  @Epoch: 289  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.213099 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.317401 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0297*** 
+[Coach] >>> TRAIN @Epoch: 290  >>>  || LOSS Avg: 0.03783
+[Coach] >>> VALID @Epoch: 290  >>>  || RECALL@1 Avg: 0.0089 || RECALL@10 Avg: 0.0441 || RECALL@20 Avg: 0.0668 || NDCG@10 Avg: 0.0240 || NDCG@20 Avg: 0.0297
+[Coach] >>> TEST  @Epoch: 290  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 29.336267 seconds ...
+[Coach] >>> TRAIN @Epoch: 291  >>>  || LOSS Avg: 0.03782
+[Coach] >>> VALID @Epoch: 291  >>> 
+[Coach] >>> TEST  @Epoch: 291  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.161712 seconds ...
+[Coach] >>> TRAIN @Epoch: 292  >>>  || LOSS Avg: 0.03773
+[Coach] >>> VALID @Epoch: 292  >>> 
+[Coach] >>> TEST  @Epoch: 292  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.921116 seconds ...
+[Coach] >>> TRAIN @Epoch: 293  >>>  || LOSS Avg: 0.03783
+[Coach] >>> VALID @Epoch: 293  >>> 
+[Coach] >>> TEST  @Epoch: 293  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.249267 seconds ...
+[Coach] >>> TRAIN @Epoch: 294  >>>  || LOSS Avg: 0.03780
+[Coach] >>> VALID @Epoch: 294  >>> 
+[Coach] >>> TEST  @Epoch: 294  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.708589 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.217626 seconds ...
+[Coach] >>> TRAIN @Epoch: 295  >>>  || LOSS Avg: 0.03782
+[Coach] >>> VALID @Epoch: 295  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0439 || RECALL@20 Avg: 0.0666 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0297
+[Coach] >>> TEST  @Epoch: 295  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.410429 seconds ...
+[Coach] >>> TRAIN @Epoch: 296  >>>  || LOSS Avg: 0.03783
+[Coach] >>> VALID @Epoch: 296  >>> 
+[Coach] >>> TEST  @Epoch: 296  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.678450 seconds ...
+[Coach] >>> TRAIN @Epoch: 297  >>>  || LOSS Avg: 0.03753
+[Coach] >>> VALID @Epoch: 297  >>> 
+[Coach] >>> TEST  @Epoch: 297  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.258478 seconds ...
+[Coach] >>> TRAIN @Epoch: 298  >>>  || LOSS Avg: 0.03770
+[Coach] >>> VALID @Epoch: 298  >>> 
+[Coach] >>> TEST  @Epoch: 298  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.230320 seconds ...
+[Coach] >>> TRAIN @Epoch: 299  >>>  || LOSS Avg: 0.03788
+[Coach] >>> VALID @Epoch: 299  >>> 
+[Coach] >>> TEST  @Epoch: 299  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.703355 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.224288 seconds ...
+[Coach] >>> TRAIN @Epoch: 300  >>>  || LOSS Avg: 0.03774
+[Coach] >>> VALID @Epoch: 300  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0439 || RECALL@20 Avg: 0.0665 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0297
+[Coach] >>> TEST  @Epoch: 300  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.850562 seconds ...
+[Coach] >>> TRAIN @Epoch: 301  >>>  || LOSS Avg: 0.03773
+[Coach] >>> VALID @Epoch: 301  >>> 
+[Coach] >>> TEST  @Epoch: 301  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.276081 seconds ...
+[Coach] >>> TRAIN @Epoch: 302  >>>  || LOSS Avg: 0.03773
+[Coach] >>> VALID @Epoch: 302  >>> 
+[Coach] >>> TEST  @Epoch: 302  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.140454 seconds ...
+[Coach] >>> TRAIN @Epoch: 303  >>>  || LOSS Avg: 0.03767
+[Coach] >>> VALID @Epoch: 303  >>> 
+[Coach] >>> TEST  @Epoch: 303  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.316821 seconds ...
+[Coach] >>> TRAIN @Epoch: 304  >>>  || LOSS Avg: 0.03749
+[Coach] >>> VALID @Epoch: 304  >>> 
+[Coach] >>> TEST  @Epoch: 304  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.967686 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.268679 seconds ...
+[Coach] >>> TRAIN @Epoch: 305  >>>  || LOSS Avg: 0.03757
+[Coach] >>> VALID @Epoch: 305  >>>  || RECALL@1 Avg: 0.0089 || RECALL@10 Avg: 0.0437 || RECALL@20 Avg: 0.0665 || NDCG@10 Avg: 0.0238 || NDCG@20 Avg: 0.0296
+[Coach] >>> TEST  @Epoch: 305  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.193726 seconds ...
+[Coach] >>> TRAIN @Epoch: 306  >>>  || LOSS Avg: 0.03757
+[Coach] >>> VALID @Epoch: 306  >>> 
+[Coach] >>> TEST  @Epoch: 306  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.926980 seconds ...
+[Coach] >>> TRAIN @Epoch: 307  >>>  || LOSS Avg: 0.03761
+[Coach] >>> VALID @Epoch: 307  >>> 
+[Coach] >>> TEST  @Epoch: 307  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.171752 seconds ...
+[Coach] >>> TRAIN @Epoch: 308  >>>  || LOSS Avg: 0.03775
+[Coach] >>> VALID @Epoch: 308  >>> 
+[Coach] >>> TEST  @Epoch: 308  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.658916 seconds ...
+[Coach] >>> TRAIN @Epoch: 309  >>>  || LOSS Avg: 0.03751
+[Coach] >>> VALID @Epoch: 309  >>> 
+[Coach] >>> TEST  @Epoch: 309  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.983603 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.249022 seconds ...
+[Coach] >>> TRAIN @Epoch: 310  >>>  || LOSS Avg: 0.03739
+[Coach] >>> VALID @Epoch: 310  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0437 || RECALL@20 Avg: 0.0662 || NDCG@10 Avg: 0.0238 || NDCG@20 Avg: 0.0296
+[Coach] >>> TEST  @Epoch: 310  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.466885 seconds ...
+[Coach] >>> TRAIN @Epoch: 311  >>>  || LOSS Avg: 0.03755
+[Coach] >>> VALID @Epoch: 311  >>> 
+[Coach] >>> TEST  @Epoch: 311  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.963766 seconds ...
+[Coach] >>> TRAIN @Epoch: 312  >>>  || LOSS Avg: 0.03750
+[Coach] >>> VALID @Epoch: 312  >>> 
+[Coach] >>> TEST  @Epoch: 312  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.300734 seconds ...
+[Coach] >>> TRAIN @Epoch: 313  >>>  || LOSS Avg: 0.03752
+[Coach] >>> VALID @Epoch: 313  >>> 
+[Coach] >>> TEST  @Epoch: 313  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.050431 seconds ...
+[Coach] >>> TRAIN @Epoch: 314  >>>  || LOSS Avg: 0.03764
+[Coach] >>> VALID @Epoch: 314  >>> 
+[Coach] >>> TEST  @Epoch: 314  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.740747 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.164302 seconds ...
+[Coach] >>> TRAIN @Epoch: 315  >>>  || LOSS Avg: 0.03747
+[Coach] >>> VALID @Epoch: 315  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0439 || RECALL@20 Avg: 0.0665 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0296
+[Coach] >>> TEST  @Epoch: 315  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.977731 seconds ...
+[Coach] >>> TRAIN @Epoch: 316  >>>  || LOSS Avg: 0.03742
+[Coach] >>> VALID @Epoch: 316  >>> 
+[Coach] >>> TEST  @Epoch: 316  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.120525 seconds ...
+[Coach] >>> TRAIN @Epoch: 317  >>>  || LOSS Avg: 0.03738
+[Coach] >>> VALID @Epoch: 317  >>> 
+[Coach] >>> TEST  @Epoch: 317  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 29.139816 seconds ...
+[Coach] >>> TRAIN @Epoch: 318  >>>  || LOSS Avg: 0.03749
+[Coach] >>> VALID @Epoch: 318  >>> 
+[Coach] >>> TEST  @Epoch: 318  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.041222 seconds ...
+[Coach] >>> TRAIN @Epoch: 319  >>>  || LOSS Avg: 0.03730
+[Coach] >>> VALID @Epoch: 319  >>> 
+[Coach] >>> TEST  @Epoch: 319  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.339395 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.210771 seconds ...
+[Coach] >>> TRAIN @Epoch: 320  >>>  || LOSS Avg: 0.03734
+[Coach] >>> VALID @Epoch: 320  >>>  || RECALL@1 Avg: 0.0086 || RECALL@10 Avg: 0.0437 || RECALL@20 Avg: 0.0664 || NDCG@10 Avg: 0.0237 || NDCG@20 Avg: 0.0295
+[Coach] >>> TEST  @Epoch: 320  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.347222 seconds ...
+[Coach] >>> TRAIN @Epoch: 321  >>>  || LOSS Avg: 0.03733
+[Coach] >>> VALID @Epoch: 321  >>> 
+[Coach] >>> TEST  @Epoch: 321  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.355536 seconds ...
+[Coach] >>> TRAIN @Epoch: 322  >>>  || LOSS Avg: 0.03742
+[Coach] >>> VALID @Epoch: 322  >>> 
+[Coach] >>> TEST  @Epoch: 322  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.151303 seconds ...
+[Coach] >>> TRAIN @Epoch: 323  >>>  || LOSS Avg: 0.03733
+[Coach] >>> VALID @Epoch: 323  >>> 
+[Coach] >>> TEST  @Epoch: 323  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.567111 seconds ...
+[Coach] >>> TRAIN @Epoch: 324  >>>  || LOSS Avg: 0.03731
+[Coach] >>> VALID @Epoch: 324  >>> 
+[Coach] >>> TEST  @Epoch: 324  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.183201 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.190318 seconds ...
+[Coach] >>> TRAIN @Epoch: 325  >>>  || LOSS Avg: 0.03736
+[Coach] >>> VALID @Epoch: 325  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0439 || RECALL@20 Avg: 0.0664 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0296
+[Coach] >>> TEST  @Epoch: 325  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.031932 seconds ...
+[Coach] >>> TRAIN @Epoch: 326  >>>  || LOSS Avg: 0.03728
+[Coach] >>> VALID @Epoch: 326  >>> 
+[Coach] >>> TEST  @Epoch: 326  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.004942 seconds ...
+[Coach] >>> TRAIN @Epoch: 327  >>>  || LOSS Avg: 0.03712
+[Coach] >>> VALID @Epoch: 327  >>> 
+[Coach] >>> TEST  @Epoch: 327  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.002631 seconds ...
+[Coach] >>> TRAIN @Epoch: 328  >>>  || LOSS Avg: 0.03732
+[Coach] >>> VALID @Epoch: 328  >>> 
+[Coach] >>> TEST  @Epoch: 328  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 29.092268 seconds ...
+[Coach] >>> TRAIN @Epoch: 329  >>>  || LOSS Avg: 0.03714
+[Coach] >>> VALID @Epoch: 329  >>> 
+[Coach] >>> TEST  @Epoch: 329  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.972540 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.177005 seconds ...
+[Coach] >>> TRAIN @Epoch: 330  >>>  || LOSS Avg: 0.03720
+[Coach] >>> VALID @Epoch: 330  >>>  || RECALL@1 Avg: 0.0087 || RECALL@10 Avg: 0.0438 || RECALL@20 Avg: 0.0664 || NDCG@10 Avg: 0.0238 || NDCG@20 Avg: 0.0295
+[Coach] >>> TEST  @Epoch: 330  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.543780 seconds ...
+[Coach] >>> TRAIN @Epoch: 331  >>>  || LOSS Avg: 0.03719
+[Coach] >>> VALID @Epoch: 331  >>> 
+[Coach] >>> TEST  @Epoch: 331  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.055649 seconds ...
+[Coach] >>> TRAIN @Epoch: 332  >>>  || LOSS Avg: 0.03710
+[Coach] >>> VALID @Epoch: 332  >>> 
+[Coach] >>> TEST  @Epoch: 332  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.662147 seconds ...
+[Coach] >>> TRAIN @Epoch: 333  >>>  || LOSS Avg: 0.03726
+[Coach] >>> VALID @Epoch: 333  >>> 
+[Coach] >>> TEST  @Epoch: 333  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.885239 seconds ...
+[Coach] >>> TRAIN @Epoch: 334  >>>  || LOSS Avg: 0.03730
+[Coach] >>> VALID @Epoch: 334  >>> 
+[Coach] >>> TEST  @Epoch: 334  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.343524 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.186345 seconds ...
+[Coach] >>> TRAIN @Epoch: 335  >>>  || LOSS Avg: 0.03710
+[Coach] >>> VALID @Epoch: 335  >>>  || RECALL@1 Avg: 0.0086 || RECALL@10 Avg: 0.0440 || RECALL@20 Avg: 0.0665 || NDCG@10 Avg: 0.0238 || NDCG@20 Avg: 0.0295
+[Coach] >>> TEST  @Epoch: 335  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.804131 seconds ...
+[Coach] >>> TRAIN @Epoch: 336  >>>  || LOSS Avg: 0.03715
+[Coach] >>> VALID @Epoch: 336  >>> 
+[Coach] >>> TEST  @Epoch: 336  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.062141 seconds ...
+[Coach] >>> TRAIN @Epoch: 337  >>>  || LOSS Avg: 0.03717
+[Coach] >>> VALID @Epoch: 337  >>> 
+[Coach] >>> TEST  @Epoch: 337  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.833261 seconds ...
+[Coach] >>> TRAIN @Epoch: 338  >>>  || LOSS Avg: 0.03701
+[Coach] >>> VALID @Epoch: 338  >>> 
+[Coach] >>> TEST  @Epoch: 338  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.095134 seconds ...
+[Coach] >>> TRAIN @Epoch: 339  >>>  || LOSS Avg: 0.03714
+[Coach] >>> VALID @Epoch: 339  >>> 
+[Coach] >>> TEST  @Epoch: 339  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 29.124872 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.239471 seconds ...
+[Coach] >>> TRAIN @Epoch: 340  >>>  || LOSS Avg: 0.03717
+[Coach] >>> VALID @Epoch: 340  >>>  || RECALL@1 Avg: 0.0087 || RECALL@10 Avg: 0.0439 || RECALL@20 Avg: 0.0665 || NDCG@10 Avg: 0.0238 || NDCG@20 Avg: 0.0296
+[Coach] >>> TEST  @Epoch: 340  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.284203 seconds ...
+[Coach] >>> TRAIN @Epoch: 341  >>>  || LOSS Avg: 0.03711
+[Coach] >>> VALID @Epoch: 341  >>> 
+[Coach] >>> TEST  @Epoch: 341  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.814262 seconds ...
+[Coach] >>> TRAIN @Epoch: 342  >>>  || LOSS Avg: 0.03709
+[Coach] >>> VALID @Epoch: 342  >>> 
+[Coach] >>> TEST  @Epoch: 342  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.486643 seconds ...
+[Coach] >>> TRAIN @Epoch: 343  >>>  || LOSS Avg: 0.03697
+[Coach] >>> VALID @Epoch: 343  >>> 
+[Coach] >>> TEST  @Epoch: 343  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.004240 seconds ...
+[Coach] >>> TRAIN @Epoch: 344  >>>  || LOSS Avg: 0.03705
+[Coach] >>> VALID @Epoch: 344  >>> 
+[Coach] >>> TEST  @Epoch: 344  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.986144 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.383718 seconds ...
+[Coach] >>> TRAIN @Epoch: 345  >>>  || LOSS Avg: 0.03708
+[Coach] >>> VALID @Epoch: 345  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0439 || RECALL@20 Avg: 0.0664 || NDCG@10 Avg: 0.0238 || NDCG@20 Avg: 0.0296
+[Coach] >>> TEST  @Epoch: 345  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.078263 seconds ...
+[Coach] >>> TRAIN @Epoch: 346  >>>  || LOSS Avg: 0.03696
+[Coach] >>> VALID @Epoch: 346  >>> 
+[Coach] >>> TEST  @Epoch: 346  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 29.190597 seconds ...
+[Coach] >>> TRAIN @Epoch: 347  >>>  || LOSS Avg: 0.03708
+[Coach] >>> VALID @Epoch: 347  >>> 
+[Coach] >>> TEST  @Epoch: 347  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.216712 seconds ...
+[Coach] >>> TRAIN @Epoch: 348  >>>  || LOSS Avg: 0.03699
+[Coach] >>> VALID @Epoch: 348  >>> 
+[Coach] >>> TEST  @Epoch: 348  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 29.032296 seconds ...
+[Coach] >>> TRAIN @Epoch: 349  >>>  || LOSS Avg: 0.03704
+[Coach] >>> VALID @Epoch: 349  >>> 
+[Coach] >>> TEST  @Epoch: 349  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.179423 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.338546 seconds ...
+[Coach] >>> TRAIN @Epoch: 350  >>>  || LOSS Avg: 0.03680
+[Coach] >>> VALID @Epoch: 350  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0440 || RECALL@20 Avg: 0.0666 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0297
+[Coach] >>> TEST  @Epoch: 350  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.759293 seconds ...
+[Coach] >>> TRAIN @Epoch: 351  >>>  || LOSS Avg: 0.03682
+[Coach] >>> VALID @Epoch: 351  >>> 
+[Coach] >>> TEST  @Epoch: 351  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.069156 seconds ...
+[Coach] >>> TRAIN @Epoch: 352  >>>  || LOSS Avg: 0.03688
+[Coach] >>> VALID @Epoch: 352  >>> 
+[Coach] >>> TEST  @Epoch: 352  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 29.198490 seconds ...
+[Coach] >>> TRAIN @Epoch: 353  >>>  || LOSS Avg: 0.03706
+[Coach] >>> VALID @Epoch: 353  >>> 
+[Coach] >>> TEST  @Epoch: 353  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.479342 seconds ...
+[Coach] >>> TRAIN @Epoch: 354  >>>  || LOSS Avg: 0.03686
+[Coach] >>> VALID @Epoch: 354  >>> 
+[Coach] >>> TEST  @Epoch: 354  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.443743 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.180897 seconds ...
+[Coach] >>> TRAIN @Epoch: 355  >>>  || LOSS Avg: 0.03689
+[Coach] >>> VALID @Epoch: 355  >>>  || RECALL@1 Avg: 0.0087 || RECALL@10 Avg: 0.0442 || RECALL@20 Avg: 0.0663 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0296
+[Coach] >>> TEST  @Epoch: 355  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.416660 seconds ...
+[Coach] >>> TRAIN @Epoch: 356  >>>  || LOSS Avg: 0.03697
+[Coach] >>> VALID @Epoch: 356  >>> 
+[Coach] >>> TEST  @Epoch: 356  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.138746 seconds ...
+[Coach] >>> TRAIN @Epoch: 357  >>>  || LOSS Avg: 0.03704
+[Coach] >>> VALID @Epoch: 357  >>> 
+[Coach] >>> TEST  @Epoch: 357  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.712460 seconds ...
+[Coach] >>> TRAIN @Epoch: 358  >>>  || LOSS Avg: 0.03691
+[Coach] >>> VALID @Epoch: 358  >>> 
+[Coach] >>> TEST  @Epoch: 358  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.079153 seconds ...
+[Coach] >>> TRAIN @Epoch: 359  >>>  || LOSS Avg: 0.03691
+[Coach] >>> VALID @Epoch: 359  >>> 
+[Coach] >>> TEST  @Epoch: 359  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.722789 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.115827 seconds ...
+[Coach] >>> TRAIN @Epoch: 360  >>>  || LOSS Avg: 0.03707
+[Coach] >>> VALID @Epoch: 360  >>>  || RECALL@1 Avg: 0.0086 || RECALL@10 Avg: 0.0440 || RECALL@20 Avg: 0.0664 || NDCG@10 Avg: 0.0238 || NDCG@20 Avg: 0.0296
+[Coach] >>> TEST  @Epoch: 360  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.243353 seconds ...
+[Coach] >>> TRAIN @Epoch: 361  >>>  || LOSS Avg: 0.03688
+[Coach] >>> VALID @Epoch: 361  >>> 
+[Coach] >>> TEST  @Epoch: 361  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.458973 seconds ...
+[Coach] >>> TRAIN @Epoch: 362  >>>  || LOSS Avg: 0.03694
+[Coach] >>> VALID @Epoch: 362  >>> 
+[Coach] >>> TEST  @Epoch: 362  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.932941 seconds ...
+[Coach] >>> TRAIN @Epoch: 363  >>>  || LOSS Avg: 0.03688
+[Coach] >>> VALID @Epoch: 363  >>> 
+[Coach] >>> TEST  @Epoch: 363  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.073386 seconds ...
+[Coach] >>> TRAIN @Epoch: 364  >>>  || LOSS Avg: 0.03676
+[Coach] >>> VALID @Epoch: 364  >>> 
+[Coach] >>> TEST  @Epoch: 364  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.619453 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.211445 seconds ...
+[Coach] >>> TRAIN @Epoch: 365  >>>  || LOSS Avg: 0.03690
+[Coach] >>> VALID @Epoch: 365  >>>  || RECALL@1 Avg: 0.0087 || RECALL@10 Avg: 0.0441 || RECALL@20 Avg: 0.0665 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0296
+[Coach] >>> TEST  @Epoch: 365  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.953365 seconds ...
+[Coach] >>> TRAIN @Epoch: 366  >>>  || LOSS Avg: 0.03676
+[Coach] >>> VALID @Epoch: 366  >>> 
+[Coach] >>> TEST  @Epoch: 366  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.491488 seconds ...
+[Coach] >>> TRAIN @Epoch: 367  >>>  || LOSS Avg: 0.03681
+[Coach] >>> VALID @Epoch: 367  >>> 
+[Coach] >>> TEST  @Epoch: 367  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.178939 seconds ...
+[Coach] >>> TRAIN @Epoch: 368  >>>  || LOSS Avg: 0.03675
+[Coach] >>> VALID @Epoch: 368  >>> 
+[Coach] >>> TEST  @Epoch: 368  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.545431 seconds ...
+[Coach] >>> TRAIN @Epoch: 369  >>>  || LOSS Avg: 0.03666
+[Coach] >>> VALID @Epoch: 369  >>> 
+[Coach] >>> TEST  @Epoch: 369  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.250362 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.190405 seconds ...
+[Coach] >>> TRAIN @Epoch: 370  >>>  || LOSS Avg: 0.03680
+[Coach] >>> VALID @Epoch: 370  >>>  || RECALL@1 Avg: 0.0087 || RECALL@10 Avg: 0.0441 || RECALL@20 Avg: 0.0668 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0297
+[Coach] >>> TEST  @Epoch: 370  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.376355 seconds ...
+[Coach] >>> TRAIN @Epoch: 371  >>>  || LOSS Avg: 0.03688
+[Coach] >>> VALID @Epoch: 371  >>> 
+[Coach] >>> TEST  @Epoch: 371  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.250723 seconds ...
+[Coach] >>> TRAIN @Epoch: 372  >>>  || LOSS Avg: 0.03692
+[Coach] >>> VALID @Epoch: 372  >>> 
+[Coach] >>> TEST  @Epoch: 372  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.913734 seconds ...
+[Coach] >>> TRAIN @Epoch: 373  >>>  || LOSS Avg: 0.03671
+[Coach] >>> VALID @Epoch: 373  >>> 
+[Coach] >>> TEST  @Epoch: 373  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.372849 seconds ...
+[Coach] >>> TRAIN @Epoch: 374  >>>  || LOSS Avg: 0.03678
+[Coach] >>> VALID @Epoch: 374  >>> 
+[Coach] >>> TEST  @Epoch: 374  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.151432 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.223627 seconds ...
+[Coach] >>> TRAIN @Epoch: 375  >>>  || LOSS Avg: 0.03666
+[Coach] >>> VALID @Epoch: 375  >>>  || RECALL@1 Avg: 0.0086 || RECALL@10 Avg: 0.0440 || RECALL@20 Avg: 0.0668 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0297
+[Coach] >>> TEST  @Epoch: 375  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.407431 seconds ...
+[Coach] >>> TRAIN @Epoch: 376  >>>  || LOSS Avg: 0.03664
+[Coach] >>> VALID @Epoch: 376  >>> 
+[Coach] >>> TEST  @Epoch: 376  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.201686 seconds ...
+[Coach] >>> TRAIN @Epoch: 377  >>>  || LOSS Avg: 0.03670
+[Coach] >>> VALID @Epoch: 377  >>> 
+[Coach] >>> TEST  @Epoch: 377  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.760103 seconds ...
+[Coach] >>> TRAIN @Epoch: 378  >>>  || LOSS Avg: 0.03667
+[Coach] >>> VALID @Epoch: 378  >>> 
+[Coach] >>> TEST  @Epoch: 378  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.933242 seconds ...
+[Coach] >>> TRAIN @Epoch: 379  >>>  || LOSS Avg: 0.03664
+[Coach] >>> VALID @Epoch: 379  >>> 
+[Coach] >>> TEST  @Epoch: 379  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.825058 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.233241 seconds ...
+[Coach] >>> TRAIN @Epoch: 380  >>>  || LOSS Avg: 0.03660
+[Coach] >>> VALID @Epoch: 380  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0441 || RECALL@20 Avg: 0.0666 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0297
+[Coach] >>> TEST  @Epoch: 380  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.251198 seconds ...
+[Coach] >>> TRAIN @Epoch: 381  >>>  || LOSS Avg: 0.03671
+[Coach] >>> VALID @Epoch: 381  >>> 
+[Coach] >>> TEST  @Epoch: 381  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.347226 seconds ...
+[Coach] >>> TRAIN @Epoch: 382  >>>  || LOSS Avg: 0.03669
+[Coach] >>> VALID @Epoch: 382  >>> 
+[Coach] >>> TEST  @Epoch: 382  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.822424 seconds ...
+[Coach] >>> TRAIN @Epoch: 383  >>>  || LOSS Avg: 0.03656
+[Coach] >>> VALID @Epoch: 383  >>> 
+[Coach] >>> TEST  @Epoch: 383  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.157861 seconds ...
+[Coach] >>> TRAIN @Epoch: 384  >>>  || LOSS Avg: 0.03668
+[Coach] >>> VALID @Epoch: 384  >>> 
+[Coach] >>> TEST  @Epoch: 384  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.553711 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.235225 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0298*** 
+[Coach] >>> TRAIN @Epoch: 385  >>>  || LOSS Avg: 0.03661
+[Coach] >>> VALID @Epoch: 385  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0438 || RECALL@20 Avg: 0.0669 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0298
+[Coach] >>> TEST  @Epoch: 385  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.948217 seconds ...
+[Coach] >>> TRAIN @Epoch: 386  >>>  || LOSS Avg: 0.03672
+[Coach] >>> VALID @Epoch: 386  >>> 
+[Coach] >>> TEST  @Epoch: 386  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 30.193949 seconds ...
+[Coach] >>> TRAIN @Epoch: 387  >>>  || LOSS Avg: 0.03649
+[Coach] >>> VALID @Epoch: 387  >>> 
+[Coach] >>> TEST  @Epoch: 387  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.976887 seconds ...
+[Coach] >>> TRAIN @Epoch: 388  >>>  || LOSS Avg: 0.03668
+[Coach] >>> VALID @Epoch: 388  >>> 
+[Coach] >>> TEST  @Epoch: 388  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.450137 seconds ...
+[Coach] >>> TRAIN @Epoch: 389  >>>  || LOSS Avg: 0.03674
+[Coach] >>> VALID @Epoch: 389  >>> 
+[Coach] >>> TEST  @Epoch: 389  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.251562 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.272845 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0298*** 
+[Coach] >>> TRAIN @Epoch: 390  >>>  || LOSS Avg: 0.03647
+[Coach] >>> VALID @Epoch: 390  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0439 || RECALL@20 Avg: 0.0670 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0298
+[Coach] >>> TEST  @Epoch: 390  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.790032 seconds ...
+[Coach] >>> TRAIN @Epoch: 391  >>>  || LOSS Avg: 0.03651
+[Coach] >>> VALID @Epoch: 391  >>> 
+[Coach] >>> TEST  @Epoch: 391  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.015716 seconds ...
+[Coach] >>> TRAIN @Epoch: 392  >>>  || LOSS Avg: 0.03651
+[Coach] >>> VALID @Epoch: 392  >>> 
+[Coach] >>> TEST  @Epoch: 392  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.996861 seconds ...
+[Coach] >>> TRAIN @Epoch: 393  >>>  || LOSS Avg: 0.03640
+[Coach] >>> VALID @Epoch: 393  >>> 
+[Coach] >>> TEST  @Epoch: 393  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.820707 seconds ...
+[Coach] >>> TRAIN @Epoch: 394  >>>  || LOSS Avg: 0.03658
+[Coach] >>> VALID @Epoch: 394  >>> 
+[Coach] >>> TEST  @Epoch: 394  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.085979 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.239221 seconds ...
+[Coach] >>> TRAIN @Epoch: 395  >>>  || LOSS Avg: 0.03648
+[Coach] >>> VALID @Epoch: 395  >>>  || RECALL@1 Avg: 0.0089 || RECALL@10 Avg: 0.0442 || RECALL@20 Avg: 0.0668 || NDCG@10 Avg: 0.0240 || NDCG@20 Avg: 0.0298
+[Coach] >>> TEST  @Epoch: 395  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.722919 seconds ...
+[Coach] >>> TRAIN @Epoch: 396  >>>  || LOSS Avg: 0.03654
+[Coach] >>> VALID @Epoch: 396  >>> 
+[Coach] >>> TEST  @Epoch: 396  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.245530 seconds ...
+[Coach] >>> TRAIN @Epoch: 397  >>>  || LOSS Avg: 0.03656
+[Coach] >>> VALID @Epoch: 397  >>> 
+[Coach] >>> TEST  @Epoch: 397  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.565990 seconds ...
+[Coach] >>> TRAIN @Epoch: 398  >>>  || LOSS Avg: 0.03661
+[Coach] >>> VALID @Epoch: 398  >>> 
+[Coach] >>> TEST  @Epoch: 398  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.091762 seconds ...
+[Coach] >>> TRAIN @Epoch: 399  >>>  || LOSS Avg: 0.03644
+[Coach] >>> VALID @Epoch: 399  >>> 
+[Coach] >>> TEST  @Epoch: 399  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.971709 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.217148 seconds ...
+[Coach] >>> TRAIN @Epoch: 400  >>>  || LOSS Avg: 0.03644
+[Coach] >>> VALID @Epoch: 400  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0441 || RECALL@20 Avg: 0.0667 || NDCG@10 Avg: 0.0240 || NDCG@20 Avg: 0.0298
+[Coach] >>> TEST  @Epoch: 400  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.833372 seconds ...
+[Coach] >>> TRAIN @Epoch: 401  >>>  || LOSS Avg: 0.03638
+[Coach] >>> VALID @Epoch: 401  >>> 
+[Coach] >>> TEST  @Epoch: 401  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.138767 seconds ...
+[Coach] >>> TRAIN @Epoch: 402  >>>  || LOSS Avg: 0.03637
+[Coach] >>> VALID @Epoch: 402  >>> 
+[Coach] >>> TEST  @Epoch: 402  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.763859 seconds ...
+[Coach] >>> TRAIN @Epoch: 403  >>>  || LOSS Avg: 0.03649
+[Coach] >>> VALID @Epoch: 403  >>> 
+[Coach] >>> TEST  @Epoch: 403  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.001425 seconds ...
+[Coach] >>> TRAIN @Epoch: 404  >>>  || LOSS Avg: 0.03638
+[Coach] >>> VALID @Epoch: 404  >>> 
+[Coach] >>> TEST  @Epoch: 404  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 29.565551 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.194012 seconds ...
+[Coach] >>> TRAIN @Epoch: 405  >>>  || LOSS Avg: 0.03639
+[Coach] >>> VALID @Epoch: 405  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0439 || RECALL@20 Avg: 0.0666 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0297
+[Coach] >>> TEST  @Epoch: 405  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.008837 seconds ...
+[Coach] >>> TRAIN @Epoch: 406  >>>  || LOSS Avg: 0.03649
+[Coach] >>> VALID @Epoch: 406  >>> 
+[Coach] >>> TEST  @Epoch: 406  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.742600 seconds ...
+[Coach] >>> TRAIN @Epoch: 407  >>>  || LOSS Avg: 0.03629
+[Coach] >>> VALID @Epoch: 407  >>> 
+[Coach] >>> TEST  @Epoch: 407  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.023994 seconds ...
+[Coach] >>> TRAIN @Epoch: 408  >>>  || LOSS Avg: 0.03645
+[Coach] >>> VALID @Epoch: 408  >>> 
+[Coach] >>> TEST  @Epoch: 408  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.748127 seconds ...
+[Coach] >>> TRAIN @Epoch: 409  >>>  || LOSS Avg: 0.03639
+[Coach] >>> VALID @Epoch: 409  >>> 
+[Coach] >>> TEST  @Epoch: 409  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.485251 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.222499 seconds ...
+[Coach] >>> TRAIN @Epoch: 410  >>>  || LOSS Avg: 0.03636
+[Coach] >>> VALID @Epoch: 410  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0438 || RECALL@20 Avg: 0.0666 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0297
+[Coach] >>> TEST  @Epoch: 410  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.737910 seconds ...
+[Coach] >>> TRAIN @Epoch: 411  >>>  || LOSS Avg: 0.03644
+[Coach] >>> VALID @Epoch: 411  >>> 
+[Coach] >>> TEST  @Epoch: 411  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 29.011885 seconds ...
+[Coach] >>> TRAIN @Epoch: 412  >>>  || LOSS Avg: 0.03647
+[Coach] >>> VALID @Epoch: 412  >>> 
+[Coach] >>> TEST  @Epoch: 412  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.986306 seconds ...
+[Coach] >>> TRAIN @Epoch: 413  >>>  || LOSS Avg: 0.03628
+[Coach] >>> VALID @Epoch: 413  >>> 
+[Coach] >>> TEST  @Epoch: 413  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.867516 seconds ...
+[Coach] >>> TRAIN @Epoch: 414  >>>  || LOSS Avg: 0.03622
+[Coach] >>> VALID @Epoch: 414  >>> 
+[Coach] >>> TEST  @Epoch: 414  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.246237 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.196284 seconds ...
+[Coach] >>> TRAIN @Epoch: 415  >>>  || LOSS Avg: 0.03637
+[Coach] >>> VALID @Epoch: 415  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0439 || RECALL@20 Avg: 0.0668 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0297
+[Coach] >>> TEST  @Epoch: 415  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.733481 seconds ...
+[Coach] >>> TRAIN @Epoch: 416  >>>  || LOSS Avg: 0.03637
+[Coach] >>> VALID @Epoch: 416  >>> 
+[Coach] >>> TEST  @Epoch: 416  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.278957 seconds ...
+[Coach] >>> TRAIN @Epoch: 417  >>>  || LOSS Avg: 0.03626
+[Coach] >>> VALID @Epoch: 417  >>> 
+[Coach] >>> TEST  @Epoch: 417  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.643830 seconds ...
+[Coach] >>> TRAIN @Epoch: 418  >>>  || LOSS Avg: 0.03626
+[Coach] >>> VALID @Epoch: 418  >>> 
+[Coach] >>> TEST  @Epoch: 418  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.949943 seconds ...
+[Coach] >>> TRAIN @Epoch: 419  >>>  || LOSS Avg: 0.03652
+[Coach] >>> VALID @Epoch: 419  >>> 
+[Coach] >>> TEST  @Epoch: 419  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.128439 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.131673 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0298*** 
+[Coach] >>> TRAIN @Epoch: 420  >>>  || LOSS Avg: 0.03630
+[Coach] >>> VALID @Epoch: 420  >>>  || RECALL@1 Avg: 0.0090 || RECALL@10 Avg: 0.0439 || RECALL@20 Avg: 0.0668 || NDCG@10 Avg: 0.0240 || NDCG@20 Avg: 0.0298
+[Coach] >>> TEST  @Epoch: 420  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 29.465763 seconds ...
+[Coach] >>> TRAIN @Epoch: 421  >>>  || LOSS Avg: 0.03618
+[Coach] >>> VALID @Epoch: 421  >>> 
+[Coach] >>> TEST  @Epoch: 421  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.127478 seconds ...
+[Coach] >>> TRAIN @Epoch: 422  >>>  || LOSS Avg: 0.03618
+[Coach] >>> VALID @Epoch: 422  >>> 
+[Coach] >>> TEST  @Epoch: 422  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.565260 seconds ...
+[Coach] >>> TRAIN @Epoch: 423  >>>  || LOSS Avg: 0.03629
+[Coach] >>> VALID @Epoch: 423  >>> 
+[Coach] >>> TEST  @Epoch: 423  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.781507 seconds ...
+[Coach] >>> TRAIN @Epoch: 424  >>>  || LOSS Avg: 0.03613
+[Coach] >>> VALID @Epoch: 424  >>> 
+[Coach] >>> TEST  @Epoch: 424  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.696559 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.103842 seconds ...
+[Coach] >>> TRAIN @Epoch: 425  >>>  || LOSS Avg: 0.03634
+[Coach] >>> VALID @Epoch: 425  >>>  || RECALL@1 Avg: 0.0089 || RECALL@10 Avg: 0.0438 || RECALL@20 Avg: 0.0668 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0298
+[Coach] >>> TEST  @Epoch: 425  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.905839 seconds ...
+[Coach] >>> TRAIN @Epoch: 426  >>>  || LOSS Avg: 0.03631
+[Coach] >>> VALID @Epoch: 426  >>> 
+[Coach] >>> TEST  @Epoch: 426  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.982225 seconds ...
+[Coach] >>> TRAIN @Epoch: 427  >>>  || LOSS Avg: 0.03626
+[Coach] >>> VALID @Epoch: 427  >>> 
+[Coach] >>> TEST  @Epoch: 427  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.410751 seconds ...
+[Coach] >>> TRAIN @Epoch: 428  >>>  || LOSS Avg: 0.03622
+[Coach] >>> VALID @Epoch: 428  >>> 
+[Coach] >>> TEST  @Epoch: 428  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.120676 seconds ...
+[Coach] >>> TRAIN @Epoch: 429  >>>  || LOSS Avg: 0.03617
+[Coach] >>> VALID @Epoch: 429  >>> 
+[Coach] >>> TEST  @Epoch: 429  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.141890 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.202516 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0298*** 
+[Coach] >>> TRAIN @Epoch: 430  >>>  || LOSS Avg: 0.03615
+[Coach] >>> VALID @Epoch: 430  >>>  || RECALL@1 Avg: 0.0089 || RECALL@10 Avg: 0.0441 || RECALL@20 Avg: 0.0670 || NDCG@10 Avg: 0.0240 || NDCG@20 Avg: 0.0298
+[Coach] >>> TEST  @Epoch: 430  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.935410 seconds ...
+[Coach] >>> TRAIN @Epoch: 431  >>>  || LOSS Avg: 0.03615
+[Coach] >>> VALID @Epoch: 431  >>> 
+[Coach] >>> TEST  @Epoch: 431  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.780107 seconds ...
+[Coach] >>> TRAIN @Epoch: 432  >>>  || LOSS Avg: 0.03614
+[Coach] >>> VALID @Epoch: 432  >>> 
+[Coach] >>> TEST  @Epoch: 432  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.869897 seconds ...
+[Coach] >>> TRAIN @Epoch: 433  >>>  || LOSS Avg: 0.03621
+[Coach] >>> VALID @Epoch: 433  >>> 
+[Coach] >>> TEST  @Epoch: 433  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.178748 seconds ...
+[Coach] >>> TRAIN @Epoch: 434  >>>  || LOSS Avg: 0.03628
+[Coach] >>> VALID @Epoch: 434  >>> 
+[Coach] >>> TEST  @Epoch: 434  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.074815 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.214043 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0299*** 
+[Coach] >>> TRAIN @Epoch: 435  >>>  || LOSS Avg: 0.03623
+[Coach] >>> VALID @Epoch: 435  >>>  || RECALL@1 Avg: 0.0090 || RECALL@10 Avg: 0.0441 || RECALL@20 Avg: 0.0669 || NDCG@10 Avg: 0.0241 || NDCG@20 Avg: 0.0299
+[Coach] >>> TEST  @Epoch: 435  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.716348 seconds ...
+[Coach] >>> TRAIN @Epoch: 436  >>>  || LOSS Avg: 0.03608
+[Coach] >>> VALID @Epoch: 436  >>> 
+[Coach] >>> TEST  @Epoch: 436  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.147292 seconds ...
+[Coach] >>> TRAIN @Epoch: 437  >>>  || LOSS Avg: 0.03604
+[Coach] >>> VALID @Epoch: 437  >>> 
+[Coach] >>> TEST  @Epoch: 437  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.028002 seconds ...
+[Coach] >>> TRAIN @Epoch: 438  >>>  || LOSS Avg: 0.03617
+[Coach] >>> VALID @Epoch: 438  >>> 
+[Coach] >>> TEST  @Epoch: 438  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.243066 seconds ...
+[Coach] >>> TRAIN @Epoch: 439  >>>  || LOSS Avg: 0.03606
+[Coach] >>> VALID @Epoch: 439  >>> 
+[Coach] >>> TEST  @Epoch: 439  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.945545 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.236914 seconds ...
+[Coach] >>> TRAIN @Epoch: 440  >>>  || LOSS Avg: 0.03601
+[Coach] >>> VALID @Epoch: 440  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0442 || RECALL@20 Avg: 0.0670 || NDCG@10 Avg: 0.0240 || NDCG@20 Avg: 0.0298
+[Coach] >>> TEST  @Epoch: 440  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.426430 seconds ...
+[Coach] >>> TRAIN @Epoch: 441  >>>  || LOSS Avg: 0.03604
+[Coach] >>> VALID @Epoch: 441  >>> 
+[Coach] >>> TEST  @Epoch: 441  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.324068 seconds ...
+[Coach] >>> TRAIN @Epoch: 442  >>>  || LOSS Avg: 0.03617
+[Coach] >>> VALID @Epoch: 442  >>> 
+[Coach] >>> TEST  @Epoch: 442  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.591067 seconds ...
+[Coach] >>> TRAIN @Epoch: 443  >>>  || LOSS Avg: 0.03622
+[Coach] >>> VALID @Epoch: 443  >>> 
+[Coach] >>> TEST  @Epoch: 443  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.101314 seconds ...
+[Coach] >>> TRAIN @Epoch: 444  >>>  || LOSS Avg: 0.03603
+[Coach] >>> VALID @Epoch: 444  >>> 
+[Coach] >>> TEST  @Epoch: 444  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.661659 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.205404 seconds ...
+[Coach] >>> TRAIN @Epoch: 445  >>>  || LOSS Avg: 0.03597
+[Coach] >>> VALID @Epoch: 445  >>>  || RECALL@1 Avg: 0.0086 || RECALL@10 Avg: 0.0441 || RECALL@20 Avg: 0.0668 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0297
+[Coach] >>> TEST  @Epoch: 445  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.968566 seconds ...
+[Coach] >>> TRAIN @Epoch: 446  >>>  || LOSS Avg: 0.03606
+[Coach] >>> VALID @Epoch: 446  >>> 
+[Coach] >>> TEST  @Epoch: 446  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.949805 seconds ...
+[Coach] >>> TRAIN @Epoch: 447  >>>  || LOSS Avg: 0.03610
+[Coach] >>> VALID @Epoch: 447  >>> 
+[Coach] >>> TEST  @Epoch: 447  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.742974 seconds ...
+[Coach] >>> TRAIN @Epoch: 448  >>>  || LOSS Avg: 0.03599
+[Coach] >>> VALID @Epoch: 448  >>> 
+[Coach] >>> TEST  @Epoch: 448  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.852460 seconds ...
+[Coach] >>> TRAIN @Epoch: 449  >>>  || LOSS Avg: 0.03607
+[Coach] >>> VALID @Epoch: 449  >>> 
+[Coach] >>> TEST  @Epoch: 449  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.794113 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.144526 seconds ...
+[Coach] >>> TRAIN @Epoch: 450  >>>  || LOSS Avg: 0.03619
+[Coach] >>> VALID @Epoch: 450  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0439 || RECALL@20 Avg: 0.0667 || NDCG@10 Avg: 0.0239 || NDCG@20 Avg: 0.0297
+[Coach] >>> TEST  @Epoch: 450  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.902930 seconds ...
+[Coach] >>> TRAIN @Epoch: 451  >>>  || LOSS Avg: 0.03605
+[Coach] >>> VALID @Epoch: 451  >>> 
+[Coach] >>> TEST  @Epoch: 451  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.725179 seconds ...
+[Coach] >>> TRAIN @Epoch: 452  >>>  || LOSS Avg: 0.03619
+[Coach] >>> VALID @Epoch: 452  >>> 
+[Coach] >>> TEST  @Epoch: 452  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.977035 seconds ...
+[Coach] >>> TRAIN @Epoch: 453  >>>  || LOSS Avg: 0.03602
+[Coach] >>> VALID @Epoch: 453  >>> 
+[Coach] >>> TEST  @Epoch: 453  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.571242 seconds ...
+[Coach] >>> TRAIN @Epoch: 454  >>>  || LOSS Avg: 0.03602
+[Coach] >>> VALID @Epoch: 454  >>> 
+[Coach] >>> TEST  @Epoch: 454  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.771627 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.150033 seconds ...
+[Coach] >>> TRAIN @Epoch: 455  >>>  || LOSS Avg: 0.03612
+[Coach] >>> VALID @Epoch: 455  >>>  || RECALL@1 Avg: 0.0089 || RECALL@10 Avg: 0.0442 || RECALL@20 Avg: 0.0668 || NDCG@10 Avg: 0.0240 || NDCG@20 Avg: 0.0298
+[Coach] >>> TEST  @Epoch: 455  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.846735 seconds ...
+[Coach] >>> TRAIN @Epoch: 456  >>>  || LOSS Avg: 0.03600
+[Coach] >>> VALID @Epoch: 456  >>> 
+[Coach] >>> TEST  @Epoch: 456  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.476099 seconds ...
+[Coach] >>> TRAIN @Epoch: 457  >>>  || LOSS Avg: 0.03615
+[Coach] >>> VALID @Epoch: 457  >>> 
+[Coach] >>> TEST  @Epoch: 457  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.051371 seconds ...
+[Coach] >>> TRAIN @Epoch: 458  >>>  || LOSS Avg: 0.03606
+[Coach] >>> VALID @Epoch: 458  >>> 
+[Coach] >>> TEST  @Epoch: 458  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.748107 seconds ...
+[Coach] >>> TRAIN @Epoch: 459  >>>  || LOSS Avg: 0.03597
+[Coach] >>> VALID @Epoch: 459  >>> 
+[Coach] >>> TEST  @Epoch: 459  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.238191 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.145126 seconds ...
+[Coach] >>> TRAIN @Epoch: 460  >>>  || LOSS Avg: 0.03603
+[Coach] >>> VALID @Epoch: 460  >>>  || RECALL@1 Avg: 0.0089 || RECALL@10 Avg: 0.0442 || RECALL@20 Avg: 0.0667 || NDCG@10 Avg: 0.0240 || NDCG@20 Avg: 0.0298
+[Coach] >>> TEST  @Epoch: 460  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.989159 seconds ...
+[Coach] >>> TRAIN @Epoch: 461  >>>  || LOSS Avg: 0.03601
+[Coach] >>> VALID @Epoch: 461  >>> 
+[Coach] >>> TEST  @Epoch: 461  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.881085 seconds ...
+[Coach] >>> TRAIN @Epoch: 462  >>>  || LOSS Avg: 0.03613
+[Coach] >>> VALID @Epoch: 462  >>> 
+[Coach] >>> TEST  @Epoch: 462  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.561422 seconds ...
+[Coach] >>> TRAIN @Epoch: 463  >>>  || LOSS Avg: 0.03609
+[Coach] >>> VALID @Epoch: 463  >>> 
+[Coach] >>> TEST  @Epoch: 463  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.012456 seconds ...
+[Coach] >>> TRAIN @Epoch: 464  >>>  || LOSS Avg: 0.03609
+[Coach] >>> VALID @Epoch: 464  >>> 
+[Coach] >>> TEST  @Epoch: 464  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.870077 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.067168 seconds ...
+[Coach] >>> TRAIN @Epoch: 465  >>>  || LOSS Avg: 0.03612
+[Coach] >>> VALID @Epoch: 465  >>>  || RECALL@1 Avg: 0.0089 || RECALL@10 Avg: 0.0443 || RECALL@20 Avg: 0.0668 || NDCG@10 Avg: 0.0241 || NDCG@20 Avg: 0.0298
+[Coach] >>> TEST  @Epoch: 465  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.775959 seconds ...
+[Coach] >>> TRAIN @Epoch: 466  >>>  || LOSS Avg: 0.03599
+[Coach] >>> VALID @Epoch: 466  >>> 
+[Coach] >>> TEST  @Epoch: 466  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.206127 seconds ...
+[Coach] >>> TRAIN @Epoch: 467  >>>  || LOSS Avg: 0.03590
+[Coach] >>> VALID @Epoch: 467  >>> 
+[Coach] >>> TEST  @Epoch: 467  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.849830 seconds ...
+[Coach] >>> TRAIN @Epoch: 468  >>>  || LOSS Avg: 0.03610
+[Coach] >>> VALID @Epoch: 468  >>> 
+[Coach] >>> TEST  @Epoch: 468  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.957197 seconds ...
+[Coach] >>> TRAIN @Epoch: 469  >>>  || LOSS Avg: 0.03588
+[Coach] >>> VALID @Epoch: 469  >>> 
+[Coach] >>> TEST  @Epoch: 469  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.841228 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.131657 seconds ...
+[Coach] >>> TRAIN @Epoch: 470  >>>  || LOSS Avg: 0.03596
+[Coach] >>> VALID @Epoch: 470  >>>  || RECALL@1 Avg: 0.0089 || RECALL@10 Avg: 0.0442 || RECALL@20 Avg: 0.0668 || NDCG@10 Avg: 0.0241 || NDCG@20 Avg: 0.0298
+[Coach] >>> TEST  @Epoch: 470  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.959193 seconds ...
+[Coach] >>> TRAIN @Epoch: 471  >>>  || LOSS Avg: 0.03580
+[Coach] >>> VALID @Epoch: 471  >>> 
+[Coach] >>> TEST  @Epoch: 471  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.616517 seconds ...
+[Coach] >>> TRAIN @Epoch: 472  >>>  || LOSS Avg: 0.03588
+[Coach] >>> VALID @Epoch: 472  >>> 
+[Coach] >>> TEST  @Epoch: 472  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.082643 seconds ...
+[Coach] >>> TRAIN @Epoch: 473  >>>  || LOSS Avg: 0.03578
+[Coach] >>> VALID @Epoch: 473  >>> 
+[Coach] >>> TEST  @Epoch: 473  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.895147 seconds ...
+[Coach] >>> TRAIN @Epoch: 474  >>>  || LOSS Avg: 0.03589
+[Coach] >>> VALID @Epoch: 474  >>> 
+[Coach] >>> TEST  @Epoch: 474  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.517230 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.194235 seconds ...
+[Coach] >>> TRAIN @Epoch: 475  >>>  || LOSS Avg: 0.03583
+[Coach] >>> VALID @Epoch: 475  >>>  || RECALL@1 Avg: 0.0089 || RECALL@10 Avg: 0.0442 || RECALL@20 Avg: 0.0667 || NDCG@10 Avg: 0.0241 || NDCG@20 Avg: 0.0298
+[Coach] >>> TEST  @Epoch: 475  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.828688 seconds ...
+[Coach] >>> TRAIN @Epoch: 476  >>>  || LOSS Avg: 0.03588
+[Coach] >>> VALID @Epoch: 476  >>> 
+[Coach] >>> TEST  @Epoch: 476  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.927619 seconds ...
+[Coach] >>> TRAIN @Epoch: 477  >>>  || LOSS Avg: 0.03598
+[Coach] >>> VALID @Epoch: 477  >>> 
+[Coach] >>> TEST  @Epoch: 477  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.828844 seconds ...
+[Coach] >>> TRAIN @Epoch: 478  >>>  || LOSS Avg: 0.03589
+[Coach] >>> VALID @Epoch: 478  >>> 
+[Coach] >>> TEST  @Epoch: 478  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.645755 seconds ...
+[Coach] >>> TRAIN @Epoch: 479  >>>  || LOSS Avg: 0.03595
+[Coach] >>> VALID @Epoch: 479  >>> 
+[Coach] >>> TEST  @Epoch: 479  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.016786 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.238437 seconds ...
+[Coach] >>> TRAIN @Epoch: 480  >>>  || LOSS Avg: 0.03593
+[Coach] >>> VALID @Epoch: 480  >>>  || RECALL@1 Avg: 0.0089 || RECALL@10 Avg: 0.0443 || RECALL@20 Avg: 0.0669 || NDCG@10 Avg: 0.0241 || NDCG@20 Avg: 0.0298
+[Coach] >>> TEST  @Epoch: 480  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.417064 seconds ...
+[Coach] >>> TRAIN @Epoch: 481  >>>  || LOSS Avg: 0.03607
+[Coach] >>> VALID @Epoch: 481  >>> 
+[Coach] >>> TEST  @Epoch: 481  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.936724 seconds ...
+[Coach] >>> TRAIN @Epoch: 482  >>>  || LOSS Avg: 0.03593
+[Coach] >>> VALID @Epoch: 482  >>> 
+[Coach] >>> TEST  @Epoch: 482  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.743747 seconds ...
+[Coach] >>> TRAIN @Epoch: 483  >>>  || LOSS Avg: 0.03567
+[Coach] >>> VALID @Epoch: 483  >>> 
+[Coach] >>> TEST  @Epoch: 483  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.180264 seconds ...
+[Coach] >>> TRAIN @Epoch: 484  >>>  || LOSS Avg: 0.03597
+[Coach] >>> VALID @Epoch: 484  >>> 
+[Coach] >>> TEST  @Epoch: 484  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.105627 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.076539 seconds ...
+[Coach] >>> TRAIN @Epoch: 485  >>>  || LOSS Avg: 0.03592
+[Coach] >>> VALID @Epoch: 485  >>>  || RECALL@1 Avg: 0.0089 || RECALL@10 Avg: 0.0443 || RECALL@20 Avg: 0.0669 || NDCG@10 Avg: 0.0241 || NDCG@20 Avg: 0.0299
+[Coach] >>> TEST  @Epoch: 485  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.020586 seconds ...
+[Coach] >>> TRAIN @Epoch: 486  >>>  || LOSS Avg: 0.03586
+[Coach] >>> VALID @Epoch: 486  >>> 
+[Coach] >>> TEST  @Epoch: 486  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.069196 seconds ...
+[Coach] >>> TRAIN @Epoch: 487  >>>  || LOSS Avg: 0.03574
+[Coach] >>> VALID @Epoch: 487  >>> 
+[Coach] >>> TEST  @Epoch: 487  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.342393 seconds ...
+[Coach] >>> TRAIN @Epoch: 488  >>>  || LOSS Avg: 0.03586
+[Coach] >>> VALID @Epoch: 488  >>> 
+[Coach] >>> TEST  @Epoch: 488  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.866910 seconds ...
+[Coach] >>> TRAIN @Epoch: 489  >>>  || LOSS Avg: 0.03583
+[Coach] >>> VALID @Epoch: 489  >>> 
+[Coach] >>> TEST  @Epoch: 489  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.335845 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.161255 seconds ...
+[Coach] >>> Better ***NDCG@20*** of ***0.0300*** 
+[Coach] >>> TRAIN @Epoch: 490  >>>  || LOSS Avg: 0.03579
+[Coach] >>> VALID @Epoch: 490  >>>  || RECALL@1 Avg: 0.0090 || RECALL@10 Avg: 0.0442 || RECALL@20 Avg: 0.0673 || NDCG@10 Avg: 0.0241 || NDCG@20 Avg: 0.0300
+[Coach] >>> TEST  @Epoch: 490  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.089330 seconds ...
+[Coach] >>> TRAIN @Epoch: 491  >>>  || LOSS Avg: 0.03575
+[Coach] >>> VALID @Epoch: 491  >>> 
+[Coach] >>> TEST  @Epoch: 491  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 28.747356 seconds ...
+[Coach] >>> TRAIN @Epoch: 492  >>>  || LOSS Avg: 0.03557
+[Coach] >>> VALID @Epoch: 492  >>> 
+[Coach] >>> TEST  @Epoch: 492  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.436604 seconds ...
+[Coach] >>> TRAIN @Epoch: 493  >>>  || LOSS Avg: 0.03589
+[Coach] >>> VALID @Epoch: 493  >>> 
+[Coach] >>> TEST  @Epoch: 493  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.153749 seconds ...
+[Coach] >>> TRAIN @Epoch: 494  >>>  || LOSS Avg: 0.03585
+[Coach] >>> VALID @Epoch: 494  >>> 
+[Coach] >>> TEST  @Epoch: 494  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.001022 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.205330 seconds ...
+[Coach] >>> TRAIN @Epoch: 495  >>>  || LOSS Avg: 0.03576
+[Coach] >>> VALID @Epoch: 495  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0440 || RECALL@20 Avg: 0.0669 || NDCG@10 Avg: 0.0240 || NDCG@20 Avg: 0.0299
+[Coach] >>> TEST  @Epoch: 495  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.824414 seconds ...
+[Coach] >>> TRAIN @Epoch: 496  >>>  || LOSS Avg: 0.03577
+[Coach] >>> VALID @Epoch: 496  >>> 
+[Coach] >>> TEST  @Epoch: 496  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.692298 seconds ...
+[Coach] >>> TRAIN @Epoch: 497  >>>  || LOSS Avg: 0.03571
+[Coach] >>> VALID @Epoch: 497  >>> 
+[Coach] >>> TEST  @Epoch: 497  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 25.973979 seconds ...
+[Coach] >>> TRAIN @Epoch: 498  >>>  || LOSS Avg: 0.03573
+[Coach] >>> VALID @Epoch: 498  >>> 
+[Coach] >>> TEST  @Epoch: 498  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 27.864598 seconds ...
+[Coach] >>> TRAIN @Epoch: 499  >>>  || LOSS Avg: 0.03590
+[Coach] >>> VALID @Epoch: 499  >>> 
+[Coach] >>> TEST  @Epoch: 499  >>> 
+[Wall TIME] >>> ChiefCoach.train takes 26.180046 seconds ...
+[Wall TIME] >>> ChiefCoach.valid takes 22.153258 seconds ...
+[Wall TIME] >>> ChiefCoach.test takes 26.442177 seconds ...
+[Coach] >>> TRAIN @Epoch: 500  >>>  || LOSS Avg: 0.03565
+[Coach] >>> VALID @Epoch: 500  >>>  || RECALL@1 Avg: 0.0088 || RECALL@10 Avg: 0.0441 || RECALL@20 Avg: 0.0667 || NDCG@10 Avg: 0.0240 || NDCG@20 Avg: 0.0298
+[Coach] >>> TEST  @Epoch: 500  >>>  || RECALL@1 Avg: 0.0093 || RECALL@10 Avg: 0.0442 || RECALL@20 Avg: 0.0663 || NDCG@10 Avg: 0.0246 || NDCG@20 Avg: 0.0303
+     Mode     Metric      Best  @Epoch
+0   train       LOSS  0.035574     491
+1   valid   RECALL@1  0.009009     490
+2   valid  RECALL@10  0.044268     485
+3   valid  RECALL@20  0.067275     490
+4   valid    NDCG@10  0.024126     490
+5   valid    NDCG@20  0.030016     490
+6    test   RECALL@1  0.009266       0
+7    test  RECALL@10  0.044216       0
+8    test  RECALL@20  0.066327       0
+9    test    NDCG@10  0.024564       0
+10   test    NDCG@20  0.030274       0
+[LoG_PaTH] >>> ./logs/STAIR-BSC-Reweight (STAIR-v5)/Amazon2014Electronics_550_MMRec/0912004801
+[Wall TIME] >>> Coach.summary takes 2.369783 seconds ...
+[Coach] >>> Load best model @Epoch 490  
+[Wall TIME] >>> ChiefCoach.valid takes 22.108866 seconds ...
+[Wall TIME] >>> ChiefCoach.test takes 22.310472 seconds ...
+[Coach] >>> TRAIN @Epoch: 490  >>> 
+[Coach] >>> VALID @Epoch: 490  >>>  || RECALL@1 Avg: 0.0090 || RECALL@10 Avg: 0.0442 || RECALL@20 Avg: 0.0673 || NDCG@10 Avg: 0.0241 || NDCG@20 Avg: 0.0300
+[Coach] >>> TEST  @Epoch: 490  >>>  || RECALL@1 Avg: 0.0092 || RECALL@10 Avg: 0.0443 || RECALL@20 Avg: 0.0666 || NDCG@10 Avg: 0.0246 || NDCG@20 Avg: 0.0303
+[Wall TIME] >>> Coach.fit takes 16106.331843 seconds ...
