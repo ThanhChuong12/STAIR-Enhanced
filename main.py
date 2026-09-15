@@ -371,6 +371,9 @@ def main():
     validpipe = model.sure_validpipe(cfg.ranking)
     testpipe = model.sure_testpipe(cfg.ranking)
 
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
+
     coach = CoachForSTAIR(
         dataset=dataset,
         trainpipe=trainpipe,
@@ -380,6 +383,14 @@ def main():
         cfg=cfg
     )
     coach.fit()
+
+    if torch.cuda.is_available():
+        peak_alloc = torch.cuda.max_memory_allocated() / (1024 ** 2)
+        peak_reserved = torch.cuda.max_memory_reserved() / (1024 ** 2)
+        print(f"\n[GPU MEMORY TELEMETRY - PAPER STANDARD]")
+        print(f"Peak Model Tensor Memory (torch.cuda.max_memory_allocated): {peak_alloc:.2f} MB")
+        print(f"Peak PyTorch Reserved Memory (torch.cuda.max_memory_reserved): {peak_reserved:.2f} MB\n")
+
 
 
 if __name__ == "__main__":
