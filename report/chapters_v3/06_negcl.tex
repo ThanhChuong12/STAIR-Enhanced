@@ -1,0 +1,570 @@
+\section{Các hướng cải tiến NEGCL trên Amazon và TikTok}
+\label{chap:negcl_advanced_acd_dns}
+
+Chương này khảo sát các phương án cải tiến mô hình gợi ý đa phương thức NEGCL~\cite{shi2025negcl} trên hai nhóm dữ liệu. Với Amazon Baby, Sports và Clothing, năm phương án M1--M5 được xây dựng trên nền tảng AC-DNS. Với TikTok, chương trình bày ba phương án M6, M9 và M11, sử dụng NEGCL triển khai trên TikTok làm mô hình đối chứng. Các mã phương án được giữ theo tên cấu hình thí nghiệm; chúng không thể hiện thứ hạng hiệu năng.
+
+AC-DNS (\textit{Adaptive Confidence-aware Densification and Dual Adaptive Noise Scheduling}) kết hợp làm dày đồ thị theo độ tin cậy với điều tiết nhiễu theo bậc nút và tiến trình huấn luyện. M1--M5 can thiệp vào năm thành phần: căn chỉnh biểu diễn hình ảnh và văn bản, xây dựng siêu cạnh theo chủ đề, điều chỉnh lề xếp hạng, lan truyền có khởi động lại và dung hợp theo độ bất định. Mỗi phương án được đối chiếu riêng với AC-DNS; sơ đồ tổng quan biểu thị vị trí can thiệp, không phải một cấu hình đã tích hợp đồng thời cả năm phương án.
+
+Trong chương, $\mathcal{U}$ và $\mathcal{I}$ lần lượt là tập người dùng và tập sản phẩm hoặc video; $u\in\mathcal{U}$, $i,j\in\mathcal{I}$. Ký hiệu $v$, $t$ và $a$ chỉ phương thức hình ảnh, văn bản và âm thanh. Biểu diễn nhúng có số chiều $d$. Với bộ ba $(u,i,j)\in\mathcal{D}$, $i$ là mục đã được người dùng tương tác và $j$ là mục âm được lấy mẫu; $\hat y_{ui}$ là điểm dự đoán và $\sigma$ là hàm sigmoid.
+
+\begin{table}[H]
+\centering
+\renewcommand{\baselinestretch}{1}
+\small
+\setlength{\tabcolsep}{4pt}
+
+\caption{Vị trí can thiệp và tham số của năm phương án trên nền tảng AC-DNS.}
+\label{tab:negcl_m1_m5_overview}
+\begin{tabular}{@{}
+    >{\centering\arraybackslash}p{0.8cm}
+    >{\raggedright\arraybackslash}p{3.0cm}
+    >{\raggedright\arraybackslash}p{\dimexpr\linewidth-7cm-6\tabcolsep\relax}
+    >{\raggedright\arraybackslash}p{3.2cm}@{}}
+\toprule
+\textbf{Mã} & \textbf{Phương án} & \textbf{Thành phần được điều chỉnh} & \textbf{Tham số học} \\
+\midrule
+M1 & Căn chỉnh phương thức (MGA) & Hàm mất mát bổ sung cho biểu diễn hình ảnh và văn bản & Không bổ sung \\
+M2 & Siêu đồ thị theo chủ đề (TASH) & Ma trận liên thuộc dựa trên nguyên mẫu chủ đề & $1{,}024$ ở khối nguyên mẫu \\
+M3 & Lề xếp hạng theo ngữ nghĩa (SSPM) & Hàm mất mát xếp hạng BPR & Không bổ sung \\
+M4 & Lan truyền có khởi động lại (APPNP) & Nhánh đồ thị tương tác & Không bổ sung \\
+M5 & Độ bất định và ngắt gradient & Trọng số phương thức và đường lan truyền ngược & $130$, gồm hệ số chệch \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\renewcommand{\baselinestretch}{1}\selectfont
+\begin{tikzpicture}[
+    block/.style={rectangle, draw=blue!60!black, rounded corners=2pt, minimum height=0.8cm, text width=4.8cm, font=\footnotesize, align=center, fill=blue!5, inner sep=5pt},
+    method/.style={block, draw=teal!70!black, fill=teal!8},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+]
+\node[block] (interaction) at (-3.6,0) {Đồ thị tương tác người dùng--sản phẩm};
+\node[block] (features) at (3.6,0) {Đặc trưng hình ảnh và văn bản};
+\node[method] (m4) at (-3.6,-1.6) {M4: Khởi động lại APPNP\\Nhánh cấu trúc (CGE)};
+\node[method] (m1) at (3.6,-1.6) {M1: Căn chỉnh phương thức\\Mất mát MGA};
+\node[block] (ac_dense) at (3.6,-3.2) {AC-DNS: Đồ thị tin cậy\\và nhiễu thích ứng};
+\node[method] (m2) at (3.6,-4.8) {M2: Siêu đồ thị chủ đề\\Liên thuộc hai phía};
+\node[method, text width=6cm] (m5) at (0,-6.6) {M5: Dung hợp theo độ bất định\\và ngắt gradient từ nhánh siêu đồ thị};
+\node[block, text width=6cm] (fusion) at (0,-8.2) {Kết hợp biểu diễn cấu trúc,\\siêu đồ thị và đa phương thức};
+\node[method, text width=6cm] (m3) at (0,-9.8) {M3: Lề xếp hạng theo ngữ nghĩa\\trong hàm mất mát BPR};
+\draw[arr] (interaction.south) -- (m4.north);
+\draw[arr] (features.south) -- (m1.north);
+\draw[arr] (m1.south) -- (ac_dense.north);
+\draw[arr] (ac_dense.south) -- (m2.north);
+\draw[arr] (m4.south) |- ([xshift=-1.8cm,yshift=0.4cm]m5.north) -- ([xshift=-1.8cm]m5.north);
+\draw[arr] (m2.south) |- ([xshift=1.8cm,yshift=0.4cm]m5.north) -- ([xshift=1.8cm]m5.north);
+\draw[arr] (m5.south) -- (fusion.north);
+\draw[arr] (fusion.south) -- (m3.north);
+\end{tikzpicture}
+\caption{Vị trí can thiệp của M1--M5 trên nền tảng AC-DNS. Đây là sơ đồ khái quát; mỗi phương án được khảo sát riêng. M2 còn sử dụng ma trận tương tác để tạo liên thuộc phía người dùng như mô tả ở Công thức~\ref{eq:tash_propagation}.}
+\label{fig:negcl_m1_m5_flow}
+\end{figure}
+
+% ==============================================================================
+% 3.1 CƠ SỞ LÝ THUYẾT NĂM PHƯƠNG ÁN CẢI TIẾN
+% ==============================================================================
+\subsection{Các phương án trên nền tảng AC-DNS}
+\label{sec:negcl_advanced_methods}
+
+
+\subsubsection{M1: Căn chỉnh biểu diễn đa phương thức}
+
+\paragraph{Mục tiêu.}
+Đặc trưng hình ảnh và văn bản có thể mang các thông tin bổ trợ nhưng khác nhau về phân phối. M1 bổ sung hàm mất mát căn chỉnh phương thức, gọi là MGA (\textit{Modality Gap Alignment}), để tăng độ tương đồng giữa hai biểu diễn của cùng một sản phẩm. Căn chỉnh quá mạnh cũng có thể làm mất thông tin riêng của từng phương thức, nên hiệu quả cần được kiểm tra bằng thực nghiệm.
+
+\paragraph{Cách thực hiện.}
+Các đặc trưng được chiếu về không gian $d=64$ chiều bằng hai ma trận $\mathbf W_v\in\mathbb R^{d_v\times d}$ và $\mathbf W_t\in\mathbb R^{d_t\times d}$. Hàm mất mát căn chỉnh là
+\begin{equation}
+\mathcal{L}_{\text{MGA}} = \frac{1}{|\mathcal{I}|} \sum_{i \in \mathcal{I}}
+\left(1-\frac{\mathbf e_i^v\cdot\mathbf e_i^t}{\|\mathbf e_i^v\|_2\|\mathbf e_i^t\|_2}\right).
+\label{eq:mga_loss}
+\end{equation}
+Khi tính trên một lô huấn luyện, phép lấy trung bình được giới hạn trên các sản phẩm trong lô; mẫu số cosine cần được chặn dưới để tránh chia cho $0$. Hàm mục tiêu kết hợp là
+\begin{equation}
+\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{BPR}} + \lambda_{\text{cl}}\mathcal{L}_{\text{CL}}
++ \lambda_{\text{mga}}\mathcal{L}_{\text{MGA}} + \lambda_r\|\Theta\|_2^2,
+\label{eq:mga_total_loss}
+\end{equation}
+trong đó $\mathcal L_{\text{CL}}$ là mất mát đối chiếu, $\Theta$ là tập tham số học và $\lambda_{\text{mga}}=10^{-4}$ là hệ số của MGA. Các hệ số còn lại giữ vai trò cân bằng mất mát đối chiếu và điều chuẩn.
+
+\paragraph{Chi phí bổ sung.}
+M1 không thêm tham số học ngoài các phép chiếu của mô hình nền. Phép tính cosine bổ sung có chi phí $\mathcal O(|\mathcal B|d)$ cho lô $\mathcal B$; vì vậy vẫn có thêm thời gian tính toán, dù chi phí này nhỏ so với toàn bộ quá trình huấn luyện.
+
+\subsubsection{M2: Xây dựng siêu đồ thị theo chủ đề}
+
+\paragraph{Mục tiêu.}
+M2 dùng các nguyên mẫu chủ đề có thể học để xác định mức liên thuộc của sản phẩm với siêu cạnh. Phương án TASH (\textit{Topic-Aware Semantic Hypergraph}) thay cách sinh liên thuộc dùng Gumbel-Softmax bằng một phép gán mềm dựa trên biểu diễn đa phương thức. Các chủ đề này là nhóm tiềm ẩn, không mặc nhiên tương ứng với nhãn danh mục có sẵn.
+
+\paragraph{Cách thực hiện.}
+Tập nguyên mẫu $\mathbf C\in\mathbb R^{K\times d}$ gồm $K=16$ vector $\mathbf c_k$. Với $\mathbf e_i^{\text{mm}}=\mathbf e_i^v+\mathbf e_i^t$, mức liên thuộc của sản phẩm $i$ với chủ đề $k$ được tính bằng
+\begin{equation}
+H_{ik}^{\text{topic}} =
+\frac{\exp\bigl((\mathbf e_i^{\text{mm}})^\top\tilde{\mathbf c}_k/\tau\bigr)}
+{\sum_{k'=1}^{K}\exp\bigl((\mathbf e_i^{\text{mm}})^\top\tilde{\mathbf c}_{k'}/\tau\bigr)},
+\qquad \tilde{\mathbf c}_k=\frac{\mathbf c_k}{\|\mathbf c_k\|_2},\quad \tau=0.2.
+\label{eq:tash_incidence}
+\end{equation}
+Công thức chỉ chuẩn hóa nguyên mẫu, không chuẩn hóa $\mathbf e_i^{\text{mm}}$, nên đây là tích vô hướng chứ chưa phải độ tương đồng cosine. Mỗi hàng của $\mathbf H^{\text{topic}}\in\mathbb R^{|\mathcal I|\times K}$ có tổng bằng $1$.
+
+Gọi $\mathbf R\in\mathbb R^{|\mathcal U|\times|\mathcal I|}$ là ma trận tương tác người dùng--sản phẩm. Khi đó $\mathbf R\mathbf H^{\text{topic}}$ tạo liên thuộc phía người dùng để đưa vào khối lan truyền siêu đồ thị HGNN:
+\begin{equation}
+(\mathbf E_u^h,\mathbf E_i^h)=\operatorname{HGNN}\bigl(
+\operatorname{Dropout}(\mathbf H^{\text{topic}}),
+\operatorname{Dropout}(\mathbf R\mathbf H^{\text{topic}}),\mathbf E_i\bigr).
+\label{eq:tash_propagation}
+\end{equation}
+Phép loại bỏ ngẫu nhiên (Dropout) được áp dụng trong huấn luyện. Thứ tự hai ma trận liên thuộc ở công thức trên lần lượt là phía sản phẩm và phía người dùng.
+
+\paragraph{Chi phí bổ sung.}
+Khối nguyên mẫu có $Kd=16\times64=1{,}024$ tham số, tương đương $4{,}096$ byte ($4$ KiB) nếu lưu bằng số thực 32 bit. Con số này chưa tính gradient, trạng thái bộ tối ưu và ma trận liên thuộc. Vì M2 thay thế một khối của mô hình nền, số tham số tăng ròng cần được tính từ hai bản triển khai, không nhất thiết bằng $1{,}024$.
+
+\subsubsection{M3: Điều chỉnh lề xếp hạng theo ngữ nghĩa}
+
+\paragraph{Mục tiêu.}
+BPR ưu tiên điểm của mục đã tương tác cao hơn mục âm được lấy mẫu. Tuy nhiên, một mục chưa được tương tác vẫn có thể phù hợp với người dùng. M3, gọi là SSPM (\textit{Semantic Soft-Positive Margin}), dùng tương đồng đa phương thức để điều chỉnh lề xếp hạng giữa hai mục. Tương đồng nội dung chỉ là tín hiệu gợi ý, không đủ để xác nhận một mẫu âm bị gán nhầm.
+
+\paragraph{Cách thực hiện.}
+Với $s_{ij}^{\text{mm}}=\cos(\mathbf e_i^{\text{mm}},\mathbf e_j^{\text{mm}})$, lề được xác định bởi
+\begin{equation}
+m(i,j)=\operatorname{clamp}(1-\beta_{\text{sp}}s_{ij}^{\text{mm}},0,1),
+\qquad \beta_{\text{sp}}\in[0.3,0.5],
+\label{eq:sspm_margin}
+\end{equation}
+trong đó $\operatorname{clamp}$ giới hạn giá trị trong đoạn $[0,1]$. Mất mát xếp hạng tương ứng là
+\begin{equation}
+\mathcal L_{\text{BPR}}^{\text{SSPM}}=-\sum_{(u,i,j)\in\mathcal D}
+\log\sigma\bigl(\hat y_{ui}-\hat y_{uj}-m(i,j)\bigr).
+\label{eq:sspm_loss}
+\end{equation}
+Với miền giá trị đã nêu, $m(i,j)\in[1-\beta_{\text{sp}},1]\subseteq[0.5,1]$. Khi $s_{ij}^{\text{mm}}=1$, lề bằng $1-\beta_{\text{sp}}$, không tiến về $0$. Lề nhỏ hơn chỉ giảm yêu cầu phân tách so với trường hợp lề bằng $1$; không nên diễn giải rằng công thức này giảm lực phạt so với BPR thông thường có lề bằng $0$.
+
+\paragraph{Chi phí bổ sung.}
+M3 không thêm tham số học. Nếu độ tương đồng được tính từ đặc trưng cố định thì có thể tiền tính toán; nếu dùng biểu diễn đang được cập nhật, độ tương đồng cũng phải được tính lại. Hai cách này cần được phân biệt khi mô tả cấu hình chạy.
+
+\subsubsection{M4: Lan truyền đồ thị có khởi động lại}
+
+\paragraph{Mục tiêu.}
+Lan truyền qua nhiều tầng có thể làm các biểu diễn nút trở nên giống nhau, thường gọi là hiện tượng làm trơn quá mức. M4 áp dụng quy tắc APPNP~\cite{klicpera2019predict} cho nhánh đồ thị tương tác để giữ lại một phần thông tin khởi tạo sau mỗi bước lan truyền.
+
+\paragraph{Cách thực hiện.}
+Gọi $\tilde{\mathbf A}=\mathbf D^{-1/2}\mathbf A\mathbf D^{-1/2}$ là ma trận kề chuẩn hóa đối xứng của đồ thị tương tác. Ma trận $\mathbf Z^{(0)}\in\mathbb R^{(|\mathcal U|+|\mathcal I|)\times d}$ được tạo bằng cách xếp chồng các hàng của $\mathbf E_u$ và $\mathbf E_i$. Quy tắc cập nhật là
+\begin{equation}
+\mathbf Z^{(l+1)}=(1-\alpha)\tilde{\mathbf A}\mathbf Z^{(l)}+\alpha\mathbf Z^{(0)},
+\qquad l=0,\ldots,L-1,
+\label{eq:appnp_diffusion}
+\end{equation}
+với $\alpha=0.15$ và $L=4$. Khác với phép lấy trung bình biểu diễn ở nhiều tầng, thành phần khởi động lại được đưa vào từng bước. Đầu ra của nhánh cấu trúc là
+\begin{equation}
+\mathbf E_{\text{cge}}=\mathbf Z^{(L)}.
+\label{eq:appnp_final}
+\end{equation}
+Đây là kết quả sau số bước hữu hạn, không phải khẳng định đã hội tụ. Thành phần $\alpha\mathbf Z^{(0)}$ giúp duy trì thông tin ban đầu nhưng không bảo đảm loại bỏ hoàn toàn hiện tượng làm trơn quá mức.
+
+\paragraph{Chi phí bổ sung.}
+M4 không thêm tham số học; $\alpha$ và $L$ là siêu tham số. Chi phí phụ thuộc vào số bước lan truyền và số cạnh của đồ thị thưa, ngoài phép cộng với biểu diễn khởi tạo ở mỗi bước.
+
+\subsubsection{M5: Dung hợp theo độ bất định và ngắt gradient}
+
+\paragraph{Mục tiêu.}
+M5 điều chỉnh đóng góp của hình ảnh và văn bản theo độ bất định ước lượng, đồng thời hạn chế gradient từ nhánh đa phương thức đi ngược qua nhánh tương tác. Hướng tiếp cận này liên quan đến cơ chế dung hợp và căn chỉnh dùng tín hiệu hành vi trong MURAL~\cite{mousavi2026mural}; cấu hình M5 được khảo sát ở đây không đồng nhất với toàn bộ mô hình MURAL.
+
+\paragraph{Cách thực hiện.}
+Với mỗi sản phẩm $i$ và phương thức $m\in\{v,t\}$, bộ ước lượng tuyến tính sinh log phương sai $s_{i,m}$ và trọng số $w_{i,m}$:
+\begin{equation}
+s_{i,m}=\log\sigma_m^2(i)=\mathbf w_{\text{unc},m}^{\top}\mathbf e_i^m+b_{\text{unc},m},
+\qquad w_{i,m}=\exp(-s_{i,m}).
+\end{equation}
+Độ bất định lớn tương ứng với trọng số nhỏ. Các trọng số này dương nhưng chưa được chuẩn hóa để có tổng bằng $1$. Dạng mất mát điều trọng số ở mức mẫu có thể viết là
+\begin{equation}
+\mathcal L_{\text{unc}}=\frac{1}{|\mathcal B|}\sum_{i\in\mathcal B}\sum_{m\in\{v,t\}}
+\left(\frac12\exp(-s_{i,m})\ell_{i,m}+\frac12s_{i,m}\right),
+\end{equation}
+trong đó $\ell_{i,m}$ là mất mát tác vụ ứng với sản phẩm $i$ ở phương thức $m$; cách tổng hợp các tương tác vào $\ell_{i,m}$ cần được xác định trong bản triển khai. Cách viết theo mẫu giúp thống nhất với bộ ước lượng phương sai phụ thuộc sản phẩm, thay vì dùng một phương sai chung cho cả tập.
+
+Ở đường nối sang nhánh siêu đồ thị, phép ngắt gradient được biểu diễn bởi
+\begin{equation}
+\mathbf E_{\text{hyper\_input}}=\operatorname{stopgrad}(\mathbf E_{\text{cge}}).
+\label{eq:stopgrad}
+\end{equation}
+Phép này giữ nguyên giá trị ở lượt truyền xuôi nhưng chặn đạo hàm đi qua đường nối đó ở lượt truyền ngược. Nhánh tương tác vẫn có thể được cập nhật bởi các đường mất mát khác; nó không trở thành một nhánh cố định hoàn toàn.
+
+\paragraph{Chi phí bổ sung.}
+Với $d=64$, hai vector trọng số và hai hệ số chệch trong công thức có $2\times(64+1)=130$ tham số học. Nếu bản triển khai bỏ hệ số chệch thì số tham số là $128$; bảng tổng quan dùng số đếm theo công thức có hệ số chệch.
+
+% ==============================================================================
+% 3.2 KẾT QUẢ THỰC NGHIỆM VÀ PHÂN TÍCH ĐỊNH LƯỢNG
+% ==============================================================================
+\subsection{Kết quả thực nghiệm trên Amazon}
+\label{sec:negcl_advanced_experiments}
+
+\subsubsection{Thiết lập và kết quả đối sánh}
+
+
+Bảng~\ref{tab:negcl_advanced_comparison} đối chiếu năm phương án M1--M5 với AC-DNS và các giá trị được báo cáo là kết quả NEGCL trong Bảng~4 của bài báo gốc~\cite{shi2025negcl}. AC-DNS là mốc tính phần trăm thay đổi của các phương án trên Amazon; kết quả công bố của NEGCL chỉ là mốc tham khảo, không được xem là một lần chạy đối chứng cùng môi trường.
+
+\paragraph{Cấu hình được mô tả.}
+Bảng~\ref{tab:negcl_settings} tổng hợp các giá trị đã nêu trong phần phương pháp. Các tham số của từng phương án không có nghĩa là chúng cùng xuất hiện trong một lần chạy.
+\begin{table}[H]
+\centering
+\renewcommand{\baselinestretch}{1}
+\small
+\setlength{\tabcolsep}{4pt}
+\caption{Các siêu tham số được nêu trong mô tả phương pháp trên Amazon.}
+\label{tab:negcl_settings}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{3cm}>{\centering\arraybackslash}p{2.5cm}>{\raggedright\arraybackslash}p{\dimexpr\linewidth-5.5cm-4\tabcolsep\relax}@{}}
+\toprule
+\textbf{Thành phần} & \textbf{Giá trị} & \textbf{Ý nghĩa} \\
+\midrule
+Biểu diễn nhúng & $d=64$ & Số chiều biểu diễn dùng trong mô tả M1--M5 \\
+M1 & $\lambda_{\text{mga}}=10^{-4}$ & Trọng số mất mát căn chỉnh \\
+M2 & $K=16$, $\tau=0.2$ & Số nguyên mẫu chủ đề và nhiệt độ phép gán mềm \\
+M3 & $\beta_{\text{sp}}\in[0.3,0.5]$ & Miền hệ số điều chỉnh lề; chưa nêu giá trị chọn theo tập \\
+M4 & $\alpha=0.15$, $L=4$ & Hệ số khởi động lại và số bước lan truyền \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Chỉ số và phạm vi đối sánh.}
+R@$k$ và N@$k$ lần lượt viết tắt cho Recall@$k$ và NDCG@$k$, với $k\in\{10,20\}$. Recall phản ánh tỷ lệ mục liên quan được tìm thấy trong danh sách; NDCG còn xét vị trí của các mục liên quan. Chương hiện chưa cung cấp đầy đủ cách chia tập, tiêu chí chọn mô hình trên tập xác thực, cách lấy mẫu khi đánh giá, số lần chạy và độ lệch chuẩn. Vì vậy, các bảng cho phép đối chiếu giá trị đã báo cáo nhưng chưa đủ để kết luận về ý nghĩa thống kê hoặc khả năng tái lập.
+
+Cột đánh giá trình bày mức thay đổi tương đối của từng chỉ số so với AC-DNS chuẩn trên cùng tập dữ liệu, tính theo $(x-x_{\text{AC-DNS}})/x_{\text{AC-DNS}}\times100\%$ và làm tròn đến hai chữ số thập phân. Dấu $+$ biểu thị tăng, dấu $-$ biểu thị giảm; $0.00\%$ biểu thị bằng mốc chuẩn theo số liệu trong bảng.
+
+\begin{table}[H]
+\centering
+\renewcommand{\baselinestretch}{1}
+\footnotesize
+\setlength{\tabcolsep}{3.5pt}
+\renewcommand{\arraystretch}{1.15}
+\caption{Kết quả trên Amazon Baby. Trong bốn cột chỉ số của M1--M5, in đậm biểu thị giá trị cao hơn AC-DNS trên cùng tập dữ liệu; không biểu thị ý nghĩa thống kê.}
+\label{tab:negcl_advanced_comparison}
+\begin{tabular}{@{}
+    >{\raggedright\arraybackslash}p{1.6cm}
+    >{\raggedright\arraybackslash}p{4.2cm}
+    *{4}{>{\centering\arraybackslash}p{1.25cm}}
+    >{\raggedright\arraybackslash}p{\dimexpr\linewidth-10.8cm-12\tabcolsep\relax}
+    @{}}
+\toprule
+\textbf{Tập dữ liệu} & \textbf{Mô hình} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{Thay đổi so với AC-DNS} \\
+\midrule
+\textbf{Baby} & NEGCL công bố~\cite{shi2025negcl}      & 0.0674 & 0.1033 & 0.0364 & 0.0456 & Kết quả công bố \\
+\textbf{Baby} & \textbf{AC-DNS}              & 0.0675 & 0.1041 & 0.0364 & 0.0456 & Mốc đối chứng AC-DNS \\
+\cmidrule{2-7}
+\textbf{Baby} & AC-DNS + M1 (MGA) & 0.0664 & 0.1026 & 0.0357 & 0.0448 & R@10 $-1.63\%$\newline R@20 $-1.44\%$\newline N@10 $-1.92\%$\newline N@20 $-1.75\%$ \\
+\textbf{Baby} & \textbf{AC-DNS + M2 (TASH)} & \textbf{0.0676} & \textbf{0.1043} & 0.0364 & \textbf{0.0457} & R@10 $+0.15\%$\newline R@20 $+0.19\%$\newline N@10 $0.00\%$\newline N@20 $+0.22\%$ \\
+\textbf{Baby} & AC-DNS + M3 (SSPM)   & 0.0658 & 0.1018 & 0.0353 & 0.0443 & R@10 $-2.52\%$\newline R@20 $-2.21\%$\newline N@10 $-3.02\%$\newline N@20 $-2.85\%$ \\
+\textbf{Baby} & \textbf{AC-DNS + M4 (APPNP)} & \textbf{0.0677} & \textbf{0.1044} & \textbf{0.0365} & 0.0456 & R@10 $+0.30\%$\newline R@20 $+0.29\%$\newline N@10 $+0.27\%$\newline N@20 $0.00\%$ \\
+\textbf{Baby} & \textbf{AC-DNS + M5 (bất định, ngắt gradient)}& 0.0674 & \textbf{0.1043} & \textbf{0.0365} & \textbf{0.0458} & R@10 $-0.15\%$\newline R@20 $+0.19\%$\newline N@10 $+0.27\%$\newline N@20 $+0.44\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\renewcommand{\baselinestretch}{1}
+\footnotesize
+\setlength{\tabcolsep}{3.5pt}
+\renewcommand{\arraystretch}{1.15}
+\ContinuedFloat
+\caption[]{Kết quả trên Amazon Sports (tiếp Bảng~\ref{tab:negcl_advanced_comparison}). Quy ước so sánh giữ nguyên.}
+\begin{tabular}{@{}
+    >{\raggedright\arraybackslash}p{1.6cm}
+    >{\raggedright\arraybackslash}p{4.2cm}
+    *{4}{>{\centering\arraybackslash}p{1.25cm}}
+    >{\raggedright\arraybackslash}p{\dimexpr\linewidth-10.8cm-12\tabcolsep\relax}
+    @{}}
+\toprule
+\textbf{Tập dữ liệu} & \textbf{Mô hình} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{Thay đổi so với AC-DNS} \\
+\midrule
+\textbf{Sports} & NEGCL công bố~\cite{shi2025negcl}      & 0.0757 & 0.1130 & 0.0414 & 0.0511 & Kết quả công bố \\
+\textbf{Sports} & \textbf{AC-DNS}              & 0.0770 & 0.1142 & 0.0420 & 0.0517 & Mốc đối chứng AC-DNS \\
+\cmidrule{2-7}
+\textbf{Sports} & AC-DNS + M1 (MGA) & 0.0762 & 0.1133 & 0.0415 & 0.0512 & R@10 $-1.04\%$\newline R@20 $-0.79\%$\newline N@10 $-1.19\%$\newline N@20 $-0.97\%$ \\
+\textbf{Sports} & \textbf{AC-DNS + M2 (TASH)} & \textbf{0.0772} & \textbf{0.1144} & 0.0419 & \textbf{0.0518} & R@10 $+0.26\%$\newline R@20 $+0.18\%$\newline N@10 $-0.24\%$\newline N@20 $+0.19\%$ \\
+\textbf{Sports} & AC-DNS + M3 (SSPM)   & 0.0759 & 0.1128 & 0.0413 & 0.0510 & R@10 $-1.43\%$\newline R@20 $-1.23\%$\newline N@10 $-1.67\%$\newline N@20 $-1.35\%$ \\
+\textbf{Sports} & \textbf{AC-DNS + M4 (APPNP)} & 0.0770 & \textbf{0.1145} & \textbf{0.0421} & \textbf{0.0519} & R@10 $0.00\%$\newline R@20 $+0.26\%$\newline N@10 $+0.24\%$\newline N@20 $+0.39\%$ \\
+\textbf{Sports} & \textbf{AC-DNS + M5 (bất định, ngắt gradient)}& \textbf{0.0773} & \textbf{0.1144} & \textbf{0.0421} & 0.0517 & R@10 $+0.39\%$\newline R@20 $+0.18\%$\newline N@10 $+0.24\%$\newline N@20 $0.00\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\renewcommand{\baselinestretch}{1}
+\footnotesize
+\setlength{\tabcolsep}{3.5pt}
+\renewcommand{\arraystretch}{1.15}
+\ContinuedFloat
+\caption[]{Kết quả trên Amazon Clothing (tiếp Bảng~\ref{tab:negcl_advanced_comparison}). Quy ước so sánh giữ nguyên.}
+\begin{tabular}{@{}
+    >{\raggedright\arraybackslash}p{1.6cm}
+    >{\raggedright\arraybackslash}p{4.2cm}
+    *{4}{>{\centering\arraybackslash}p{1.25cm}}
+    >{\raggedright\arraybackslash}p{\dimexpr\linewidth-10.8cm-12\tabcolsep\relax}
+    @{}}
+\toprule
+\textbf{Tập dữ liệu} & \textbf{Mô hình} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{Thay đổi so với AC-DNS} \\
+\midrule
+\textbf{Clothing} & NEGCL công bố~\cite{shi2025negcl}      & 0.0613 & 0.0897 & 0.0336 & 0.0408 & Kết quả công bố \\
+\textbf{Clothing} & \textbf{AC-DNS}              & 0.0621 & 0.0917 & 0.0342 & 0.0417 & Mốc đối chứng AC-DNS \\
+\cmidrule{2-7}
+\textbf{Clothing} & AC-DNS + M1 (MGA) & 0.0614 & 0.0908 & 0.0338 & 0.0412 & R@10 $-1.13\%$\newline R@20 $-0.98\%$\newline N@10 $-1.17\%$\newline N@20 $-1.20\%$ \\
+\textbf{Clothing} & \textbf{AC-DNS + M2 (TASH)} & 0.0621 & \textbf{0.0919} & \textbf{0.0343} & \textbf{0.0418} & R@10 $0.00\%$\newline R@20 $+0.22\%$\newline N@10 $+0.29\%$\newline N@20 $+0.24\%$ \\
+\textbf{Clothing} & AC-DNS + M3 (SSPM)   & 0.0607 & 0.0899 & 0.0334 & 0.0409 & R@10 $-2.25\%$\newline R@20 $-1.96\%$\newline N@10 $-2.34\%$\newline N@20 $-1.92\%$ \\
+\textbf{Clothing} & \textbf{AC-DNS + M4 (APPNP)} & \textbf{0.0623} & \textbf{0.0919} & 0.0341 & \textbf{0.0418} & R@10 $+0.32\%$\newline R@20 $+0.22\%$\newline N@10 $-0.29\%$\newline N@20 $+0.24\%$ \\
+\textbf{Clothing} & \textbf{AC-DNS + M5 (bất định, ngắt gradient)}& \textbf{0.0623} & \textbf{0.0920} & \textbf{0.0343} & 0.0417 & R@10 $+0.32\%$\newline R@20 $+0.33\%$\newline N@10 $+0.29\%$\newline N@20 $0.00\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------------------
+\subsubsection{Phân tích kết quả của từng phương án}
+
+So với AC-DNS trên cùng tập dữ liệu, Bảng~\ref{tab:negcl_advanced_comparison} cho thấy:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{M2 (TASH):} R@20 tăng $0.19\%$ trên Baby, $0.18\%$ trên Sports và $0.22\%$ trên Clothing. N@20 cũng tăng trên cả ba tập, nhưng N@10 trên Sports giảm $0.24\%$.
+  \item \textbf{M4 (APPNP):} R@20 tăng $0.29\%$, $0.26\%$ và $0.22\%$ lần lượt trên Baby, Sports và Clothing. Tuy nhiên, N@10 trên Clothing giảm $0.29\%$, cho thấy độ phủ và chất lượng xếp hạng không luôn cải thiện đồng thời.
+  \item \textbf{M5 (bất định và ngắt gradient):} Cải thiện nổi bật ở N@20 trên Baby ($+0.44\%$), R@10 trên Sports ($+0.39\%$) và R@20 trên Clothing ($+0.33\%$). Đổi lại, R@10 trên Baby giảm $0.15\%$; N@20 trên Sports và Clothing giữ nguyên.
+  \item \textbf{M1 và M3:} Đều giảm cả bốn chỉ số trên ba tập; M3 giảm nhiều hơn M1 ở từng chỉ số. Trên Baby, R@20 của M1 giảm $1.44\%$, còn M3 giảm $2.21\%$; N@10 của M3 giảm $3.02\%$. Kết quả này gợi ý cần rà soát trọng số căn chỉnh của M1 và cách đặt lề của M3.
+\end{itemize}
+
+Nhìn chung, M2, M4 và M5 mang lại cải thiện có đánh đổi, chưa có phương án nào tăng đồng thời cả bốn chỉ số trên cả ba tập. Cần chạy lặp và kiểm tra từng thành phần trước khi kết luận về nguyên nhân hoặc độ ổn định.
+
+% ------------------------------------------------------------------------------
+\subsubsection{Chi phí tính toán của M1--M5}
+Bảng~\ref{tab:negcl_m1_m5_resources} tổng hợp thời gian mỗi vòng huấn luyện và mức sử dụng bộ nhớ được báo cáo trên Sports, với GPU NVIDIA T4 có 16\,GB bộ nhớ tại Kaggle.
+
+\begin{table}[H]
+\centering
+\renewcommand{\baselinestretch}{1}
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\caption{Thời gian mỗi vòng huấn luyện và mức sử dụng bộ nhớ cực đại được báo cáo trên Sports.}
+\label{tab:negcl_m1_m5_resources}
+\begin{tabular}{@{}
+    >{\raggedright\arraybackslash}p{3.0cm}
+    >{\centering\arraybackslash}p{2.2cm}
+    *{2}{>{\centering\arraybackslash}p{2.3cm}}
+    >{\centering\arraybackslash}p{\dimexpr\linewidth-9.8cm-8\tabcolsep\relax}
+    @{}}
+\toprule
+\textbf{Phương pháp} & \textbf{Giây / vòng} & \textbf{GPU (GB)} & \textbf{RAM (GB)} & \textbf{Thời gian so với AC-DNS} \\
+\midrule
+\textbf{AC-DNS} & 8.2  & 4.62 & 1.82 & Mốc cơ sở \\
+\textbf{AC-DNS + M1}    & 8.5  & 4.65 & 1.84 & Tăng $3.66\%$ \\
+\textbf{AC-DNS + M2}    & 9.1  & 4.78 & 1.86 & Tăng $10.98\%$ \\
+\textbf{AC-DNS + M3}    & 8.4  & 4.64 & 1.83 & Tăng $2.44\%$ \\
+\textbf{AC-DNS + M4}    & 8.3  & 4.63 & 1.82 & Tăng $1.22\%$ \\
+\textbf{AC-DNS + M5}    & 8.8  & 4.71 & 1.85 & Tăng $7.32\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+Theo các giá trị trong bảng, mức sử dụng bộ nhớ GPU lớn nhất là $4.78$\,GB, bằng $29.88\%$ dung lượng 16\,GB. Thời gian mỗi vòng của M2 tăng $10.98\%$, còn M4 tăng $1.22\%$ so với AC-DNS. Các tỷ lệ được tính lại từ thời gian đã làm tròn trong bảng; chúng không thay thế phép đo tổng thời gian huấn luyện hoặc kiểm tra triển khai thực tế. Bộ nhớ mô hình, gradient và trạng thái bộ tối ưu đều có thể góp vào mức sử dụng cực đại.
+
+% ==============================================================================
+% ==============================================================================
+% 3.3 PHƯƠNG PHÁP VÀ KẾT QUẢ THỰC NGHIỆM TRÊN BENCHMARK TIKTOK
+% ==============================================================================
+\subsection{Phương pháp và kết quả trên TikTok}
+\label{sec:negcl_tiktok_experiments}
+
+
+Thí nghiệm trên TikTok sử dụng ba phương thức: hình ảnh, âm thanh và văn bản. Nguồn dữ liệu là thư mục TikTok của kho DiffMM do HKUDS công bố~\cite{hkuds_diffmm_tiktok}\footnote{\url{https://github.com/HKUDS/DiffMM/tree/main/Datasets/tiktok}}. Phần này tập trung vào M9, M11 và M6 để đối chiếu ba cách xây dựng biểu diễn khác nhau, không khẳng định đây là các phương pháp tốt nhất ngoài phạm vi bảng kết quả.
+
+M0 là NEGCL làm đối chứng trên TikTok, khác với mốc AC-DNS dùng trên Amazon. Các mã M6, M9 và M11 thuộc đợt khảo sát TikTok; không nên suy ra rằng M6 ở đây là cấu hình ghép M2, M4 và M5 của Amazon. Số người dùng, số video, số tương tác sau tiền xử lý và cách chia tập cần được bổ sung từ cấu hình chạy tương ứng, không suy từ tên bộ dữ liệu.
+
+\subsubsection{Ba phương án biểu diễn trên TikTok}
+
+
+\paragraph{M9: Biểu diễn trong không gian hyperbolic.}
+M9 biểu diễn người dùng và video trong mô hình quả cầu Poincaré có độ cong $-c$, với $c>0$~\cite{ganea2018hyperbolic}:
+\begin{equation}
+\mathbb B_c^d=\{\mathbf x\in\mathbb R^d:c\|\mathbf x\|_2^2<1\},
+\qquad g_{\mathbf x}=\left(\frac{2}{1-c\|\mathbf x\|_2^2}\right)^2g^E,
+\end{equation}
+trong đó $g^E$ là metric Euclid. Không gian này được lựa chọn để khảo sát biểu diễn cấu trúc phân cấp; mức độ phù hợp với đồ thị TikTok cần được đánh giá, không được giả định trước từ tên phương pháp.
+
+Vector $\mathbf v$ trong không gian tiếp tuyến tại gốc được đưa vào quả cầu bằng ánh xạ mũ
+\begin{equation}
+\exp_{\mathbf0}^c(\mathbf v)=\tanh(\sqrt c\|\mathbf v\|_2)
+\frac{\mathbf v}{\sqrt c\|\mathbf v\|_2},\qquad \mathbf v\ne\mathbf0,
+\end{equation}
+và $\exp_{\mathbf0}^c(\mathbf0)=\mathbf0$. Khoảng cách giữa hai biểu diễn $\mathbf e_u^H$ và $\mathbf e_i^H$ là
+\begin{equation}
+\begin{aligned}
+d_{\mathbb B}^c(\mathbf e_u^H,\mathbf e_i^H)
+&=\frac{1}{\sqrt c}\operatorname{arcosh}\left(1+
+\frac{2c\|\mathbf e_u^H-\mathbf e_i^H\|_2^2}
+{(1-c\|\mathbf e_u^H\|_2^2)(1-c\|\mathbf e_i^H\|_2^2)}\right).
+\end{aligned}
+\label{eq:poincare_dist}
+\end{equation}
+Chọn điểm dự đoán $\hat y_{ui}=-d_{\mathbb B}^c(\mathbf e_u^H,\mathbf e_i^H)^2$, hàm mất mát BPR trở thành
+\begin{equation}
+\mathcal L_{\text{BPR}}^H=-\sum_{(u,i,j)\in\mathcal D}\log\sigma\left(
+ d_{\mathbb B}^c(\mathbf e_u^H,\mathbf e_j^H)^2-
+ d_{\mathbb B}^c(\mathbf e_u^H,\mathbf e_i^H)^2\right).
+\end{equation}
+Nếu tối ưu trực tiếp tọa độ trong quả cầu, gradient Riemann được tính từ gradient Euclid theo
+$\nabla_R f(\mathbf x)=\frac{(1-c\|\mathbf x\|_2^2)^2}{4}\nabla_E f(\mathbf x)$.
+Quy tắc này không tự xác định bộ tối ưu đã dùng. Giá trị $c$, cách cập nhật tọa độ và phép chặn gần biên cần được ghi trong cấu hình thực nghiệm. Vị trí nút phổ biến và nút ít tương tác ở Hình~\ref{fig:tiktok_m9_m11}(a) chỉ là minh họa, không phải hình chiếu từ biểu diễn đã huấn luyện.
+
+\paragraph{M11: Nén thông tin bằng VIB.}
+M11 áp dụng nút cổ chai thông tin biến phân, VIB (\textit{Variational Information Bottleneck}), để cân bằng giữa nén đặc trưng và giữ thông tin phục vụ dự đoán~\cite{alemi2017vib}. Với mỗi phương thức $m\in\{v,a,t\}$, bộ mã hóa sinh trung bình $\boldsymbol\mu_m(\mathbf x_m)$ và phương sai $\boldsymbol\sigma_m^2(\mathbf x_m)$. Biểu diễn được lấy mẫu bằng phép tái tham số hóa:
+\begin{equation}
+\mathbf z_m=\boldsymbol\mu_m(\mathbf x_m)+\boldsymbol\sigma_m(\mathbf x_m)\odot\boldsymbol\epsilon,
+\qquad \boldsymbol\epsilon\sim\mathcal N(\mathbf0,\mathbf I).
+\end{equation}
+Mất mát kết hợp BPR với phân kỳ Kullback--Leibler (KL) giữa phân phối mã hóa và phân phối chuẩn:
+\begin{equation}
+\mathcal L_{\text{VIB}}=\mathcal L_{\text{BPR}}(\mathbf z)+\beta_{\text{KL}}
+\sum_{m\in\{v,a,t\}}D_{\text{KL}}\bigl(q_\phi(\mathbf z_m\mid\mathbf x_m)\,\|\,\mathcal N(\mathbf0,\mathbf I)\bigr).
+\end{equation}
+Với phân phối Gauss có ma trận hiệp phương sai đường chéo, số hạng KL của một mẫu là
+\begin{equation}
+D_{\text{KL}}=\frac12\sum_{k=1}^{d}\left(\mu_{m,k}^2+\sigma_{m,k}^2-1-\log\sigma_{m,k}^2\right).
+\end{equation}
+Các số hạng này được tổng hợp trên lô huấn luyện. Hệ số $\beta_{\text{KL}}$ quyết định mức nén: quá lớn có thể làm mất thông tin cần thiết, còn quá nhỏ có thể hạn chế tác dụng điều chuẩn. VIB không bảo đảm tự phân biệt và loại bỏ mọi chi tiết gây nhiễu.
+
+\paragraph{M6: Lan truyền riêng ba phương thức và dung hợp bằng chú ý.}
+M6 giữ tên cấu hình Tri-SOTA, nhưng tên gọi không hàm ý một kết luận về thứ hạng so với các nghiên cứu khác. Phương án này duy trì ba nhánh biểu diễn riêng cho hình ảnh, âm thanh và văn bản:
+\begin{equation}
+\mathbf H_m^{(l)}=\tilde{\mathbf A}\mathbf H_m^{(l-1)},\qquad m\in\{v,a,t\}.
+\end{equation}
+Ba nhánh dùng chung ma trận kề tương tác chuẩn hóa $\tilde{\mathbf A}$ nhưng lan truyền các đặc trưng khác nhau; đây không phải ba cấu trúc đồ thị khác nhau. Với biểu diễn video $\mathbf h_{i,m}$ ở mỗi nhánh, phép dung hợp được mô tả bởi
+\begin{equation}
+\begin{aligned}
+\mathbf e_i&=\sum_{m\in\{v,a,t\}}\alpha_{i,m}\mathbf W_m\mathbf h_{i,m},\\
+\alpha_{i,m}&=\frac{\exp\bigl(\mathbf q^\top\tanh(\mathbf W_{\text{att}}\mathbf h_{i,m})\bigr)}
+{\sum_{m'\in\{v,a,t\}}\exp\bigl(\mathbf q^\top\tanh(\mathbf W_{\text{att}}\mathbf h_{i,m'})\bigr)}.
+\end{aligned}
+\end{equation}
+Ở đây $\mathbf W_m$ chiếu các nhánh về cùng không gian, còn $\mathbf W_{\text{att}}$ và $\mathbf q$ là tham số chú ý; $\sum_m\alpha_{i,m}=1$. Biểu diễn phía người dùng cần được dung hợp tương ứng trước khi tính điểm tương tác. Cơ chế này cho phép điều chỉnh đóng góp của từng phương thức, nhưng không bảo đảm âm thanh luôn được ưu tiên hoặc giữ nguyên toàn bộ thông tin.
+
+\begin{figure}[H]
+\centering
+\renewcommand{\baselinestretch}{1}\selectfont
+\begin{tikzpicture}[scale=0.92, transform shape,
+    circle_space/.style={circle, draw=blue!70!black, very thick, minimum size=5.5cm, fill=blue!3},
+    node_hot/.style={circle, draw=red!70!black, fill=red!15, thick, minimum size=1.05cm, inner sep=2pt, align=center, font=\footnotesize\bfseries},
+    node_tail/.style={circle, draw=teal!70!black, fill=teal!12, thick, minimum size=1.15cm, text width=1.3cm, inner sep=1pt, align=center, font=\scriptsize\bfseries},
+    block/.style={rectangle, draw, rounded corners=2pt, minimum height=0.65cm, minimum width=2.4cm, font=\footnotesize, align=center, fill=blue!8},
+    newmod/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=2pt, minimum height=0.7cm, minimum width=3.2cm, font=\footnotesize\bfseries, align=center, fill=orange!15},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+]
+\node[circle_space] (ball) at (-3.2,0) {};
+\draw[blue!20, dashed] (ball.center) circle[radius=1.45cm];
+\node[font=\small\bfseries, text=blue!70!black, anchor=south, align=center]
+    at ([yshift=0.25cm]ball.north) {(a) M9: Không gian hyperbolic\\Quả cầu Poincaré $\mathbb{B}_c^d$};
+\node[node_hot] (hot1) at (-3.2,0) {Phổ\\biến};
+\node[node_tail] (t1) at (-4.55,1.1) {Ít\\tương tác};
+\node[node_tail] (t2) at (-4.55,-1.1) {Ít\\tương tác};
+\node[node_tail] (t3) at (-1.85,1.1) {Ít\\tương tác};
+\node[node_tail] (t4) at (-1.85,-1.1) {Ít\\tương tác};
+\draw[thick, blue!45] (hot1) -- (t1);
+\draw[thick, blue!45] (hot1) -- (t2);
+\draw[thick, blue!45] (hot1) -- (t3);
+\draw[thick, blue!45] (hot1) -- (t4);
+\node[font=\scriptsize, align=center, anchor=north, text=blue!70!black]
+    at ([yshift=-0.25cm]ball.south)
+    {Sơ đồ minh họa\\Không phải tọa độ thực nghiệm};
+
+\node[font=\small\bfseries, text=blue!70!black, anchor=south, align=center]
+    at (3.5,2.55) {(b) M11: Nút cổ chai VIB\\Nén thông tin đa phương thức};
+\node[block] (raw_mod) at (3.5, 1.4) {Đặc trưng TikTok\\Hình ảnh, âm thanh, văn bản};
+\node[newmod] (vib_enc) at (3.5, 0.0) {Mã hóa và lấy mẫu\\$\mathbf z_m=\boldsymbol\mu_m+\boldsymbol\sigma_m\odot\boldsymbol\epsilon$};
+\node[block] (vib_loss) at (3.5, -1.4) {Mất mát kết hợp\\$\mathcal L_{\text{BPR}}+\beta_{\text{KL}}\sum_m D_{\text{KL}}$};
+
+\draw[arr] (raw_mod) -- (vib_enc);
+\draw[arr] (vib_enc) -- (vib_loss);
+
+\node[font=\small\bfseries, text=blue!70!black, align=center]
+    at (0,-4.1) {(c) M6: Tri-SOTA --- Ba nhánh biểu diễn riêng};
+\node[block, fill=blue!10] (tri_visual) at (-4,-5.0) {Hình ảnh};
+\node[block, fill=teal!10] (tri_audio) at (0,-5.0) {Âm thanh};
+\node[block, fill=orange!12] (tri_text) at (4,-5.0) {Văn bản};
+\node[block, fill=blue!10] (graph_visual) at (-4,-6.15) {Lan truyền đồ thị\\$\mathbf{H}_v^{(l)} = \tilde{\mathbf{A}}\mathbf{H}_v^{(l-1)}$};
+\node[block, fill=teal!10] (graph_audio) at (0,-6.15) {Lan truyền đồ thị\\$\mathbf{H}_a^{(l)} = \tilde{\mathbf{A}}\mathbf{H}_a^{(l-1)}$};
+\node[block, fill=orange!12] (graph_text) at (4,-6.15) {Lan truyền đồ thị\\$\mathbf{H}_t^{(l)} = \tilde{\mathbf{A}}\mathbf{H}_t^{(l-1)}$};
+\node[newmod, minimum width=6cm] (tri_attention) at (0,-7.65)
+    {Dung hợp bằng chú ý thích ứng\\$\mathbf{e}_i = \sum_{m\in\{v,a,t\}}\alpha_{i,m}\mathbf{W}_m\mathbf{h}_{i,m}$};
+\node[block, minimum width=4cm] (tri_output) at (0,-8.9) {Biểu diễn hợp nhất và tính điểm xếp hạng};
+\draw[arr] (tri_visual.south) -- (graph_visual.north);
+\draw[arr] (tri_audio.south) -- (graph_audio.north);
+\draw[arr] (tri_text.south) -- (graph_text.north);
+\draw[arr] (graph_visual.south) |- ([xshift=-2cm,yshift=0.35cm]tri_attention.north) -- ([xshift=-2cm]tri_attention.north);
+\draw[arr] (graph_audio.south) -- (tri_attention.north);
+\draw[arr] (graph_text.south) |- ([xshift=2cm,yshift=0.35cm]tri_attention.north) -- ([xshift=2cm]tri_attention.north);
+\draw[arr] (tri_attention.south) -- (tri_output.north);
+\end{tikzpicture}
+\caption{Ba phương pháp NEGCL trên TikTok: (a) M9 --- biểu diễn trong quả cầu Poincaré, các nút chỉ mang tính minh họa; (b) M11 --- nén thông tin đa phương thức bằng VIB; (c) M6 Tri-SOTA --- lan truyền riêng ba phương thức hình ảnh, âm thanh, văn bản trước khi dung hợp bằng chú ý thích ứng.}
+\label{fig:tiktok_m9_m11}
+\end{figure}
+
+\subsubsection{Kết quả đối sánh với NEGCL trên TikTok}
+
+Bảng~\ref{tab:tiktok_negcl_top3} đối chiếu M0 với M6, M9 và M11 trên TikTok. Các tỷ lệ thay đổi được tính theo $(x-x_{M0})/x_{M0}\times100\%$ từ giá trị đã làm tròn trong bảng. Khi chưa có kết quả nhiều lần chạy, chênh lệch này chỉ được dùng để mô tả, chưa thể khẳng định độ ổn định.
+
+\begin{table}[H]
+\centering
+\renewcommand{\baselinestretch}{1}
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\caption{Đối sánh NEGCL đối chứng và ba phương pháp trên TikTok. Cột đánh giá ghi phần trăm thay đổi tương đối so với M0, làm tròn đến hai chữ số thập phân; dấu $+$ là tăng, dấu $-$ là giảm. In đậm giá trị cao nhất ở mỗi cột chỉ số.}
+\label{tab:tiktok_negcl_top3}
+\begin{tabular}{@{}
+    >{\raggedright\arraybackslash}p{3.2cm}
+    *{4}{>{\centering\arraybackslash}p{1.35cm}}
+    >{\raggedright\arraybackslash}p{\dimexpr\linewidth-8.6cm-10\tabcolsep\relax}
+    @{}}
+\toprule
+\textbf{Mô hình} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{Đánh giá so với M0} \\
+\midrule
+\textbf{M0 NEGCL} & 0.0582 & 0.0842 & 0.0305 & 0.0370 &  \\
+\textbf{M6 Tri-SOTA} & 0.0504 & 0.0863 & \textbf{0.0376} & \textbf{0.0465} & R@10 $-13.40\%$\newline R@20 $+2.49\%$\newline N@10 $+23.28\%$\newline N@20 $+25.68\%$ \\
+\textbf{M9 Hyperbolic} & \textbf{0.0680} & \textbf{0.1015} & 0.0342 & 0.0427 & R@10 $+16.84\%$\newline R@20 $+20.55\%$\newline N@10 $+12.13\%$\newline N@20 $+15.41\%$ \\
+\textbf{M11 VIB} & 0.0659 & 0.0969 & 0.0363 & 0.0441 & R@10 $+13.23\%$\newline R@20 $+15.08\%$\newline N@10 $+19.02\%$\newline N@20 $+19.19\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Phân tích định lượng:}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{M9 (hyperbolic):} Có Recall@10 và Recall@20 cao nhất trong bảng, tăng lần lượt $16.84\%$ và $20.55\%$ so với M0; NDCG@10 và NDCG@20 tăng $12.13\%$ và $15.41\%$. Kết quả cho thấy ưu thế về độ phủ của phương án biểu diễn trong không gian hyperbolic.
+  \item \textbf{M11 (VIB):} Cải thiện cả bốn chỉ số: Recall@10 tăng $13.23\%$, Recall@20 tăng $15.08\%$, NDCG@10 tăng $19.02\%$ và NDCG@20 tăng $19.19\%$. Đây là phương án cân bằng giữa độ phủ và chất lượng xếp hạng trong các kết quả được báo cáo.
+  \item \textbf{M6 (Tri-SOTA):} Đạt NDCG@10 và NDCG@20 cao nhất trong bảng, tăng $23.28\%$ và $25.68\%$. Tuy nhiên, Recall@20 chỉ tăng $2.49\%$, còn Recall@10 giảm $13.40\%$, thể hiện sự đánh đổi giữa hai nhóm chỉ số.
+\end{itemize}
+
+% ==============================================================================
+% 3.4 ĐỀ XUẤT HƯỚNG PHÁT TRIỂN TƯƠNG LAI
+% ==============================================================================
+\subsection{Hướng phát triển tiếp theo}
+\label{sec:negcl_m1_m5_future}
+
+\subsubsection{Hướng phát triển trên ba tập Amazon: Baby, Sports và Clothing}
+\label{sec:negcl_future_amazon}
+
+
+Từ kết quả của M1--M5, ba hướng cần khảo sát tiếp trên Amazon gồm:
+\begin{enumerate}[leftmargin=*, label=\textbf{\arabic*.}]
+  \item \textbf{Kết hợp M2, M4 và M5 có kiểm soát:} Thử từng cặp trước khi ghép cả ba thành phần. Đối chiếu bốn chỉ số và chi phí tính toán để xác định phần đóng góp của từng thành phần, không giả định các mức cải thiện sẽ cộng dồn.
+  \item \textbf{Rà soát lề xếp hạng của M3:} So sánh BPR không lề, lề cố định và lề theo ngữ nghĩa; phân biệt tương đồng từ đặc trưng cố định với tương đồng từ biểu diễn đang học. Chỉ mở rộng sang không gian hyperbolic sau khi làm rõ tác động của lề.
+  \item \textbf{Điều chỉnh số nguyên mẫu của M2:} Chọn $K$ trên tập xác thực thay vì luôn cố định ở $16$. Kiểm tra mức sử dụng từng nguyên mẫu để tránh chủ đề rỗng hoặc quá tập trung, đồng thời chạy lặp để đánh giá độ ổn định.
+\end{enumerate}
+
+\subsubsection{Hướng phát triển trên tập TikTok}
+\label{sec:negcl_future_tiktok}
+
+Ba hướng phát triển tương ứng với M9, M11 và M6 gồm:
+\begin{enumerate}[leftmargin=*, label=\textbf{\arabic*.}]
+  \item \textbf{Thích ứng độ cong của M9:} Khảo sát độ cong $c$ theo nhóm video hoặc tầng lan truyền. Đánh giá riêng Recall@10, Recall@20 và độ phủ của nhóm phổ biến và nhóm ít tương tác để kiểm tra lợi ích của từng cấu hình.
+  \item \textbf{Điều tiết VIB theo phương thức ở M11:} Khảo sát hệ số KL riêng cho hình ảnh, âm thanh và văn bản, kết hợp lịch tăng dần khi huấn luyện. Kiểm tra cả bốn chỉ số khi một phương thức bị nhiễu hoặc thiếu để đánh giá khả năng giữ thông tin hữu ích.
+  \item \textbf{Cân bằng Recall và NDCG ở M6:} Điều chỉnh trọng số chú ý để khắc phục mức giảm Recall@10 $13.40\%$ so với M0 mà vẫn duy trì lợi thế NDCG. Chọn cấu hình trên tập xác thực, sau đó đánh giá trên tập kiểm tra với nhiều hạt giống ngẫu nhiên.
+\end{enumerate}
+
+\noindent \textbf{Tóm tắt chương:} Trên Amazon, M2, M4 và M5 cải thiện một số chỉ số so với AC-DNS nhưng vẫn có sự đánh đổi; M1 và M3 giảm ở cả bốn chỉ số trong các cấu hình được báo cáo. Trên TikTok, M9 có Recall cao nhất trong bảng, M6 có NDCG cao nhất nhưng giảm Recall@10, còn M11 cải thiện cả bốn chỉ số so với M0. Các hướng phát triển tiếp theo tập trung vào kiểm chứng đóng góp từng thành phần, hoàn thiện thông tin thực nghiệm và đánh giá độ ổn định, thay vì suy rộng từ một bảng kết quả.
