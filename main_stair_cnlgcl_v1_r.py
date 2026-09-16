@@ -324,6 +324,17 @@ cfg.compile()
 # =========================================================================
 # YAML Configuration Loader & Normalizer (CLI > YAML > Defaults)
 # =========================================================================
+# Ghi nhận các tham số được chỉ định tường minh trên CLI để ưu tiên tuyệt đối
+cli_specified = set()
+for a in sys.argv[1:]:
+    if a.startswith("--"):
+        clean_a = a.lstrip("-").split("=")[0].replace("-", "_").lower()
+        cli_specified.add(clean_a)
+        if clean_a.startswith("ssb_"):
+            cli_specified.add(clean_a[4:])
+        else:
+            cli_specified.add(f"ssb_{clean_a}")
+
 if getattr(cfg, "config", None) is not None:
     config_path = cfg.config
     if not os.path.isabs(config_path):
@@ -337,17 +348,6 @@ if getattr(cfg, "config", None) is not None:
         import yaml
         with open(config_path, "r", encoding="utf-8") as f:
             yaml_cfg = yaml.safe_load(f) or {}
-
-        # Ghi nhận các tham số được chỉ định tường minh trên CLI để ưu tiên tuyệt đối
-        cli_specified = set()
-        for a in sys.argv[1:]:
-            if a.startswith("--"):
-                clean_a = a.lstrip("-").split("=")[0].replace("-", "_").lower()
-                cli_specified.add(clean_a)
-                if clean_a.startswith("ssb_"):
-                    cli_specified.add(clean_a[4:])
-                else:
-                    cli_specified.add(f"ssb_{clean_a}")
 
         for raw_key, val in yaml_cfg.items():
             norm_key = raw_key.replace("-", "_").lower()
