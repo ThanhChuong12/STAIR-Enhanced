@@ -29,6 +29,33 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.data
 
+# ── PyTorch Internal Compatibility Patch (_utils & _get_device_index for Dynamo) ──
+try:
+    import torch._utils
+except Exception:
+    pass
+
+if not hasattr(torch, '_utils'):
+    try:
+        import torch._utils_internal as _utils
+        torch._utils = _utils
+    except Exception:
+        pass
+
+if hasattr(torch, '_utils') and not hasattr(torch._utils, '_get_device_index'):
+    def _get_device_index(device=None, optional=False, allow_cpu=False):
+        if device is None:
+            return torch.cuda.current_device() if torch.cuda.is_available() else 0
+        if isinstance(device, int):
+            return device
+        if isinstance(device, str):
+            try:
+                device = torch.device(device)
+            except Exception:
+                return 0
+        return device.index if hasattr(device, 'index') and device.index is not None else 0
+    torch._utils._get_device_index = _get_device_index
+
 # ── Compatibility Patch for torchdata in PyTorch 2.x / Python 3.12 / Kaggle ──
 try:
     import torchdata
@@ -143,7 +170,7 @@ if not hasattr(dp, 'functional_datapipe'):
 # Ensure torch_geometric exists (required by freerec.graph)
 try:
     import torch_geometric
-except ImportError:
+except Exception:
     import subprocess
     print("  [Auto-Provision] Đang cài đặt thư viện phụ thuộc: torch-geometric...")
     try:
@@ -157,8 +184,28 @@ except ImportError:
         pass
     try:
         import torch_geometric
-    except ImportError:
+    except Exception:
         subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', 'torch-geometric'], check=False)
+        try:
+            import torch_geometric
+        except Exception:
+            pass
+
+# If torch_geometric or torch_geometric.utils is still missing, provide stub for freerec.graph
+if 'torch_geometric' not in sys.modules or not hasattr(sys.modules.get('torch_geometric', None), 'utils'):
+    try:
+        import torch_geometric
+        import torch_geometric.utils
+    except Exception:
+        tg = types.ModuleType('torch_geometric')
+        tg_utils = types.ModuleType('torch_geometric.utils')
+        def _stub(*args, **kwargs):
+            raise NotImplementedError("freerec.graph requires working torch-geometric")
+        for _fn in ['coalesce', 'scatter', 'spmm', 'to_undirected', 'to_edge_index']:
+            setattr(tg_utils, _fn, _stub)
+        tg.utils = tg_utils
+        sys.modules['torch_geometric'] = tg
+        sys.modules['torch_geometric.utils'] = tg_utils
 
 import freerec
 
