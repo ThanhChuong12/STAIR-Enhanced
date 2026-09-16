@@ -303,6 +303,8 @@ cfg.add_argument("--ssb-min-weight", "--min-weight", dest="ssb_min_weight", type
                  help="Edge weight lower bound (default: 1.00)")
 cfg.add_argument("--ssb-max-weight", "--max-weight", dest="ssb_max_weight", type=float, default=3.60,
                  help="Edge weight upper bound (default: 3.60)")
+cfg.add_argument("--eval-chunk-size", type=int, default=512,
+                 help="User chunk size for full-ranking evaluation to prevent peak VRAM spike (default: 512)")
 
 cfg.set_defaults(
     description="STAIR-CNLGCL-v1-R",
@@ -389,6 +391,43 @@ if hasattr(cfg, "beta") and not hasattr(cfg, "ssb_beta"):
 
 if hasattr(cfg, "ssb_mode") and not hasattr(cfg, "mode"):
     cfg.mode = cfg.ssb_mode
+
+# ── Dataset-Adaptive Smart Defaults (Giai đoạn 4 v1-R Tuned) ──
+ds_name = getattr(cfg, 'dataset', '')
+if 'Baby' in ds_name:
+    if 'lambda_cl' not in cli_specified:
+        cfg.lambda_cl = 0.005       # Giảm 37.5% lực InfoNCE để bảo toàn cấu trúc đa tạp
+    if 'warmup_epochs' not in cli_specified:
+        cfg.warmup_epochs = 100     # Kéo dài 100 epochs cho đồ thị mật độ cao
+    if 'tau_thresh' not in cli_specified:
+        cfg.tau_thresh = 0.50       # Tăng ngưỡng FNF để lọc nhiều cặp âm tính giả ngữ nghĩa
+    if 'ssb_mode' not in cli_specified and 'mode' not in cli_specified:
+        cfg.ssb_mode = "modal_only"
+        cfg.mode = "modal_only"
+    if 'ssb_beta' not in cli_specified and 'beta' not in cli_specified:
+        cfg.ssb_beta = 0.00
+        cfg.beta = 0.00
+    if 'ssb_alpha' not in cli_specified and 'alpha' not in cli_specified:
+        cfg.ssb_alpha = 0.50
+        cfg.alpha = 0.50
+elif 'Sports' in ds_name:
+    if 'lambda_cl' not in cli_specified:
+        cfg.lambda_cl = 0.008
+    if 'warmup_epochs' not in cli_specified:
+        cfg.warmup_epochs = 50
+    if 'ssb_mode' not in cli_specified and 'mode' not in cli_specified:
+        cfg.ssb_mode = "full_ssb"
+        cfg.mode = "full_ssb"
+elif 'Electronics' in ds_name:
+    if 'lambda_cl' not in cli_specified:
+        cfg.lambda_cl = 0.005       # Giảm xuống 0.005 để tránh nhiễu InfoNCE trên 63K items
+    if 'warmup_epochs' not in cli_specified:
+        cfg.warmup_epochs = 50
+    if 'ssb_mode' not in cli_specified and 'mode' not in cli_specified:
+        cfg.ssb_mode = "full_ssb"
+        cfg.mode = "full_ssb"
+    if 'eval_chunk_size' not in cli_specified:
+        cfg.eval_chunk_size = 512
 
 if isinstance(cfg.mfiles, str):
     cfg.mfiles = cfg.mfiles.split(',')
@@ -608,6 +647,15 @@ class STAIR_CNLGCL_v1R_Model(freerec.models.GenRecArch):
         raw_edge_index, raw_edge_weight = freerec.graph.coalesce(
             raw_edge_index, edge_weight, reduce='sum'
         )
+
+        # Loại bỏ triệt để các cạnh self-loop sau coalesce giữa các modality
+        mask_self_loop = (raw_edge_index[0] != raw_edge_index[1])
+        if not mask_self_loop.all():
+            num_loops = (~mask_self_loop).sum().item()
+            raw_edge_index = raw_edge_index[:, mask_self_loop]
+            raw_edge_weight = raw_edge_weight[mask_self_loop]
+            print(f"  [v1-R] Đã loại bỏ {num_loops:,} cạnh self-loop sau coalesce. Còn lại: {raw_edge_index.size(1):,} cạnh.")
+
         print(f"  [v1-R] kNN gốc hoàn tất: {raw_edge_index.size(1):,} cạnh "
               f"(W: {raw_edge_weight.min().item():.1f} - {raw_edge_weight.max().item():.1f})")
 
@@ -805,6 +853,16 @@ class STAIR_CNLGCL_v1R_Model(freerec.models.GenRecArch):
     def recommend_from_full(self, data):
         userEmbds = self.ranking_buffer[self.User][data[self.User]]
         itemEmbds = self.ranking_buffer[self.Item]
+        B = userEmbds.size(0)
+        N = itemEmbds.size(0)
+        chunk_size = getattr(cfg, 'eval_chunk_size', 512)
+        if B > chunk_size and N > 15000:
+            scores_list = []
+            for start in range(0, B, chunk_size):
+                end = min(start + chunk_size, B)
+                u_chunk = userEmbds[start:end]
+                scores_list.append(torch.einsum('BKD,ND->BN', u_chunk, itemEmbds))
+            return torch.cat(scores_list, dim=0)
         return torch.einsum('BKD,ND->BN', userEmbds, itemEmbds)
 
     def recommend_from_pool(self, data):

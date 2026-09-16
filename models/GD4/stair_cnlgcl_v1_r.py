@@ -109,26 +109,46 @@ class BSC_Reweight_Engine:
             row_np = raw_knn_adj[0].cpu().numpy().astype(np.int64)
             col_np = raw_knn_adj[1].cpu().numpy().astype(np.int64)
             if raw_edge_weight is not None:
-                w_base = raw_edge_weight.to(device).float()
+                w_base_np = (
+                    raw_edge_weight.cpu().numpy().astype(np.float32)
+                    if isinstance(raw_edge_weight, torch.Tensor)
+                    else np.array(raw_edge_weight, dtype=np.float32)
+                )
             else:
-                w_base = torch.ones(len(row_np), dtype=torch.float32, device=device)
+                w_base_np = np.ones(len(row_np), dtype=np.float32)
         else:
             coo_knn = raw_knn_adj.tocoo()
             row_np = coo_knn.row.astype(np.int64)
             col_np = coo_knn.col.astype(np.int64)
-            w_base = torch.from_numpy(coo_knn.data.astype(np.float32)).to(device)
+            w_base_np = coo_knn.data.astype(np.float32)
+
+        # ── 0.1. Loại bỏ triệt để cạnh self-loops ──
+        mask_self = (row_np != col_np)
+        if not mask_self.all():
+            row_np = row_np[mask_self]
+            col_np = col_np[mask_self]
+            w_base_np = w_base_np[mask_self]
 
         num_edges = len(row_np)
+        w_base = torch.from_numpy(w_base_np).to(device)
 
         # ── 1. Modal Quality (Thresholded Geometric Mean) ──
+        # Tối ưu hóa CPU-Chunked Vectorization: Triệt tiêu nguy cơ OOM VRAM trên tập lớn (Electronics 63K)
+        chunk_size = 32768
         if self.alpha > 0.0:
             with torch.no_grad():
                 if all_modal_feats is not None and len(all_modal_feats) > 2:
                     # Hỗ trợ đa phương thức (>= 3 như TikTok: Vision, Text, Audio)
-                    feat_norms = [F.normalize(f.to(device).float(), p=2, dim=-1) for f in all_modal_feats]
-                    row_t = torch.from_numpy(row_np).long().to(device)
-                    col_t = torch.from_numpy(col_np).long().to(device)
-                    sim_tensors = [(fn[row_t] * fn[col_t]).sum(dim=-1) for fn in feat_norms]
+                    feat_norms = [F.normalize(f.cpu().float(), p=2, dim=-1) for f in all_modal_feats]
+                    sim_lists = [[] for _ in range(len(feat_norms))]
+                    for start in range(0, num_edges, chunk_size):
+                        end = min(start + chunk_size, num_edges)
+                        r_chunk = row_np[start:end]
+                        c_chunk = col_np[start:end]
+                        for idx, fn in enumerate(feat_norms):
+                            sim_lists[idx].append((fn[r_chunk] * fn[c_chunk]).sum(dim=-1))
+
+                    sim_tensors = [torch.cat(sim_lists[idx], dim=0) for idx in range(len(feat_norms))]
                     sims_thresh = [
                         F.relu(sim_tensors[idx] - (self.tau_t if idx == 0 else self.tau_v))
                         for idx in range(len(feat_norms))
@@ -137,16 +157,25 @@ class BSC_Reweight_Engine:
                     for p in range(len(feat_norms)):
                         for q in range(p + 1, len(feat_norms)):
                             pair_consensuses.append(torch.sqrt(sims_thresh[p] * sims_thresh[q] + self.eps))
-                    q_modal = torch.stack(pair_consensuses, dim=0).mean(dim=0)
+                    q_modal = torch.stack(pair_consensuses, dim=0).mean(dim=0).to(device)
                 else:
-                    t_norm = F.normalize(text_feats.to(device).float(), p=2, dim=-1)
-                    v_norm = F.normalize(vis_feats.to(device).float(), p=2, dim=-1)
-                    row_t = torch.from_numpy(row_np).long().to(device)
-                    col_t = torch.from_numpy(col_np).long().to(device)
+                    t_norm = F.normalize(text_feats.cpu().float(), p=2, dim=-1)
+                    v_norm = F.normalize(vis_feats.cpu().float(), p=2, dim=-1)
 
-                    sim_t = (t_norm[row_t] * t_norm[col_t]).sum(dim=-1)
-                    sim_v = (v_norm[row_t] * v_norm[col_t]).sum(dim=-1)
-                    q_modal = torch.sqrt(F.relu(sim_t - self.tau_t) * F.relu(sim_v - self.tau_v) + self.eps)
+                    sim_t_list = []
+                    sim_v_list = []
+                    for start in range(0, num_edges, chunk_size):
+                        end = min(start + chunk_size, num_edges)
+                        r_chunk = row_np[start:end]
+                        c_chunk = col_np[start:end]
+                        st = (t_norm[r_chunk] * t_norm[c_chunk]).sum(dim=-1)
+                        sv = (v_norm[r_chunk] * v_norm[c_chunk]).sum(dim=-1)
+                        sim_t_list.append(st)
+                        sim_v_list.append(sv)
+
+                    sim_t = torch.cat(sim_t_list, dim=0)
+                    sim_v = torch.cat(sim_v_list, dim=0)
+                    q_modal = torch.sqrt(F.relu(sim_t - self.tau_t) * F.relu(sim_v - self.tau_v) + self.eps).to(device)
         else:
             q_modal = torch.zeros(num_edges, dtype=torch.float32, device=device)
 
@@ -579,7 +608,14 @@ class STAIR_CNLGCL_v1_R(nn.Module):
         self.last_cl_loss = raw_cl
         return bpr + reg + weighted_cl
 
-    def predict(self, users: torch.Tensor) -> torch.Tensor:
-        """Dự đoán xếp hạng inference bằng tích vô hướng."""
+    def predict(self, users: torch.Tensor, chunk_size: int = 512) -> torch.Tensor:
+        """Dự đoán xếp hạng inference bằng tích vô hướng kèm chunking cho tập lớn."""
         u_emb, i_emb, _ = self.encode()
+        B = users.size(0)
+        if B > chunk_size and i_emb.size(0) > 15000:
+            scores_list = []
+            for start in range(0, B, chunk_size):
+                end = min(start + chunk_size, B)
+                scores_list.append(u_emb[users[start:end]] @ i_emb.t())
+            return torch.cat(scores_list, dim=0)
         return u_emb[users] @ i_emb.t()
