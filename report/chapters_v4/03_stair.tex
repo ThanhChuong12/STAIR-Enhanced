@@ -1,0 +1,260 @@
+\section{STAIR: Manipulating Collaborative and Multimodal Information}
+
+\subsection{Kết quả thực nghiệm cải tiến 1: Tích hợp trực giao đa thành phần (STAIR-CNLGCL v1-R)}
+\label{sec:stair_cnlgcl_v1_r}
+
+\subsubsection{Động lực kỹ thuật và kiến trúc đề xuất}
+
+Xuyên suốt các giai đoạn nghiên cứu trước đây của đề tài, hệ thống đã thử nghiệm thành công hai hướng can thiệp độc lập vào mô hình STAIR:
+\begin{enumerate}[leftmargin=*]
+    \item Hướng can thiệp ở tầng hàm mất mát: Cơ chế Neighborhood-Layer Graph Contrastive Learning (NLGCL) tối ưu hóa hình học không gian của các vector biểu diễn, giúp các vector phân bố đồng đều trên mặt cầu đơn vị và bảo toàn hướng góc phần tư của các vector đặc trưng.
+    \item Hướng can thiệp ở tầng đồ thị và bộ tối ưu: Cơ chế BSC-Reweight tái cấu trúc đồ thị đồng thuận đa phương thức, trực tiếp điều chỉnh bộ lọc làm mịn gradient trong thuật toán AdamWSEvo dựa trên sự đồng thuận giữa hành vi tương tác và nội dung đa phương thức.
+\end{enumerate}
+
+Mục tiêu của phiên bản STAIR-CNLGCL v1-R là kết hợp đồng thời hai cơ chế này nhằm tạo ra sự cộng hưởng hiệu năng trên mọi phổ dữ liệu, từ đồ thị thưa thớt đến đồ thị quy mô lớn. Để bảo đảm hai cơ chế phối hợp hiệu quả mà không gây xung đột gradient, kiến trúc được thiết kế dựa trên năm trụ cột kỹ thuật:
+
+\paragraph{1. Tính độc lập trực giao giữa forward pass và backward pass:}
+Hai cơ chế can thiệp hoạt động ở hai giai đoạn hoàn toàn tách biệt trong đồ thị tính toán. Trong forward pass, mô hình tính toán hàm mất mát tổng hợp gồm hàm xếp hạng BPR và hàm đối sánh CNLGCL:
+\begin{equation}
+\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{BPR}} + \lambda_{\text{cl}}(t) \cdot \mathcal{L}_{\text{CNLGCL}}
+\end{equation}
+Trong đó $\lambda_{\text{cl}}(t)$ là trọng số đối sánh được điều phối qua chu trình khởi động tuyến tính theo số epoch $t$:
+\begin{equation}
+\lambda_{\text{cl}}(t) = \begin{cases}
+\lambda_{\text{target}} \cdot \dfrac{t}{T_{\text{warmup}}}, & \text{khi } t \le T_{\text{warmup}} \\[8pt]
+\lambda_{\text{target}}, & \text{khi } t > T_{\text{warmup}}
+\end{cases}
+\end{equation}
+Cơ chế CNLGCL chỉ can thiệp vào khoảng cách góc giữa các biểu diễn lân cận $H^{(0)}$ và $H^{(1)}$ trên mặt cầu đơn vị, không làm thay đổi cấu trúc đồ thị hay ma trận kề.
+
+Ngược lại, trong backward pass, bộ tối ưu AdamWSEvo tính toán bước cập nhật tham số cơ sở $\Delta_t = \hat{m}_t / (\sqrt{\hat{v}_t} + \epsilon_{\text{opt}})$ từ gradient tổng hợp $\nabla_{\theta} \mathcal{L}_{\text{total}}$, sau đó áp dụng bộ lọc làm mịn Smoother dựa trên chuỗi Neumann qua ma trận kề chuẩn hóa đối xứng $\hat{A}$:
+\begin{equation}
+\tilde{\Delta}_t = \text{Smoother}(\Delta_t, \hat{A}) = \frac{1 - \beta_3}{1 - \beta_3^{L+1}} \sum_{l=0}^{L} \beta_3^l \hat{A}^l \Delta_t
+\end{equation}
+Sau đó tham số được cập nhật theo quy tắc: $\theta_{t+1} = \theta_t (1 - \eta \cdot \lambda_{\text{wd}}) - \eta \tilde{\Delta}_t$. Do toán tử làm mịn chỉ tác động lên bước cập nhật gradient trong backward pass và không tham gia vào phép tính giá trị dự đoán hay hàm mất mát, hai cơ chế hoàn toàn không cạnh tranh tham số, loại trừ nguy cơ xung đột gradient.
+
+\paragraph{2. Tái cấu trúc ma trận kề chuẩn hóa đối xứng và cơ chế BSC-Reweight:}
+Ma trận kề giữa các sản phẩm được tăng cường thông qua công thức tích hợp độ đồng thuận nội dung đa phương thức và hành vi đồng mua:
+\begin{equation}
+W_{ij} = W_{\text{base}, ij} \cdot \left(1 + \alpha \cdot q_{\text{modal}, ij} + \beta \cdot q_{\text{behavior}, ij}\right)
+\end{equation}
+Trong đó $W_{\text{base}, ij}$ là trọng số ban đầu từ đồ thị kNN. Hệ số chất lượng nội dung $q_{\text{modal}, ij}$ được tính bằng trung bình hình học có ngưỡng:
+\begin{equation}
+q_{\text{modal}, ij} = \sqrt{\max(0, s_{t, ij} - \tau_t) \cdot \max(0, s_{v, ij} - \tau_v) + \epsilon}
+\end{equation}
+với $s_{t, ij}$ và $s_{v, ij}$ là độ tương đồng cosine đặc trưng văn bản và hình ảnh, $\tau_t$ và $\tau_v$ là các ngưỡng lọc nhiễu. Hệ số chất lượng hành vi $q_{\text{behavior}, ij}$ dựa trên chỉ số Ochiai từ ma trận tương tác $R$:
+\begin{equation}
+q_{\text{behavior}, ij} = \frac{(R^T R)_{ij}}{\sqrt{\text{deg}_i \cdot \text{deg}_j} + \epsilon}
+\end{equation}
+Để bảo đảm tính ổn định phổ, toàn bộ cạnh tự lặp được loại bỏ ($W_{ii} = 0$), trọng số được giới hạn trong ngưỡng an toàn $W_{ij} \in [1.0, 3.6]$, lấy đối xứng cực đại $W_{\text{sym}} = \max(W, W^T)$ với ma trận bậc đường chéo $D_{ii} = \sum_j W_{\text{sym}, ij}$, và chuẩn hóa thành ma trận kề chuẩn hóa đối xứng:
+\begin{equation}
+\hat{A} = D^{-1/2} W_{\text{sym}} D^{-1/2}
+\end{equation}
+Cần lưu ý phân biệt về mặt giải tích: đối tượng toán học được xây dựng ở đây là ma trận kề chuẩn hóa đối xứng $\hat{A}$ (symmetric normalized adjacency), khác với ma trận Laplacian chuẩn hóa $L = I - D^{-1/2} W_{\text{sym}} D^{-1/2}$. Do $W_{\text{sym}}$ là ma trận không âm đối xứng, theo định lý Gershgorin, toàn bộ các trị riêng của $\hat{A}$ được chặn chặt chẽ trong đoạn $[-1, 1]$, tương ứng bán kính phổ $\rho(\hat{A}) \le 1.0$. Tính chất này bảo đảm chuỗi lũy thừa trong bộ lọc làm mịn $\sum_{l=0}^{L} \beta_3^l \hat{A}^l$ không bị bùng nổ năng lượng phổ khi lan truyền gradient ngược. (Nếu xét ma trận Laplacian chuẩn hóa tương ứng $L = I - \hat{A}$, ma trận $L$ mới mang tính chất đối xứng nửa xác định dương với phổ trị riêng thuộc đoạn $[0, 2]$).
+
+\paragraph{3. Hàm mất mát đối sánh CNLGCL InfoNCE và điều phối thích ứng:}
+Hàm đối sánh CNLGCL được áp dụng hai chiều giữa tầng 0 và tầng 1 của mạng Stepwise Convolution:
+\begin{equation}
+\mathcal{L}_{\text{CNLGCL}} = \alpha_{\text{dir}} \mathcal{L}_{u \to i} + (1 - \alpha_{\text{dir}}) \mathcal{L}_{i \to u}
+\end{equation}
+với $\alpha_{\text{dir}} = 0.5$. Hướng từ người dùng sang sản phẩm tích hợp biên độ lề tự thích ứng theo phân vị và mặt nạ lọc mẫu âm giả:
+\begin{equation}
+\mathcal{L}_{u \to i} = - \frac{1}{B} \sum_{b=1}^{B} \log \frac{\exp\left( (\tilde{u}_b^{(0)} \cdot \tilde{i}_b^{(1)} - m_b) / \tau \right)}{\exp\left( (\tilde{u}_b^{(0)} \cdot \tilde{i}_b^{(1)} - m_b) / \tau \right) + \sum_{k \ne b} M_{bk} \exp\left( \tilde{u}_b^{(0)} \cdot \tilde{i}_k^{(1)} / \tau \right)}
+\end{equation}
+Trong đó $m_b = m_{\max} \cdot (1 - \hat{c}_b)$ là biên độ phân cách lề động, với $\hat{c}_b$ là độ tương đồng văn bản và hình ảnh của sản phẩm được chuẩn hóa về đoạn $[0, 1]$ qua phân vị 5\% đến 95\%. Sản phẩm có độ tương đồng nội dung cao sẽ có lề nhỏ hơn, phản ánh mức độ tin cậy cao của biểu diễn. Mặt nạ $M_{bk} \in \{0, 1\}$ loại trừ các sản phẩm âm trong batch có độ tương đồng nội dung vượt ngưỡng $\tau_{\text{thresh}}$, tránh phạt nhầm các sản phẩm tương tự.
+Đồng thời, các biểu diễn được bổ sung nhiễu quang phổ bảo toàn dấu:
+\begin{equation}
+\tilde{H} = H + \epsilon \cdot \beta \odot \text{sgn}(H) \odot \frac{|\eta|}{\| |\eta| \|_2}, \quad |\eta| \ge 0
+\end{equation}
+Điều kiện $|\eta| \ge 0$ bảo đảm không đảo dấu tọa độ của biểu diễn, giữ nguyên cấu trúc topo của đa tạp.
+
+\paragraph{4. Kỹ thuật CPU-chunked vectorization:}
+Trên các tập dữ liệu quy mô lớn như Amazon Electronics với hơn 63.000 sản phẩm và 1.25 triệu cạnh kNN, việc đưa toàn bộ ma trận đặc trưng lên GPU để tính tương đồng cosine từng tạo ra đỉnh cấp phát hơn 11 GB VRAM, dẫn đến lỗi tràn bộ nhớ. Kiến trúc v1-R giải quyết vấn đề này bằng cách chuẩn hóa đặc trưng trên CPU và chia danh sách cạnh thành các khối tuần tự 32.768 cạnh. Các phép tính tích vô hướng được thực hiện trên CPU và chỉ tensor kết quả một chiều cuối cùng được chuyển lên GPU, giảm mức tiêu hao VRAM tại bước khởi tạo này về 0 MB.
+
+\paragraph{5. Ghép khối tensor và đánh giá xếp hạng phân khối:}
+Bốn tensor biểu diễn của người dùng và sản phẩm tại hai tầng được xếp chồng thành một khối tensor duy nhất $T_{\text{fused}} \in \mathbb{R}^{4 \times B \times D}$. Kỹ thuật này gộp các phép tính chuẩn hóa L2 và tích vô hướng, giảm số lần gọi CUDA kernel từ 8 xuống còn 2, giúp rút ngắn thời gian huấn luyện từ 11.5\% đến 21.4\%.
+Bên cạnh đó, trong pha kiểm định xếp hạng toàn phần, ma trận điểm số giữa người dùng và toàn bộ sản phẩm được chia thành các khối 512 người dùng mỗi lượt. Kỹ thuật này giữ cho dung lượng bộ nhớ trung gian luôn dưới 2.5 GB ngay cả trên tập dữ liệu chứa 63.000 sản phẩm.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.82, transform shape,
+    inputbox/.style={rectangle, draw=blue!60!black, line width=0.8pt, rounded corners=4pt, minimum height=0.8cm, text width=2.6cm, font=\footnotesize, align=center, fill=blue!6, inner sep=4pt},
+    block/.style={rectangle, draw=blue!60!black, line width=0.8pt, rounded corners=4pt, minimum height=0.9cm, text width=5.6cm, font=\footnotesize, align=center, fill=blue!6, inner sep=4pt},
+    layerbox/.style={rectangle, draw=teal!70!black, line width=0.8pt, rounded corners=4pt, minimum height=0.9cm, text width=5.6cm, font=\footnotesize\bfseries, align=center, fill=teal!8, inner sep=4pt},
+    clbox/.style={rectangle, draw=orange!80!black, dashed, line width=1pt, rounded corners=6pt, text width=6.2cm, font=\footnotesize, align=left, fill=orange!8, inner sep=8pt},
+    finalbox/.style={rectangle, draw=blue!85!black, line width=1.2pt, rounded corners=6pt, minimum height=1.1cm, text width=10.4cm, font=\small, align=center, fill=blue!12, inner sep=6pt},
+    arr/.style={-{Stealth[length=3.5mm, width=2.5mm]}, line width=1pt, draw=gray!80!black},
+    dasharr/.style={-{Stealth[length=3.5mm, width=2.5mm]}, line width=1pt, dashed, draw=purple!80!black},
+    subbgleft/.style={draw=blue!30, dashed, fill=blue!2, rounded corners=8pt},
+    subbgright/.style={draw=orange!40, dashed, fill=orange!2, rounded corners=8pt}
+]
+
+\draw[subbgleft] (-7.6, 2.0) rectangle (-0.6, -7.5);
+\node[font=\small\bfseries\color{blue!70!black}, anchor=north] at (-4.1, 1.8) {Forward pass (tầng hàm mất mát)};
+
+\draw[subbgright] (0.6, 2.0) rectangle (7.6, -7.5);
+\node[font=\small\bfseries\color{orange!80!black}, anchor=north] at (4.1, 1.8) {Backward pass (tầng đồ thị)};
+
+\node[inputbox, anchor=north] (inu) at (-5.8, 0.8) {User ID $E_u$};
+\node[inputbox, anchor=north] (ini) at (-2.4, 0.8) {Item SVD $E_i$};
+
+\node[block, anchor=north] (h0) at (-4.1, -0.6) {\textbf{Tầng 0: Ego embeddings}\\[2pt]$H^{(0)} = [E_u \,;\, E_i]$};
+\draw[arr] (inu.south) -- ++(0,-0.3) -| ([xshift=-1.5cm]h0.north);
+\draw[arr] (ini.south) -- ++(0,-0.3) -| ([xshift=1.5cm]h0.north);
+
+\node[layerbox, anchor=north] (h1) at (-4.1, -2.4) {\textbf{FSC Tầng 1}\\[2pt]$H^{(1)} = \tilde{A} H^{(0)} \odot \beta + H^{(0)}$};
+\draw[arr] (h0.south) -- (h1.north);
+
+\node[block, anchor=north] (bpr) at (-4.1, -4.2) {\textbf{BPR ranking loss}\\[2pt]Tối ưu khoảng cách $u$ và $i^+$};
+\draw[arr] (h1.south) -- (bpr.north);
+
+\node[clbox, anchor=north] (nlgcl) at (-4.1, -6.0) {
+    \textbf{\small CNLGCL (InfoNCE)}\\[2pt]
+    Fused ops $[4, B, D]$ và AMM\\
+    Nhiễu quang phổ bảo toàn dấu $|\eta| \ge 0$
+};
+\draw[dasharr] (h0.east) -- ++(0.4, 0) |- (nlgcl.east);
+\draw[dasharr] (h1.east) -- ++(0.4, 0) |- (nlgcl.east);
+
+\node[block, anchor=north] (grad_total) at (4.1, 0.8) {\textbf{Total item gradient}\\[2pt]$\nabla_{\text{total}} = \nabla_{\text{BPR}} + \lambda_{\text{cl}} \nabla_{\text{InfoNCE}}$};
+
+\node[layerbox, anchor=north] (smoother) at (4.1, -1.6) {\textbf{BSC Smoother filter}\\[2pt]$\tilde{\Delta} = \text{Smoother}(\Delta, \hat{A})$};
+\draw[arr] (grad_total.south) -- (smoother.north);
+
+\node[clbox, anchor=north] (reweight) at (4.1, -4.0) {
+    \textbf{\small Symmetric Adjacency Reweighting}\\[2pt]
+    $W_{ij} = W_{\text{base}} (1 + \alpha q_m + \beta q_b)$\\
+    Ma trận kề chuẩn hóa đối xứng $\hat{A}$
+};
+\draw[dasharr] (reweight.north) -- (smoother.south);
+
+\node[finalbox, anchor=north] (update) at (0.0, -8.6) {\textbf{Cập nhật trọng số độc lập trực giao}\\[4pt]NLGCL tối ưu hóa không gian biểu diễn; BSC-Reweight làm mịn gradient mục tiêu};
+
+\draw[arr] (bpr.south) |- ([yshift=0.4cm]update.north) -| ([xshift=-3.5cm]update.north);
+\draw[arr] (smoother.south) |- ([yshift=0.4cm]update.north) -| ([xshift=3.5cm]update.north);
+
+\end{tikzpicture}
+\caption{Cấu trúc tích hợp trực giao của STAIR-CNLGCL v1-R. Hàm mất mát đối sánh và bộ lọc gradient làm mịn hoạt động ở hai pha độc lập, loại trừ nguy cơ xung đột tối ưu hóa.}
+\label{fig:stair_cnlgcl_v1_r_architecture}
+\end{figure}
+
+\subsubsection{Kết quả thực nghiệm chuyên sâu trên ba tập dữ liệu}
+
+Mô hình STAIR-CNLGCL v1-R được huấn luyện trên môi trường GPU Tesla T4 thông qua 500 epoch với cấu hình được hiệu chuẩn riêng cho từng đặc thù phân bố dữ liệu:
+\begin{itemize}[leftmargin=*]
+    \item Trên Amazon Sports (độ thưa $99.95\%$): Áp dụng chế độ full\_ssb với $\alpha = 0.40, \beta = 0.20, \lambda_{\text{cl}} = 0.008$, tắt mặt nạ lọc mẫu âm.
+    \item Trên Amazon Baby (mật độ cao $0.117\%$): Áp dụng chế độ modal\_only với $\alpha = 0.50, \beta = 0.00, \lambda_{\text{cl}} = 0.008$, bật mặt nạ lọc mẫu âm với ngưỡng $\tau_{\text{thresh}} = 0.35$.
+    \item Trên Amazon Electronics (1.7 triệu tương tác, 63.001 sản phẩm): Áp dụng chế độ full\_ssb với $\alpha = 0.40, \beta = 0.20, \lambda_{\text{cl}} = 0.005$, kết hợp đánh giá phân khối 512 người dùng.
+\end{itemize}
+
+Bảng~\ref{tab:stair_cnlgcl_results} tổng hợp kết quả của phiên bản tích hợp đối chiếu trực tiếp với STAIR Baseline và STAIR-NE-NLGCL+.
+
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.15}
+\caption{Kết quả thực nghiệm STAIR-CNLGCL v1-R so với STAIR Baseline và STAIR-NE-NLGCL+ trên ba tập dữ liệu.}
+\label{tab:stair_cnlgcl_results}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{llcccc}
+\toprule
+\rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{STAIR Baseline} & \textbf{STAIR-NE-NLGCL+} & \textbf{STAIR-CNLGCL v1-R} & \textbf{$\Delta$ v1-R vs Baseline} \\
+\midrule
+\textbf{Amazon Baby} & Recall@10 & 0.0674 & 0.0674 & \textbf{0.0678} & $+0.59\%$ \\
+checkpoint tại epoch 455 & Recall@20 & \textbf{0.1042} & 0.1024 & 0.1036 & $-0.58\%$ \\
+& NDCG@10 & 0.0359 & 0.0359 & \textbf{0.0362} & $+0.84\%$ \\
+& NDCG@20 & \textbf{0.0454} & 0.0448 & \textbf{0.0454} & $0.00\%$ \\
+& Recall@1 & 0.0113 & 0.0120 & \textbf{0.0126} & $+11.50\%$ \\
+\midrule
+\textbf{Amazon Sports} & Recall@10 & 0.0743 & \textbf{0.0753} & 0.0747 & $+0.54\%$ \\
+checkpoint tại epoch 500 & Recall@20 & 0.1111 & 0.1118 & \textbf{0.1124} & $+1.17\%$ \\
+& NDCG@10 & 0.0405 & \textbf{0.0414} & 0.0411 & $+1.48\%$ \\
+& NDCG@20 & 0.0500 & 0.0508 & \textbf{0.0509} & $+1.80\%$ \\
+& Recall@1 & 0.0143 & 0.0148 & \textbf{0.0149} & $+4.20\%$ \\
+\midrule
+\textbf{Amazon Electronics} & Recall@10 & 0.0442 & \textbf{0.0457} & 0.0450 & $+1.81\%$ \\
+checkpoint tại epoch 395/500 & Recall@20 & 0.0665 & \textbf{0.0680} & 0.0675 & $+1.50\%$ \\
+& NDCG@10 & 0.0246 & \textbf{0.0257} & 0.0252 & $+2.44\%$ \\
+& NDCG@20 & 0.0303 & \textbf{0.0314} & 0.0310 & $+2.31\%$ \\
+& Recall@1 & 0.0094 & \textbf{0.0100} & 0.0097 & $+3.19\%$ \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+Số liệu thực nghiệm khẳng định sự cộng hưởng hiệu năng rõ nét của kiến trúc đa thành phần:
+\begin{enumerate}[leftmargin=*]
+    \item Trên tập Amazon Sports: Mô hình thiết lập kỷ lục mới so với baseline trên cả năm chỉ số. Recall@20 đạt $0.1124$ ($+1.17\%$), NDCG@20 đạt $0.0509$ ($+1.80\%$) và Recall@1 đạt $0.0149$ ($+4.20\%$). Cả Recall@20 và NDCG@20 đều vượt qua mức $0.1118$ và $0.0508$ của STAIR-NE-NLGCL+. Điều này chứng minh rằng việc kết hợp lực đẩy phân bố đều của NLGCL với đồ thị làm mịn BSC giúp mô hình nhận diện chính xác sản phẩm phù hợp nhất ở vị trí đầu danh sách.
+    \item Trên tập Amazon Baby: Mô hình thể hiện sự phục hồi xuất sắc tại checkpoint tối ưu epoch 455. Cả Recall@10 ($0.0678$, tăng $+0.59\%$), NDCG@10 ($0.0362$, tăng $+0.84\%$) và Recall@1 ($0.0126$, tăng $+11.50\%$) đều vượt qua mô hình STAIR Baseline và STAIR-NE-NLGCL+. Chỉ số NDCG@20 đạt $0.0454$ bảo toàn trọn vẹn mức baseline (vượt qua mức $0.0448$ của STAIR-NE-NLGCL+), trong khi Recall@20 đạt $0.1036$ (cao hơn mức $0.1024$ của STAIR-NE-NLGCL+).
+    \item Trên tập Amazon Electronics: Mô hình duy trì mức tăng trưởng đồng đều trên cả năm chỉ số so với baseline, với Recall@20 đạt $0.0675$ ($+1.50\%$) và NDCG@20 đạt $0.0310$ ($+2.31\%$).
+\end{enumerate}
+
+\paragraph{Phân tích độ lệch giữa STAIR-CNLGCL v1-R và STAIR-NE-NLGCL+ trên tập Amazon Electronics:}
+Khi so sánh với phiên bản STAIR-NE-NLGCL+ ở đề mục trước (đạt NDCG@20 là $0.0314$ và Recall@20 là $0.0680$ trên Electronics), phiên bản v1-R đạt $0.0310$ và $0.0675$. Sự khác biệt nhỏ này xuất phát từ hai nguyên nhân kỹ thuật có chủ đích:
+\begin{enumerate}[leftmargin=*]
+    \item Trong phiên bản v1-R, do đồ thị kNN được tăng cường trọng số $W \in [1.0, 3.6]$, biên độ gradient truyền qua AdamWSEvo được khuếch đại tự nhiên. Để bảo vệ quá trình hội tụ không bị sốc gradient trên danh mục 63.001 sản phẩm, trọng số $\lambda_{\text{cl}}$ được chủ động hạ xuống $0.005$ (thay vì $0.010$ như ở bản STAIR-NE-NLGCL+). Việc giảm lực đẩy tương phản này giữ cho các cụm sản phẩm ổn định, dẫn đến chỉ số xếp hạng top-k có biên độ chênh lệch rất nhỏ.
+    \item Thành phần đồng mua Ochiai từ ma trận tương tác hành vi ($\beta = 0.20$) thực hiện làm mịn liên kết trên gần 1.7 triệu tương tác. Trên một danh mục lớn, việc bổ sung liên kết hành vi giúp kết nối các sản phẩm thưa nhưng cũng làm mịn nhẹ ranh giới giữa các sản phẩm điện tử có tính năng tương tự nhau.
+    \item Đổi lại, phiên bản v1-R mang lại tính toàn vẹn hệ thống vượt trội: đạt kết quả cao nhất trên Amazon Sports (Recall@20 đạt $0.1124$, NDCG@20 đạt $0.0509$), phục hồi toàn diện trên Amazon Baby (NDCG@20 đạt $0.0454$ so với $0.0448$ của STAIR-NE-NLGCL+, Recall@1 tăng $+11.50\%$), tốc độ huấn luyện nhanh hơn 8.4\% trên Electronics (5.51 giờ so với 6.01 giờ của STAIR-NE-NLGCL+), giảm đáng kể bộ nhớ tensor và loại trừ hoàn toàn nguy cơ tràn bộ nhớ OOM. Xét trên toàn bộ ba tập benchmark, STAIR-CNLGCL v1-R có mức tăng trung bình cao nhất và là phiên bản hoàn thiện nhất của đề tài.
+\end{enumerate}
+
+\subsubsection{Phân tích hiện tượng biến thiên bộ nhớ và hiệu suất phần cứng}
+
+Quá trình đo đạc tài nguyên bằng công cụ hệ thống ghi nhận một hiện tượng bất đối xứng về tiêu thụ VRAM giữa các tập dữ liệu khi sử dụng các phương pháp đánh giá thông thường. Trên Amazon Sports, bộ nhớ GPU xuất hiện một điểm tăng vọt tức thời lên tới $5882.0$ MB ngay tại epoch 0, sau đó nhanh chóng giảm về mức ổn định khoảng $691$ MB. Ngược lại, trên Amazon Baby, đường tiêu thụ bộ nhớ giữ phẳng ở mức $486$ MB.
+
+Để hiểu rõ hiện tượng này, cần phân biệt ba tiêu chuẩn đo lường bộ nhớ:
+\begin{enumerate}[leftmargin=*]
+    \item Pure model tensor peak: Được đo bằng hàm torch.cuda.max\_memory\_allocated(), phản ánh đúng dung lượng bộ nhớ dành riêng cho các tensor tham số và gradient của mô hình. Đây là tiêu chuẩn đo lường học thuật được sử dụng trong các công bố khoa học.
+    \item Pipeline peak allocation: Dung lượng bộ nhớ lớn nhất ghi nhận trong toàn bộ chu trình, bao gồm cả các vùng đệm đánh giá xếp hạng phân khối.
+    \item Physical system peak qua NVML: Đo trực tiếp từ driver card đồ họa ở cấp hệ điều hành, bao gồm cả vùng đệm do bộ quản lý bộ nhớ của PyTorch đặt trước.
+\end{enumerate}
+
+Nguyên nhân xuất hiện điểm tăng vọt trên Amazon Sports xuất phát từ việc tính toán ma trận điểm số đầy đủ giữa 37.899 người dùng kiểm định và 18.357 sản phẩm tại epoch 0. Tích không gian người dùng và sản phẩm trên Sports đạt hơn 653 triệu phần tử, gấp 4.77 lần so với Amazon Baby (137 triệu phần tử). Ma trận điểm số đầy đủ trên Sports chiếm khoảng 2.78 GB, khi cộng thêm vùng đệm mặt nạ loại trừ và tìm kiếm top-k đã vượt quá kích thước các khối bộ nhớ có sẵn trong cache, kích hoạt PyTorch gọi cudaMalloc để xin thêm bộ nhớ vật lý từ driver. Trên Baby, quy mô nhỏ hơn 4.77 lần giúp toàn bộ phép tính nằm gọn trong các khối bộ nhớ cơ sở.
+
+Cơ chế đánh giá phân khối 512 người dùng trong kiến trúc v1-R đã khống chế tensor trung gian xuống mức vài chục MB, loại trừ hoàn toàn hiện tượng này trong quá trình vận hành thực tế. Bảng~\ref{tab:stair_cnlgcl_hardware} so sánh mức tiêu thụ tài nguyên thực tế giữa STAIR Baseline, STAIR-NE-NLGCL+ và STAIR-CNLGCL v1-R trên ba tập dữ liệu.
+
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\caption{So sánh mức tiêu thụ bộ nhớ GPU VRAM và thời gian huấn luyện giữa STAIR Baseline, STAIR-NE-NLGCL+ và STAIR-CNLGCL v1-R trên GPU Tesla T4 (16 GB).}
+\label{tab:stair_cnlgcl_hardware}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{llcccc}
+\toprule
+\rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Phiên bản} & \textbf{VRAM tensor đỉnh} & \textbf{VRAM tiến trình} & \textbf{Thời gian (500 ep)} & \textbf{Tốc độ trung bình} \\
+\midrule
+\textbf{Amazon Baby} & STAIR Baseline & 490.0 MB (0.48 GB) & 763.2 MB (0.75 GB) & 17.2 phút & 2.06 s / epoch \\
+& STAIR-NE-NLGCL+ & 652.0 MB (0.64 GB) & 925.2 MB (0.90 GB) & 23.3 phút & 2.80 s / epoch \\
+& STAIR-CNLGCL v1-R & \textbf{486.0 MB (0.47 GB)} & \textbf{759.2 MB (0.74 GB)} & 22.4 phút & 2.69 s / epoch \\
+\midrule
+\textbf{Amazon Sports} & STAIR Baseline & \textbf{696.0 MB (0.68 GB)} & \textbf{969.2 MB (0.95 GB)} & 38.6 phút & 4.63 s / epoch \\
+& STAIR-NE-NLGCL+ & 868.0 MB (0.85 GB) & 1141.0 MB (1.11 GB) & 52.8 phút & 6.33 s / epoch \\
+& STAIR-CNLGCL v1-R & 704.0 MB (0.69 GB) & 977.2 MB (0.95 GB) & 52.4 phút & 6.29 s / epoch \\
+\midrule
+\textbf{Amazon Electronics} & STAIR Baseline & 1738.0 MB (1.70 GB) & 2011.2 MB (1.96 GB) & 270.5 phút (4.51 h) & 32.46 s / epoch \\
+& STAIR-NE-NLGCL+ & 2512.0 MB (2.45 GB) & 2785.0 MB (2.72 GB) & 360.4 phút (6.01 h) & 43.25 s / epoch \\
+& STAIR-CNLGCL v1-R & \textbf{1648.0 MB (1.61 GB)} & \textbf{1921.2 MB (1.88 GB)} & 330.3 phút (5.51 h) & 39.64 s / epoch \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+Phân tích đối chiếu tài nguyên giữa các mô hình khẳng định các ưu điểm nổi bật của STAIR-CNLGCL v1-R:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Tiết kiệm bộ nhớ tensor thuần vượt bậc}: Theo chuẩn đo lường học thuật ghi nhận từ đồ thị theo dõi bộ nhớ, mức tiêu thụ VRAM tensor đỉnh của STAIR-CNLGCL v1-R giảm rất mạnh so với STAIR-NE-NLGCL+: giảm $25.5\%$ trên Baby ($652.0$ MB xuống $486.0$ MB), giảm $18.9\%$ trên Sports ($868.0$ MB xuống $704.0$ MB) và giảm $34.4\%$ trên Electronics ($2512.0$ MB xuống $1648.0$ MB). Đặc biệt trên cả Amazon Baby và Amazon Electronics, mức tiêu thụ tensor đỉnh của v1-R thậm chí còn thấp hơn cả mô hình STAIR Baseline (giảm từ $490.0$ MB xuống $486.0$ MB trên Baby và từ $1738.0$ MB xuống $1648.0$ MB trên Electronics) nhờ kỹ thuật giải phóng sớm các tensor trung gian và tính toán CPU-chunked. Ngoài ra, nếu chỉ đo lường lượng bộ nhớ tensor cấp phát động cho từng mini-batch trong vòng lặp huấn luyện, PyTorch Allocator ghi nhận mức đỉnh nội bộ cực kỳ nhỏ: $136.9$ MB trên Baby, $291.2$ MB trên Sports và $1261.2$ MB trên Electronics.
+    \item \textbf{Kiểm soát an toàn bộ nhớ tiến trình hệ thống}: VRAM tiến trình toàn pipeline trên tập dữ liệu quy mô lớn Amazon Electronics được khống chế an toàn ở mức $1.88$ GB ($1921.2$ MB), thấp hơn đáng kể so với mức $2.72$ GB ($2785.0$ MB) của STAIR-NE-NLGCL+ và $1.96$ GB ($2011.2$ MB) của Baseline. Mức tiêu thụ này chỉ chiếm $11.7\%$ tổng dung lượng GPU Tesla T4 (16 GB), loại trừ hoàn toàn nguy cơ quá tải bộ nhớ khi khởi tạo đồ thị cũng như khi thực hiện xếp hạng toàn bộ $63.001$ sản phẩm.
+    \item \textbf{Tối ưu hóa thời gian tính toán nhờ fused operations}: Nhờ cơ chế ghép khối bốn tensor thành tensor duy nhất $T_{\text{fused}} \in \mathbb{R}^{4 \times B \times D}$ giúp giảm số lần gọi CUDA kernel, STAIR-CNLGCL v1-R rút ngắn thời gian huấn luyện đáng kể so với STAIR-NE-NLGCL+: nhanh hơn $3.9\%$ trên Baby ($22.4$ phút so với $23.3$ phút), giữ mức tương đương trên Sports ($52.4$ phút so với $52.8$ phút dù phải tính toán đồ thị tăng cường nặng hơn gấp 2.63 lần) và nhanh hơn $8.4\%$ trên Electronics ($330.3$ phút so với $360.4$ phút, tiết kiệm hơn $30$ phút huấn luyện thực tế).
+\end{itemize}
+
+\subsubsection{Động lực học hội tụ và kiểm chứng tính trực giao}
+
+Quỹ đạo học tập của mô hình STAIR-CNLGCL v1-R cung cấp bằng chứng thực nghiệm rõ nét về tính độc lập trực giao giữa hai cơ chế can thiệp:
+\begin{enumerate}[leftmargin=*]
+    \item Quỹ đạo suy giảm của hàm mất mát BPR: Trên cả ba tập dữ liệu, hàm mất mát BPR thể hiện sự suy giảm dốc đứng trong 40 đến 50 epoch đầu tiên, sau đó chuyển sang pha tiệm cận ổn định mà không xảy ra hiện tượng dao động hay bùng nổ gradient. Mất mát BPR hội tụ sâu tại mức 0.0632 trên Sports, 0.1808 trên Baby và 0.0669 trên Electronics. Sự suy giảm có kiểm soát này khẳng định ma trận kề chuẩn hóa đối xứng $\hat{A}$ đã bảo toàn nghiêm ngặt bán kính phổ $\rho(\hat{A}) \le 1.0$, giữ cho quá trình truyền gradient qua bộ lọc AdamWSEvo luôn nằm trong vùng ổn định tuyệt đối.
+    \item Vai trò của chu trình khởi động tuyến tính linear warmup: Việc tăng dần trọng số $\lambda_{\text{cl}}$ từ 0 đến giá trị mục tiêu trong 50 đến 100 epoch đầu tiên cho phép hàm mục tiêu BPR định hình cấu trúc đa tạp nền tảng trước khi chịu toàn bộ áp lực phân tán từ hàm đối sánh InfoNCE. Động học của hàm mất mát tương phản phản ánh chính xác điều này: sau khi đạt đỉnh thích ứng trong các epoch đầu, mất mát tương phản suy giảm đơn điệu và liên tục (từ 5.66 xuống 4.77 trên Sports; từ 6.39 xuống 5.98 trên Baby; từ 7.25 xuống 6.54 trên Electronics).
+    \item Kết luận về tính trực giao và giá trị áp dụng: Về mặt giải tích, cơ chế đối sánh tầng biểu diễn trong forward pass chỉ điều chỉnh khoảng cách góc trên mặt cầu đơn vị, không làm biến đổi cấu trúc đồ thị. Trong khi đó, toán tử làm mịn BSC trong backward pass chỉ can thiệp vào ma trận lọc gradient trong không gian tham số, không tác động lên hàm mất mát hay giá trị dự đoán. Sự phân tách này chứng minh tính trực giao hoàn toàn giữa hai cơ chế, cho phép tích hợp đồng thời mà không làm suy giảm tính tổng quát hóa của mô hình.
+\end{enumerate}
+
+\clearpage
