@@ -11,6 +11,10 @@ import random
 import sys
 import time
 
+try:
+    import models.freerec_compat
+except Exception:
+    pass
 import freerec
 import numpy as np
 import torch

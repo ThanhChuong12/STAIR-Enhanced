@@ -14,7 +14,10 @@ import subprocess
 import sys
 from types import SimpleNamespace
 from typing import Dict, Tuple
-
+try:
+    import models.freerec_compat
+except Exception:
+    pass
 import freerec
 import numpy as np
 import pytest
