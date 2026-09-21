@@ -1,0 +1,25 @@
+# Usage: python main_stair_mhd_v3.py --config configs/dataset_mhd_v3_electronics.yaml
+# Inherits Amazon2014Electronics baseline: batch_size=4096, lr=1e-3, weight_decay=0.1, gamma=0.4
+base_config: Amazon2014Electronics_550_MMRec.yaml
+
+# Pilot overrides for STAIR-MHD v3 on Amazon Electronics (Scale test ~1.7M interactions, 63K items)
+knn_block_size: 256
+gate_hidden_dim: 16
+gate_floor: 0.05
+gate_prior: 0.8
+behavior_support_s: 10.0
+behavior_eta: 1.0
+modality_weights: [0.8333333333333334, 0.16666666666666666]
+learn_modality_weights: false
+bsc_mix_target: 0.25
+cl_weight_target: 0.001
+cl_temperature: 0.2
+budget_weight_target: 0.0001
+warmup_epochs: 10
+ramp_epochs: 20
+aux_lr_ratio: 0.1
+aux_weight_decay: 0.0
+gate_mode: soft
+gumbel_temperature: 0.5
+graph_weight_refresh: every_step
+projector: shared_linear_identity_init
