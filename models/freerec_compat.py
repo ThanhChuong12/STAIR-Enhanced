@@ -137,3 +137,27 @@ if not hasattr(dp, 'functional_datapipe'):
             return cls
         return decorator
     dp.functional_datapipe = functional_datapipe
+
+# 3. PyTorch 2.6+ Serialization weights_only safe globals and Monitor sanitizer
+import collections
+try:
+    if hasattr(torch.serialization, 'add_safe_globals'):
+        torch.serialization.add_safe_globals([collections.defaultdict])
+except Exception:
+    pass
+
+try:
+    from freerec.utils import Monitor
+    _orig_monitor_state_dict = Monitor.state_dict
+    def _safe_monitor_state_dict(self):
+        raw = _orig_monitor_state_dict(self)
+        safe = {}
+        for k, v in raw.items():
+            if isinstance(v, (dict, collections.defaultdict)):
+                safe[k] = {ik: iv for ik, iv in v.items()}
+            else:
+                safe[k] = v
+        return safe
+    Monitor.state_dict = _safe_monitor_state_dict
+except Exception:
+    pass

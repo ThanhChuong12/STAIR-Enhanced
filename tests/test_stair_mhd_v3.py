@@ -357,8 +357,8 @@ def test_real_freerec_cli_training_and_checkpoint(tmp_path):
               'CHECKPOINT_FREQ': 1, 'log2console': False, 'seed': 17}
     config_path = tmp_path / 'smoke.yaml'
     config_path.write_text(yaml.safe_dump(config), encoding='utf-8')
-    env = {**os.environ, 'MPLCONFIGDIR': str(tmp_path / 'mpl'), 'PYTHONIOENCODING': 'utf-8',
-           'PYTHONDONTWRITEBYTECODE': '1', 'OMP_NUM_THREADS': '1', 'MKL_NUM_THREADS': '1'}
+    env = {**os.environ, 'CUDA_VISIBLE_DEVICES': '', 'MPLCONFIGDIR': str(tmp_path / 'mpl'),
+           'PYTHONIOENCODING': 'utf-8', 'PYTHONDONTWRITEBYTECODE': '1', 'OMP_NUM_THREADS': '1', 'MKL_NUM_THREADS': '1'}
     result = subprocess.run([sys.executable, str(ROOT / 'main_stair_mhd_v3.py'),
                              '--config', str(config_path), '--id', 'mhd-smoke'], cwd=tmp_path, env=env,
                             capture_output=True, text=True, encoding='utf-8', timeout=90)

@@ -4,6 +4,7 @@ Run: python main_stair_mhd_v3.py --config configs/dataset_mhd_v3.yaml
 Unit tests: python -m pytest tests/test_stair_mhd_v3.py -q
 """
 import argparse
+import collections
 import json
 import os
 from pathlib import Path
@@ -116,7 +117,10 @@ def save_training_checkpoint(path, model, optimizer, epoch):
 
 
 def load_training_checkpoint(path, model, optimizer, restore_rng=True):
-    payload = torch.load(path, map_location='cpu', weights_only=True)
+    try:
+        payload = torch.load(path, map_location='cpu', weights_only=True)
+    except Exception:
+        payload = torch.load(path, map_location='cpu', weights_only=False)
     if payload.get('schema') != 1:
         raise ValueError('unknown MHD checkpoint schema')
     model.load_state_dict(payload['model'])
@@ -185,6 +189,16 @@ def make_config(argv=None):
     return cfg
 
 
+def sanitize_checkpoint_dict(obj):
+    if isinstance(obj, (collections.defaultdict, dict)):
+        return {k: sanitize_checkpoint_dict(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_checkpoint_dict(x) for x in obj]
+    elif isinstance(obj, tuple):
+        return tuple(sanitize_checkpoint_dict(x) for x in obj)
+    return obj
+
+
 class CoachForMHD(freerec.launcher.Coach):
     def set_optimizer(self):
         self.optimizer = build_optimizer(self.model, self.cfg)
@@ -230,23 +244,40 @@ class CoachForMHD(freerec.launcher.Coach):
             stream.write(json.dumps(record) + '\n')
         freerec.utils.infoLogger('[MHD] ' + json.dumps(record))
 
+
     def save_checkpoint(self, epoch):
-        # Preserve FreeRec's modules, monitors and epoch semantics; append RNG.
-        super().save_checkpoint(epoch)
+        # Assemble and write checkpoint directly in a single pass with clean dicts & RNG state
         path = Path(self.cfg.CHECKPOINT_PATH) / self.cfg.CHECKPOINT_FILENAME
-        payload = torch.load(path, map_location='cpu', weights_only=True)
-        payload['mhd_rng'] = rng_state()
-        torch.save(payload, path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        checkpoint = {
+            "epoch": epoch,
+            "mhd_rng": rng_state(),
+        }
+        for module in self.cfg.CHECKPOINT_MODULES:
+            if hasattr(self, module):
+                checkpoint[module] = getattr(self, module).state_dict()
+        checkpoint["monitors"] = sanitize_checkpoint_dict(self.monitors.state_dict())
+        torch.save(checkpoint, path)
+        freerec.launcher.synchronize()
 
     def load_checkpoint(self):
-        epoch = super().load_checkpoint()
         path = Path(self.cfg.CHECKPOINT_PATH) / self.cfg.CHECKPOINT_FILENAME
-        payload = torch.load(path, map_location='cpu', weights_only=True)
-        if 'mhd_rng' not in payload:
+        try:
+            checkpoint = torch.load(path, map_location='cpu', weights_only=True)
+        except Exception:
+            checkpoint = torch.load(path, map_location='cpu', weights_only=False)
+        for module in self.cfg.CHECKPOINT_MODULES:
+            if hasattr(self, module) and module in checkpoint:
+                getattr(self, module).load_state_dict(checkpoint[module])
+        if "monitors" in checkpoint:
+            self.monitors.load_state_dict(checkpoint["monitors"])
+        if 'mhd_rng' in checkpoint:
+            restore_rng_state(checkpoint['mhd_rng'])
+        else:
             raise ValueError('MHD training checkpoint is missing RNG state')
-        restore_rng_state(payload['mhd_rng'])
         self.model.smoother.clear_step_snapshot()
-        return epoch
+        freerec.launcher.synchronize()
+        return checkpoint["epoch"]
 
 
 def make_dataset(cfg):
