@@ -1,0 +1,5 @@
+Dataset,Method,Dimension,Epoch,Time_per_Epoch_s,GPU_Memory_MB,Recall@10,Recall@20,NDCG@10,NDCG@20,Delta_Recall@10_vs_Base64D,Delta_Recall@20_vs_Base64D,Delta_NDCG@10_vs_Base64D,Delta_NDCG@20_vs_Base64D,Delta_Recall@10_vs_Base256D,Delta_Recall@20_vs_Base256D,Delta_NDCG@10_vs_Base256D,Delta_NDCG@20_vs_Base256D
+AMAZON BABY,STAIR Baseline (Paper Table 2),64D,Paper,1.52,1328,0.0674,0.1042,0.0359,0.0454,-,-,-,-,-,-,-,-
+AMAZON BABY,★ STAIR DCD-Gated,64D,215,4.42,1328,0.065851,0.100942,0.035368,0.044373,-2.30%,-3.13%,-1.48%,-2.26%,-,-,-,-
+AMAZON BABY,STAIR Baseline,256D,455,4.64,624,0.068616,0.104444,0.036765,0.046002,+1.80%,+0.23%,+2.41%,+1.33%,-,-,-,-
+AMAZON BABY,★ STAIR DCD-Gated SOTA,256D,145,6.24,624,0.068748,0.104544,0.037278,0.046533,+2.00%,+0.33%,+3.84%,+2.50%,+0.19%,+0.10%,+1.40%,+1.15%

@@ -1,0 +1,5 @@
+Dataset,Method,Dimension,Epoch,Time_per_Epoch_s,GPU_Memory_MB,Recall@10,Recall@20,NDCG@10,NDCG@20,Delta_Recall@10_vs_Base64D,Delta_Recall@20_vs_Base64D,Delta_NDCG@10_vs_Base64D,Delta_NDCG@20_vs_Base64D,Delta_Recall@10_vs_Base256D,Delta_Recall@20_vs_Base256D,Delta_NDCG@10_vs_Base256D,Delta_NDCG@20_vs_Base256D
+AMAZON SPORTS,STAIR Baseline (Paper Table 2),64D,Paper,3.23,6814,0.0743,0.1117,0.0407,0.0503,-,-,-,-,-,-,-,-
+AMAZON SPORTS,★ STAIR DCD-Gated,64D,280,5.77,6814,0.075172,0.11338,0.041036,0.050897,+1.17%,+1.50%,+0.83%,+1.19%,-,-,-,-
+AMAZON SPORTS,STAIR Baseline,256D,480,9.02,1044,0.080545,0.118594,0.044443,0.054244,+8.41%,+6.17%,+9.20%,+7.84%,-,-,-,-
+AMAZON SPORTS,★ STAIR DCD-Gated SOTA,256D,400,11.06,1044,0.084482,0.120051,0.047941,0.05713,+13.70%,+7.48%,+17.79%,+13.58%,+4.89%,+1.23%,+7.87%,+5.32%
