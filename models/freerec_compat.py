@@ -161,3 +161,119 @@ try:
     Monitor.state_dict = _safe_monitor_state_dict
 except Exception:
     pass
+
+# 4. Torch Geometric compatibility shims (required by freerec.graph and dataset.to_normalized_adj)
+try:
+    import torch_geometric
+    import torch_geometric.utils
+    import torch_geometric.utils.num_nodes
+except Exception:
+    pass
+
+_need_tg_shim = (
+    'torch_geometric' not in sys.modules
+    or 'torch_geometric.utils' not in sys.modules
+    or not hasattr(sys.modules.get('torch_geometric.utils'), 'maybe_num_nodes')
+    or not hasattr(sys.modules.get('torch_geometric.utils'), 'to_undirected')
+)
+
+if _need_tg_shim:
+    if 'torch_geometric' not in sys.modules or not isinstance(sys.modules.get('torch_geometric'), types.ModuleType):
+        tg = types.ModuleType('torch_geometric')
+        sys.modules['torch_geometric'] = tg
+    else:
+        tg = sys.modules['torch_geometric']
+
+    if 'torch_geometric.utils' not in sys.modules or not isinstance(sys.modules.get('torch_geometric.utils'), types.ModuleType):
+        tg_utils = types.ModuleType('torch_geometric.utils')
+        sys.modules['torch_geometric.utils'] = tg_utils
+    else:
+        tg_utils = sys.modules['torch_geometric.utils']
+    tg.utils = tg_utils
+
+    if 'torch_geometric.utils.num_nodes' not in sys.modules or not isinstance(sys.modules.get('torch_geometric.utils.num_nodes'), types.ModuleType):
+        tg_num_nodes = types.ModuleType('torch_geometric.utils.num_nodes')
+        sys.modules['torch_geometric.utils.num_nodes'] = tg_num_nodes
+    else:
+        tg_num_nodes = sys.modules['torch_geometric.utils.num_nodes']
+    tg_utils.num_nodes = tg_num_nodes
+
+    def maybe_num_nodes(edge_index: torch.Tensor, num_nodes=None) -> int:
+        if num_nodes is not None:
+            return int(num_nodes)
+        return int(edge_index.max()) + 1 if edge_index.numel() > 0 else 0
+
+    def coalesce(
+        edge_index: torch.Tensor,
+        edge_attr=None,
+        num_nodes=None,
+        reduce: str = "sum",
+        is_sorted: bool = False,
+        sort_by_row: bool = True,
+    ):
+        N = maybe_num_nodes(edge_index, num_nodes)
+        has_attr = edge_attr is not None
+        if not has_attr:
+            edge_attr = torch.ones(edge_index.size(1), dtype=torch.float32, device=edge_index.device)
+
+        if reduce == "max":
+            row, col = edge_index[0].long(), edge_index[1].long()
+            keys = row * N + col
+            perm = torch.argsort(keys)
+            sorted_keys = keys[perm]
+            sorted_attr = edge_attr[perm]
+            sorted_edges = edge_index[:, perm]
+            mask = torch.cat([torch.tensor([True], device=keys.device), sorted_keys[1:] != sorted_keys[:-1]])
+            if hasattr(torch, "scatter_reduce"):
+                unique_keys, inverse = torch.unique(keys, return_inverse=True)
+                out_attr = torch.zeros(unique_keys.size(0), dtype=edge_attr.dtype, device=edge_attr.device)
+                out_attr = torch.scatter_reduce(out_attr, 0, inverse, edge_attr, reduce="amax", include_self=False)
+                unique_edge_index = sorted_edges[:, mask]
+                return unique_edge_index, out_attr if has_attr else None
+            else:
+                return sorted_edges[:, mask], sorted_attr[mask] if has_attr else None
+        else:
+            coo = torch.sparse_coo_tensor(edge_index, edge_attr, (N, N), device=edge_index.device).coalesce()
+            return coo.indices(), coo.values() if has_attr else None
+
+    def to_undirected(
+        edge_index: torch.Tensor,
+        edge_attr=None,
+        num_nodes=None,
+        reduce: str = "max",
+    ):
+        row, col = edge_index[0], edge_index[1]
+        new_row = torch.cat([row, col], dim=0)
+        new_col = torch.cat([col, row], dim=0)
+        new_edge_index = torch.stack([new_row, new_col], dim=0)
+        new_edge_attr = torch.cat([edge_attr, edge_attr], dim=0) if edge_attr is not None else None
+        return coalesce(new_edge_index, new_edge_attr, num_nodes=num_nodes, reduce=reduce)
+
+    def _stub(*args, **kwargs):
+        pass
+
+    for fn_name, fn_impl in [
+        ("maybe_num_nodes", maybe_num_nodes),
+        ("coalesce", coalesce),
+        ("to_undirected", to_undirected),
+    ]:
+        if not hasattr(tg_utils, fn_name):
+            setattr(tg_utils, fn_name, fn_impl)
+
+    if not hasattr(tg_num_nodes, "maybe_num_nodes"):
+        setattr(tg_num_nodes, "maybe_num_nodes", maybe_num_nodes)
+
+    for _stub_fn in [
+        "add_remaining_self_loops",
+        "remove_self_loops",
+        "scatter",
+        "spmm",
+        "to_edge_index",
+        "k_hop_subgraph",
+        "dropout_node",
+        "dropout_edge",
+        "dropout_path",
+    ]:
+        if not hasattr(tg_utils, _stub_fn):
+            setattr(tg_utils, _stub_fn, _stub)
+
