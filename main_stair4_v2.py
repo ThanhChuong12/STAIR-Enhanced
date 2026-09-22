@@ -203,15 +203,79 @@ class CoachForSTAIR4V2(freerec.launcher.Coach):
     are inherited unchanged from freerec.launcher.Coach.
     """
 
+    def _checkpoint_optimizer_state(self) -> dict:
+        """Return optimizer state without runtime-only smoother callbacks.
+
+        ``AdamWSEvo.state_dict()`` faithfully includes custom keys from each
+        parameter group.  The item group's ``smoother`` is a live callback
+        closing over the model and must never be pickled: it is neither
+        trainable state nor portable checkpoint data.
+        """
+        state = self.optimizer.state_dict()
+        for group in state.get("param_groups", []):
+            group.pop("smoother", None)
+        return state
+
+    def save_checkpoint(self, epoch: int) -> None:
+        """Atomically save a callback-free FreeRec-compatible checkpoint."""
+        path = Path(self.cfg.CHECKPOINT_PATH) / self.cfg.CHECKPOINT_FILENAME
+        payload = {"epoch": int(epoch)}
+        for module_name in self.cfg.CHECKPOINT_MODULES:
+            if module_name == "optimizer":
+                payload[module_name] = self._checkpoint_optimizer_state()
+            else:
+                payload[module_name] = getattr(self, module_name).state_dict()
+        payload["monitors"] = self.monitors.state_dict()
+        save_checkpoint_atomic(path, payload)
+
+    def load_checkpoint(self) -> int:
+        """Load a checkpoint and rebind the live item smoother callback."""
+        path = Path(self.cfg.CHECKPOINT_PATH) / self.cfg.CHECKPOINT_FILENAME
+        checkpoint = load_checkpoint_checked(path)
+        for module_name in self.cfg.CHECKPOINT_MODULES:
+            if module_name == "optimizer":
+                self.optimizer.load_state_dict(checkpoint[module_name])
+                # Optimizer loading replaces group dictionaries.  Reattach
+                # callbacks by role after state restoration.
+                for group in self.optimizer.param_groups:
+                    group["smoother"] = (
+                        self.model.bsf_smoother
+                        if group.get("role") == "items"
+                        else None
+                    )
+            else:
+                getattr(self, module_name).load_state_dict(checkpoint[module_name])
+        self.monitors.load_state_dict(checkpoint["monitors"])
+        return int(checkpoint["epoch"])
+
     def set_optimizer(self):
         """Build AdamWSEvo with STAIR4-v2 parameter groups."""
         model: STAIR4V2 = self.model
         groups = model.parameter_groups()
+        # FreeRec 0.9.x exposes Adam coefficients as
+        # ``optim_*_moment_decay`` while newer parser versions also expose
+        # the conventional ``beta1``/``beta2`` aliases.  Resolve both
+        # schemas explicitly so the optimizer remains numerically identical
+        # to the baseline configuration on either runtime.
+        beta1 = getattr(
+            self.cfg,
+            "beta1",
+            getattr(self.cfg, "optim_first_moment_decay", 0.9),
+        )
+        beta2 = getattr(
+            self.cfg,
+            "beta2",
+            getattr(self.cfg, "optim_second_moment_decay", 0.999),
+        )
+        if not (0.0 <= float(beta1) < 1.0 and 0.0 <= float(beta2) < 1.0):
+            raise ValueError(
+                f"invalid AdamWSEvo betas: beta1={beta1!r}, beta2={beta2!r}"
+            )
         if self.cfg.optimizer.lower() in ("adamwsevo", "adamw"):
             self.optimizer = AdamWSEvo(
                 groups,
                 lr=self.cfg.lr,
-                betas=(self.cfg.beta1, self.cfg.beta2),
+                betas=(float(beta1), float(beta2)),
                 weight_decay=self.cfg.weight_decay,
             )
         else:

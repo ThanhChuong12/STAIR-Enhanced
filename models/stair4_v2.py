@@ -201,6 +201,11 @@ class STAIR4V2(freerec.models.GenRecArch):
         # --- Static graph preparation ---
         self.prepare(dataset.path)
 
+        # GenRecArch does not create the task criterion for custom adapters.
+        # Keep the baseline BPR objective explicit and use the same reduction
+        # as main.py so A0 remains comparable to STAIR.
+        self.criterion = freerec.criterions.BPRLoss(reduction="mean")
+
         # --- Auxiliary head (isolated RNG) ---
         # torch.random.fork_rng with devices=[] → CPU-only fork; does not
         # consume from CUDA stream, preserving baseline sampling RNG.
