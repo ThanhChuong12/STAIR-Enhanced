@@ -74,10 +74,13 @@ def load_config(path, _parents=()):
 
 class InheritingParser(freerec.parser.Parser):
     def load(self):
-        args = self.parser.parse_args()
-        if args.config:
+        # Support interactive environments (Jupyter / Colab / Kaggle) where
+        # sys.argv contains kernel arguments like '-f <kernel.json>'.
+        args, _ = self.parser.parse_known_args()
+        if getattr(args, "config", None):
             self.set_defaults(**load_config(args.config))
-        return self.parser.parse_args()
+        args, _ = self.parser.parse_known_args()
+        return args
 
 
 # ── CLI arguments ───────────────────────────────────────────────────────────
@@ -136,48 +139,13 @@ cfg.beta3 = (
 
 
 # ---------------------------------------------------------------------------
-# Checkpoint utilities (atomic write, plain-dict conversion)
+# Checkpoint utilities (re-exported from models.stair4_v2_utils)
 # ---------------------------------------------------------------------------
-
-def _to_plain(obj):
-    """Recursively convert defaultdicts/mappings to plain dict."""
-    if isinstance(obj, dict):
-        return {k: _to_plain(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        converted = [_to_plain(v) for v in obj]
-        return type(obj)(converted)
-    return obj
-
-
-def save_checkpoint_atomic(path: Path, payload: dict) -> None:
-    """Write payload to a tmp file then rename; avoids partial writes."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    torch.save(_to_plain(payload), str(tmp))
-    tmp.replace(path)
-
-
-def load_checkpoint_checked(path: Path,
-                             expected_manifest: Optional[dict] = None) -> dict:
-    """Load checkpoint; validate manifest keys if provided."""
-    # v2 checkpoints are plain dictionaries containing tensors and primitive
-    # values only.  Restricted loading prevents arbitrary pickle execution
-    # when a run artifact is copied from an external machine.
-    try:
-        ckpt = torch.load(str(path), map_location="cpu", weights_only=True)
-    except TypeError:  # compatibility with older PyTorch releases
-        ckpt = torch.load(str(path), map_location="cpu")
-    if not isinstance(ckpt, dict):
-        raise ValueError(f"checkpoint must contain a dictionary, got {type(ckpt).__name__}")
-    if expected_manifest:
-        for key, val in expected_manifest.items():
-            if ckpt.get(key) != val:
-                raise ValueError(
-                    f"checkpoint mismatch: {key!r} expected {val!r}, "
-                    f"got {ckpt.get(key)!r}"
-                )
-    return ckpt
+from models.stair4_v2_utils import (
+    _to_plain,
+    save_checkpoint_atomic,
+    load_checkpoint_checked,
+)
 
 
 # ---------------------------------------------------------------------------

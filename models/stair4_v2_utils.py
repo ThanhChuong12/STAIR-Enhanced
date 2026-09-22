@@ -22,7 +22,8 @@ from __future__ import annotations
 
 import hashlib
 import math
-from typing import Dict, NamedTuple, Optional, Sequence
+from pathlib import Path
+from typing import Dict, NamedTuple, Optional, Sequence, Union
 
 import torch
 from torch import Tensor
@@ -350,3 +351,46 @@ def hash_data_manifest(tensors: Dict[str, Tensor]) -> str:
         digest.update(header)
         digest.update(t_cpu.numpy().tobytes())
     return digest.hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Checkpoint utilities (atomic write, plain-dict conversion)
+# ---------------------------------------------------------------------------
+
+def _to_plain(obj):
+    """Recursively convert defaultdicts/mappings to plain dict."""
+    if isinstance(obj, dict):
+        return {k: _to_plain(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        converted = [_to_plain(v) for v in obj]
+        return type(obj)(converted)
+    return obj
+
+
+def save_checkpoint_atomic(path: Union[Path, str], payload: dict) -> None:
+    """Write payload to a tmp file then rename; avoids partial writes."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    torch.save(_to_plain(payload), str(tmp))
+    tmp.replace(path)
+
+
+def load_checkpoint_checked(path: Union[Path, str],
+                             expected_manifest: Optional[dict] = None) -> dict:
+    """Load checkpoint; validate manifest keys if provided."""
+    path = Path(path)
+    try:
+        ckpt = torch.load(str(path), map_location="cpu", weights_only=True)
+    except TypeError:  # compatibility with older PyTorch releases
+        ckpt = torch.load(str(path), map_location="cpu")
+    if not isinstance(ckpt, dict):
+        raise ValueError(f"checkpoint must contain a dictionary, got {type(ckpt).__name__}")
+    if expected_manifest:
+        for key, val in expected_manifest.items():
+            if ckpt.get(key) != val:
+                raise ValueError(
+                    f"checkpoint mismatch: {key!r} expected {val!r}, "
+                    f"got {ckpt.get(key)!r}"
+                )
+    return ckpt
