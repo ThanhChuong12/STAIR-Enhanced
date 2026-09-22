@@ -40,8 +40,8 @@ try:
 except Exception:
     dp = None
 
-if dp is None or 'torchdata.datapipes' not in sys.modules:
-    if 'torchdata' not in sys.modules:
+if dp is None or 'torchdata.datapipes' not in sys.modules or not hasattr(sys.modules.get('torchdata.datapipes'), 'iter'):
+    if 'torchdata' not in sys.modules or not isinstance(sys.modules.get('torchdata'), types.ModuleType):
         td = types.ModuleType('torchdata')
         sys.modules['torchdata'] = td
     else:

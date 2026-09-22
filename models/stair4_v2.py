@@ -24,6 +24,10 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+try:
+    import models.freerec_compat
+except Exception:
+    pass
 import freerec
 import torch
 import torch.nn as nn

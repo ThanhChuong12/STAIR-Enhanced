@@ -38,6 +38,10 @@ import yaml
 
 import torch
 import torch.nn as nn
+try:
+    import models.freerec_compat
+except Exception:
+    pass
 import freerec
 
 from optimizers.AdamW import AdamWSEvo
