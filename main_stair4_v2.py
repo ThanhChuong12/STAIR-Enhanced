@@ -34,20 +34,50 @@ import uuid
 from dataclasses import asdict
 from pathlib import Path
 from typing import Dict, Optional
+import yaml
 
 import torch
 import torch.nn as nn
 import freerec
 
-from optimizers.Adam import AdamSEvo
 from optimizers.AdamW import AdamWSEvo
 from models.stair4_v2 import STAIR4V2, STAIR4V2Options
 
 # ── Version pin (mirrors main.py) ──────────────────────────────────────────
 freerec.declare(version="1.0.1")
 
+# ── Explicit YAML inheritance ──────────────────────────────────────────────
+def load_config(path, _parents=()):
+    """Explicit YAML inheritance: base_config is relative to its own file or configs/."""
+    path = Path(path).resolve()
+    if path in _parents:
+        raise ValueError("cyclic base_config inheritance")
+    with path.open(encoding="utf-8") as stream:
+        values = yaml.safe_load(stream)
+    if not isinstance(values, dict):
+        raise ValueError(f"configuration must be a mapping: {path}")
+    parent = values.pop("base_config", None)
+    if parent:
+        parent_path = path.parent / parent
+        if not parent_path.exists():
+            parent_path = Path("configs") / parent
+        merged = load_config(parent_path, (*_parents, path))
+    else:
+        merged = {}
+    merged.update(values)
+    return merged
+
+
+class InheritingParser(freerec.parser.Parser):
+    def load(self):
+        args = self.parser.parse_args()
+        if args.config:
+            self.set_defaults(**load_config(args.config))
+        return self.parser.parse_args()
+
+
 # ── CLI arguments ───────────────────────────────────────────────────────────
-cfg = freerec.parser.Parser()
+cfg = InheritingParser()
 
 # Baseline shared args
 cfg.add_argument("--embedding-dim", type=int, default=64)
@@ -72,6 +102,8 @@ cfg.add_argument("--ramp-epochs", type=int, default=20)
 cfg.add_argument("--spectral-time", type=float, default=0.5)
 cfg.add_argument("--spectral-mix-target", type=float, default=0.1)
 cfg.add_argument("--aux-lr-ratio", type=float, default=0.1)
+cfg.add_argument("--aux-weight-decay", type=float, default=0.0)
+cfg.add_argument("--knn-block-size", type=int, default=256)
 cfg.add_argument("--ablation-id", type=str, default="A0")
 
 cfg.set_defaults(
@@ -125,7 +157,15 @@ def save_checkpoint_atomic(path: Path, payload: dict) -> None:
 def load_checkpoint_checked(path: Path,
                              expected_manifest: Optional[dict] = None) -> dict:
     """Load checkpoint; validate manifest keys if provided."""
-    ckpt = torch.load(str(path), map_location="cpu", weights_only=False)
+    # v2 checkpoints are plain dictionaries containing tensors and primitive
+    # values only.  Restricted loading prevents arbitrary pickle execution
+    # when a run artifact is copied from an external machine.
+    try:
+        ckpt = torch.load(str(path), map_location="cpu", weights_only=True)
+    except TypeError:  # compatibility with older PyTorch releases
+        ckpt = torch.load(str(path), map_location="cpu")
+    if not isinstance(ckpt, dict):
+        raise ValueError(f"checkpoint must contain a dictionary, got {type(ckpt).__name__}")
     if expected_manifest:
         for key, val in expected_manifest.items():
             if ckpt.get(key) != val:
@@ -197,17 +237,10 @@ class CoachForSTAIR4V2(freerec.launcher.Coach):
                 betas=(self.cfg.beta1, self.cfg.beta2),
                 weight_decay=self.cfg.weight_decay,
             )
-        elif self.cfg.optimizer.lower() in ("adamsevo", "adam"):
-            self.optimizer = AdamSEvo(
-                groups,
-                lr=self.cfg.lr,
-                betas=(self.cfg.beta1, self.cfg.beta2),
-                weight_decay=self.cfg.weight_decay,
-            )
         else:
             raise NotImplementedError(
                 f"Unsupported optimizer {self.cfg.optimizer!r}; "
-                "use adamwsevo or adamsevo"
+                "STAIR4-v2 requires adamwsevo (or its adamw alias)"
             )
 
     def train_per_epoch(self, epoch: int):
@@ -226,18 +259,23 @@ class CoachForSTAIR4V2(freerec.launcher.Coach):
         for data in self.dataloader:
             data = self.dict_to_device(data)
             model.train()
-
-            loss = model.fit(data)   # arms smoother inside fit()
-
-            if not torch.isfinite(loss):
-                raise FloatingPointError(
-                    f"Nonfinite loss={loss.item():.4f} at epoch={epoch}; "
-                    "aborting to prevent silent divergence"
-                )
-
             self.optimizer.zero_grad(set_to_none=True)
             try:
+                # Keep the baseline ordering: clear stale gradients before a
+                # fresh forward pass; model.fit() arms the step-scoped
+                # smoother only after constructing the complete loss graph.
+                loss = model.fit(data)
+                if not torch.isfinite(loss):
+                    raise FloatingPointError(
+                        f"Nonfinite loss={loss.item():.4f} at epoch={epoch}; "
+                        "aborting to prevent silent divergence"
+                    )
                 loss.backward()
+                for parameter in model.parameters():
+                    if parameter.grad is not None and not torch.isfinite(parameter.grad).all():
+                        raise FloatingPointError(
+                            f"Nonfinite gradient in {parameter.__class__.__name__} at epoch={epoch}"
+                        )
                 self.optimizer.step()
             finally:
                 # Always clear smoother state — even if backward() throws

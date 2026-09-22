@@ -1,0 +1,19 @@
+# Usage: python main_stair4_v2.py --config configs/dataset_stair4_v2_sports.yaml
+# Inherits Amazon2014Sports baseline: batch_size=1024, lr=1e-3, weight_decay=0.1, gamma=0.2
+base_config: Amazon2014Sports_550_MMRec.yaml
+
+# STAIR4-v2 (BSF-POCL) configuration on Amazon Sports
+auxiliary_kernel: phase_fidelity
+rotation_mode: learned_givens
+smoother_mode: bsf_mix
+pocl_weight_target: 0.001
+contrastive_temperature: 0.2
+phase_scale: 1.0
+warmup_epochs: 10
+ramp_epochs: 20
+spectral_time: 0.5
+spectral_mix_target: 0.1
+aux_lr_ratio: 0.1
+aux_weight_decay: 0.0
+knn_block_size: 256
+ablation_id: A6

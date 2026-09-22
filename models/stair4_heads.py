@@ -213,6 +213,11 @@ def cosine_kernel(
         # Apply Givens in real by treating real[d] as complex[d/2] re+im channels
         # This is a capacity-matched control: d/2 rotation parameters, same as phase branch
         half = d // 2
+        if givens.d != half:
+            raise ValueError(
+                "Cosine-kernel Givens rotation must operate on d/2 complex "
+                f"channels; got givens.d={givens.d}, expected {half}"
+            )
         k_complex = torch.complex(k[:, :half], k[:, half:])  # [Bk, d/2]
         k_rotated = givens(k_complex)                         # [Bk, d/2] complex
         k = torch.cat([k_rotated.real, k_rotated.imag], dim=-1)  # [Bk, d]
@@ -360,9 +365,12 @@ class CrossLayerContrastiveHead(nn.Module):
 
         # Givens rotation on target branch
         if rotation == "learned_givens":
-            self.givens = PairwiseGivens(d)
+            # Phase vectors have d complex channels.  The cosine control
+            # packs d real channels into d/2 complex channels, so its
+            # capacity-matched rotation must be sized independently.
+            self.givens = PairwiseGivens(d if kernel == "phase_fidelity" else d // 2)
         elif rotation == "frozen_random":
-            self.givens = PairwiseGivens(d)
+            self.givens = PairwiseGivens(d if kernel == "phase_fidelity" else d // 2)
             # Freeze: no gradient, sample random rotation
             nn.init.uniform_(self.givens.theta, -math.pi, math.pi)
             self.givens.theta.requires_grad_(False)

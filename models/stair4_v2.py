@@ -84,6 +84,10 @@ class STAIR4V2Options:
             raise ValueError(f"rotation_mode must be identity/learned_givens/frozen_random, got {self.rotation_mode!r}")
         if self.smoother_mode not in ("baseline", "identity_mix", "bsf_mix"):
             raise ValueError(f"smoother_mode must be baseline/identity_mix/bsf_mix, got {self.smoother_mode!r}")
+        if self.aux_view != "raw_first_hop":
+            raise ValueError("v2 currently supports aux_view='raw_first_hop' only")
+        if self.kernel_backend not in ("complex", "real_imag"):
+            raise ValueError("kernel_backend must be 'complex' or 'real_imag'")
         if self.pocl_weight_target < 0:
             raise ValueError("pocl_weight_target must be non-negative")
         if self.contrastive_temperature <= 0 or not math.isfinite(self.contrastive_temperature):
@@ -92,16 +96,22 @@ class STAIR4V2Options:
             raise ValueError("phase_scale must be positive and finite")
         if self.warmup_epochs < 0 or self.ramp_epochs <= 0:
             raise ValueError("warmup_epochs >= 0 and ramp_epochs > 0 required")
-        if not (0 <= self.spectral_time <= 1):
+        if not math.isfinite(self.spectral_time) or not (0 <= self.spectral_time <= 1):
             raise ValueError("spectral_time must be in [0, 1]")
-        if not (0 <= self.spectral_mix_target <= 1):
+        if not math.isfinite(self.spectral_mix_target) or not (0 <= self.spectral_mix_target <= 1):
             raise ValueError("spectral_mix_target must be in [0, 1]")
         if self.aux_lr_ratio != 0.1 or self.aux_weight_decay != 0.0:
             raise ValueError("v2 requires aux_lr_ratio=0.1 and aux_weight_decay=0.0")
         if len(self.modality_weights) != 2 or min(self.modality_weights) < 0:
             raise ValueError("two non-negative modality_weights required")
+        if not all(math.isfinite(float(v)) for v in self.modality_weights):
+            raise ValueError("modality_weights must be finite")
         if not math.isclose(sum(self.modality_weights), 1.0, abs_tol=1e-7):
             raise ValueError("modality_weights must sum to 1")
+        if self.diagnostic_interval_steps < 0:
+            raise ValueError("diagnostic_interval_steps must be non-negative")
+        if self.knn_block_size < 1:
+            raise ValueError("knn_block_size must be positive")
 
     @classmethod
     def from_config(cls, cfg):
@@ -158,6 +168,8 @@ class STAIR4V2(freerec.models.GenRecArch):
             )
         if cfg.gamma <= 0:
             raise ValueError(f"gamma must be positive, got {cfg.gamma}")
+        if self.options.auxiliary_kernel != "none" and self.num_layers < 1:
+            raise ValueError("num_layers must be >= 1 when the auxiliary cross-layer view is enabled")
 
         self.current_epoch: int = 0
         self._global_step: int = 0
@@ -465,10 +477,10 @@ class STAIR4V2(freerec.models.GenRecArch):
             smoothed = smoothed + features
             if layer == 0:
                 # Capture X1 BEFORE beta multiplication completes (design §6.2:
-                # "X1 được chọn trước beta attenuation").
+                # "X1 is selected before beta attenuation".
                 # We store Adj @ X0 (scaled by beta_complement already).
                 # To get pre-attenuation: divide back if nonzero, but the spec
-                # says "trước beta attenuation" == the hop BEFORE scaling.
+                # says "before beta attenuation" == the hop BEFORE scaling.
                 # Implementation: store Adj @ X0 (without the beta multiply).
                 # Recompute cleanly: X1 = Adj @ X0_all (unscaled).
                 X1_all = self.Adj @ X0_all          # [U+I, d] first-hop, unscaled

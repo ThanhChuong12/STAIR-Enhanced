@@ -244,6 +244,8 @@ def build_positive_mask(
 
     # searchsorted on sorted unique index.keys
     sorted_keys = index.keys  # [E] sorted
+    if sorted_keys.numel() == 0:
+        return torch.zeros((B_u, B_i), dtype=torch.bool)
     pos = torch.searchsorted(sorted_keys, keys.reshape(-1))  # [B_u*B_i]
     # Clamp to valid range before indexing
     pos_clamped = pos.clamp(0, sorted_keys.numel() - 1)
@@ -291,6 +293,9 @@ def validate_static_bundle(
         )
     if not A.is_floating_point():
         raise TypeError(f"A must be floating-point, got {A.dtype}")
+    a_values = A.coalesce().values() if A.layout == torch.sparse_coo else A.values()
+    if not torch.isfinite(a_values).all():
+        raise ValueError("A contains non-finite values")
 
     # S validation
     if not isinstance(S, Tensor) or S.layout not in (torch.sparse_coo, torch.sparse_csr):
@@ -299,6 +304,9 @@ def validate_static_bundle(
         raise ValueError(f"S must have shape [{n_items}, {n_items}], got {tuple(S.shape)}")
     if not S.is_floating_point():
         raise TypeError(f"S must be floating-point, got {S.dtype}")
+    s_values = S.coalesce().values() if S.layout == torch.sparse_coo else S.values()
+    if not torch.isfinite(s_values).all():
+        raise ValueError("S contains non-finite values")
 
     # Symmetry check via dense probe on small graphs; skip for large catalogs
     if n_items <= 8192:
