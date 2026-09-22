@@ -126,16 +126,21 @@ cfg.set_defaults(
     monitors=["Recall@10", "Recall@20", "NDCG@10", "NDCG@20"],
     which4best="NDCG@20",
 )
-cfg.compile()
+_compiled = False
 
-# Post-process list/tuple args (mirrors main.py)
-cfg.mfiles = cfg.mfiles.split(",")
-cfg.num_neighbors = list(map(int, cfg.num_neighbors.split("-")))
 
-# Baseline beta buffer (needed for device placement; also computed in model)
-cfg.beta3 = (
-    0.1 + 0.9 * (torch.arange(cfg.embedding_dim) / cfg.embedding_dim).pow(cfg.gamma)
-).to(cfg.device)
+def compile_cfg():
+    """Compile runtime configuration if not already compiled."""
+    global _compiled
+    if not _compiled:
+        cfg.compile()
+        cfg.mfiles = cfg.mfiles.split(",") if isinstance(cfg.mfiles, str) else cfg.mfiles
+        cfg.num_neighbors = list(map(int, cfg.num_neighbors.split("-"))) if isinstance(cfg.num_neighbors, str) else cfg.num_neighbors
+        cfg.beta3 = (
+            0.1 + 0.9 * (torch.arange(cfg.embedding_dim) / cfg.embedding_dim).pow(cfg.gamma)
+        ).to(cfg.device)
+        _compiled = True
+    return cfg
 
 
 # ---------------------------------------------------------------------------
@@ -352,6 +357,7 @@ def _build_dataset():
 # ---------------------------------------------------------------------------
 
 def main():
+    compile_cfg()
     if torch.cuda.is_available():
         torch.cuda.reset_peak_memory_stats()
 
