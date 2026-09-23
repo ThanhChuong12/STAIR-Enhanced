@@ -218,6 +218,14 @@ def test_complex_hybrid_similarity_arithmetic():
     expected_hybrid = 0.75 * expected_signed + 0.25 * expected_fid
     assert torch.allclose(logits_hybrid, expected_hybrid, atol=1e-6)
 
+    # Invalid public-function inputs fail before a GEMM produces opaque errors.
+    try:
+        complex_hybrid_similarity(qr, qi, kr, ki, eta=1.1)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("eta outside [0, 1] must be rejected")
+
 
 # ---------------------------------------------------------------------------
 # Test 6: Multi-positive CE loss
@@ -465,4 +473,3 @@ if __name__ == "__main__":
         if name.startswith("test_") and callable(value):
             value()
             print(f"PASS: {name}")
-

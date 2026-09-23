@@ -238,8 +238,16 @@ class CrossLayerContrastiveHead(nn.Module):
             raise ValueError(f"Unsupported rotation: {rotation!r}")
         if d < 2 or d % 2 != 0:
             raise ValueError(f"d must be even and >= 2, got {d}")
-        if query_chunk_size < 1:
-            raise ValueError("query_chunk_size must be positive")
+        if isinstance(query_chunk_size, bool) or not isinstance(query_chunk_size, int) or query_chunk_size < 1:
+            raise ValueError("query_chunk_size must be a positive integer")
+        if not math.isfinite(eta) or not 0.0 <= eta <= 1.0:
+            raise ValueError("eta must be finite and in [0, 1]")
+        if not math.isfinite(kappa) or kappa < 0.0:
+            raise ValueError("kappa must be finite and non-negative")
+        if not math.isfinite(temperature) or temperature <= 0.0:
+            raise ValueError("temperature must be finite and positive")
+        if not math.isfinite(eps) or eps <= 0.0:
+            raise ValueError("eps must be finite and positive")
 
         self.d = d
         self.kernel_mode = kernel

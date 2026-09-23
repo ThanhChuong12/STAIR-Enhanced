@@ -546,6 +546,18 @@ def complex_hybrid_similarity(
     _check_2d_float(q_imag, "q_imag")
     _check_2d_float(k_real, "k_real")
     _check_2d_float(k_imag, "k_imag")
+    if not math.isfinite(eta) or not 0.0 <= eta <= 1.0:
+        raise ValueError("eta must be finite and in [0, 1]")
+    if not math.isfinite(temperature) or temperature <= 0.0:
+        raise ValueError("temperature must be finite and positive")
+    if q_real.shape != q_imag.shape or k_real.shape != k_imag.shape:
+        raise ValueError("real and imaginary tensors must have matching shapes")
+    if q_real.shape[1] != k_real.shape[1]:
+        raise ValueError("query and key tensors must have the same feature dimension")
+    if q_real.device != q_imag.device or k_real.device != k_imag.device:
+        raise ValueError("real and imaginary tensors must be on the same device")
+    if q_real.device != k_real.device:
+        raise ValueError("query and key tensors must be on the same device")
 
     # Real and Imaginary parts of inner product via GEMM
     re_h = torch.mm(q_real, k_real.T) + torch.mm(q_imag, k_imag.T)
