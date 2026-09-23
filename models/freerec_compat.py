@@ -277,3 +277,31 @@ if _need_tg_shim:
         if not hasattr(tg_utils, _stub_fn):
             setattr(tg_utils, _stub_fn, _stub)
 
+
+# 4. scikit-learn compatibility shim for freerec.metrics
+try:
+    import sklearn
+    import sklearn.metrics
+except ImportError:
+    sklearn = types.ModuleType("sklearn")
+    sklearn_metrics = types.ModuleType("sklearn.metrics")
+    sklearn.metrics = sklearn_metrics
+    sys.modules["sklearn"] = sklearn
+    sys.modules["sklearn.metrics"] = sklearn_metrics
+
+    def roc_auc_score(y_true, y_score, *args, **kwargs):
+        # Basic CPU ROC-AUC fallback if scikit-learn is absent
+        import numpy as np
+        y_true = np.asarray(y_true).ravel()
+        y_score = np.asarray(y_score).ravel()
+        pos = y_true == 1
+        n_pos = np.sum(pos)
+        n_neg = len(y_true) - n_pos
+        if n_pos == 0 or n_neg == 0:
+            return 0.5
+        order = np.argsort(y_score)
+        rank = np.empty_like(order)
+        rank[order] = np.arange(len(order))
+        return float((np.sum(rank[pos]) - n_pos * (n_pos - 1) / 2) / (n_pos * n_neg))
+
+    sklearn_metrics.roc_auc_score = roc_auc_score

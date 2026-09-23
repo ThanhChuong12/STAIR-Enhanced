@@ -1,11 +1,14 @@
-"""STAIR4-v2 training engine (P4).
+"""STAIR4-v2.1 training engine (BCCR: Baseline-preserving Complex Cross-layer Regularization).
 
 Usage
 -----
     python main_stair4_v2.py \
-        --auxiliary_kernel phase_fidelity \
-        --smoother_mode baseline \
-        --pocl_weight_target 0.001
+        --auxiliary-kernel hybrid \
+        --rotation-mode identity \
+        --pocl-weight-target 0.0001 \
+        --eta 0.25 \
+        --kappa 0.5 \
+        --smoother-mode baseline
 
 This file follows the same CLI pattern as main.py (baseline) exactly:
   - freerec.declare() version pin
@@ -13,14 +16,6 @@ This file follows the same CLI pattern as main.py (baseline) exactly:
   - CoachForSTAIR4V2 subclasses freerec.launcher.Coach
   - Overrides set_optimizer() and train_per_epoch()
   - main() builds dataset, pipes, model, coach and calls coach.fit()
-
-Key constraints enforced
-------------------------
-- Nonfinite loss → run aborts immediately (FloatingPointError).
-- Smoother always cleared in a try/finally block inside train_per_epoch.
-- Checkpoint saved atomically (write-tmp → rename).
-- best_weights and training_checkpoint are separate files.
-- No hard split of the 64-dim embedding space anywhere.
 """
 
 from __future__ import annotations
@@ -74,8 +69,6 @@ def load_config(path, _parents=()):
 
 class InheritingParser(freerec.parser.Parser):
     def load(self):
-        # Support interactive environments (Jupyter / Colab / Kaggle) where
-        # sys.argv contains kernel arguments like '-f <kernel.json>'.
         args, _ = self.parser.parse_known_args()
         if getattr(args, "config", None):
             self.set_defaults(**load_config(args.config))
@@ -94,27 +87,33 @@ cfg.add_argument("--mfiles", type=str,
 cfg.add_argument("--num-neighbors", type=str, default="5-1")
 cfg.add_argument("--gamma", type=float, default=0.2)
 
-# V2-specific args
-cfg.add_argument("--auxiliary-kernel", type=str, default="none",
-                 help="'none'|'cosine'|'phase_fidelity'")
+# V2.1 BCCR-specific args
+cfg.add_argument("--auxiliary-kernel", type=str, default="hybrid",
+                 help="'none'|'hybrid'|'signed'|'fidelity'|'cosine'")
 cfg.add_argument("--rotation-mode", type=str, default="identity",
-                 help="'identity'|'learned_givens'|'frozen_random'")
+                 help="'identity'|'learned_givens'")
 cfg.add_argument("--smoother-mode", type=str, default="baseline",
-                 help="'baseline'|'identity_mix'|'bsf_mix'")
-cfg.add_argument("--pocl-weight-target", type=float, default=0.001)
+                 help="'baseline'|'residual_spectral'")
+cfg.add_argument("--eta", type=float, default=0.25,
+                 help="Hybrid kernel blend: (1-eta) Re(h) + eta |h|^2")
+cfg.add_argument("--kappa", type=float, default=0.5,
+                 help="Phase scaling factor for bounded phase encoder")
+cfg.add_argument("--pocl-weight-target", type=float, default=0.0001,
+                 help="Target weight lambda_max for contrastive loss (default: 1e-4)")
 cfg.add_argument("--contrastive-temperature", type=float, default=0.2)
-cfg.add_argument("--phase-scale", type=float, default=1.0)
 cfg.add_argument("--warmup-epochs", type=int, default=10)
 cfg.add_argument("--ramp-epochs", type=int, default=20)
-cfg.add_argument("--spectral-time", type=float, default=0.5)
-cfg.add_argument("--spectral-mix-target", type=float, default=0.1)
+cfg.add_argument("--xi", type=float, default=0.0,
+                 help="Residual spectral correction factor (0.0 = pure baseline BSC)")
 cfg.add_argument("--aux-lr-ratio", type=float, default=0.1)
 cfg.add_argument("--aux-weight-decay", type=float, default=0.0)
 cfg.add_argument("--knn-block-size", type=int, default=256)
+cfg.add_argument("--query-chunk-size", type=int, default=256,
+                 help="Maximum number of auxiliary queries evaluated per GEMM chunk")
 cfg.add_argument("--ablation-id", type=str, default="A0")
 
 cfg.set_defaults(
-    description="STAIR4-v2",
+    description="STAIR4-v2.1",
     root="../../data",
     dataset="Amazon2014Baby_550_MMRec",
     epochs=500,
@@ -144,7 +143,7 @@ def compile_cfg():
 
 
 # ---------------------------------------------------------------------------
-# Checkpoint utilities (re-exported from models.stair4_v2_utils)
+# Checkpoint utilities
 # ---------------------------------------------------------------------------
 from models.stair4_v2_utils import (
     _to_plain,
@@ -152,10 +151,6 @@ from models.stair4_v2_utils import (
     load_checkpoint_checked,
 )
 
-
-# ---------------------------------------------------------------------------
-# Run manifest helper
-# ---------------------------------------------------------------------------
 
 def _write_run_manifest(run_dir: Path, model: STAIR4V2, ablation_id: str) -> dict:
     import subprocess
@@ -196,28 +191,15 @@ def _write_run_manifest(run_dir: Path, model: STAIR4V2, ablation_id: str) -> dic
 # ---------------------------------------------------------------------------
 
 class CoachForSTAIR4V2(freerec.launcher.Coach):
-    """FreeRec Coach for STAIR4-v2.
-
-    Overrides only: set_optimizer() and train_per_epoch().
-    All evaluation, checkpointing, early stopping, and NDCG@20 selection
-    are inherited unchanged from freerec.launcher.Coach.
-    """
+    """FreeRec Coach for STAIR4-v2.1."""
 
     def _checkpoint_optimizer_state(self) -> dict:
-        """Return optimizer state without runtime-only smoother callbacks.
-
-        ``AdamWSEvo.state_dict()`` faithfully includes custom keys from each
-        parameter group.  The item group's ``smoother`` is a live callback
-        closing over the model and must never be pickled: it is neither
-        trainable state nor portable checkpoint data.
-        """
         state = self.optimizer.state_dict()
         for group in state.get("param_groups", []):
             group.pop("smoother", None)
         return state
 
     def save_checkpoint(self, epoch: int) -> None:
-        """Atomically save a callback-free FreeRec-compatible checkpoint."""
         path = Path(self.cfg.CHECKPOINT_PATH) / self.cfg.CHECKPOINT_FILENAME
         payload = {"epoch": int(epoch)}
         for module_name in self.cfg.CHECKPOINT_MODULES:
@@ -229,14 +211,11 @@ class CoachForSTAIR4V2(freerec.launcher.Coach):
         save_checkpoint_atomic(path, payload)
 
     def load_checkpoint(self) -> int:
-        """Load a checkpoint and rebind the live item smoother callback."""
         path = Path(self.cfg.CHECKPOINT_PATH) / self.cfg.CHECKPOINT_FILENAME
         checkpoint = load_checkpoint_checked(path)
         for module_name in self.cfg.CHECKPOINT_MODULES:
             if module_name == "optimizer":
                 self.optimizer.load_state_dict(checkpoint[module_name])
-                # Optimizer loading replaces group dictionaries.  Reattach
-                # callbacks by role after state restoration.
                 for group in self.optimizer.param_groups:
                     group["smoother"] = (
                         self.model.bsf_smoother
@@ -249,14 +228,8 @@ class CoachForSTAIR4V2(freerec.launcher.Coach):
         return int(checkpoint["epoch"])
 
     def set_optimizer(self):
-        """Build AdamWSEvo with STAIR4-v2 parameter groups."""
         model: STAIR4V2 = self.model
         groups = model.parameter_groups()
-        # FreeRec 0.9.x exposes Adam coefficients as
-        # ``optim_*_moment_decay`` while newer parser versions also expose
-        # the conventional ``beta1``/``beta2`` aliases.  Resolve both
-        # schemas explicitly so the optimizer remains numerically identical
-        # to the baseline configuration on either runtime.
         beta1 = getattr(
             self.cfg,
             "beta1",
@@ -281,37 +254,26 @@ class CoachForSTAIR4V2(freerec.launcher.Coach):
         else:
             raise NotImplementedError(
                 f"Unsupported optimizer {self.cfg.optimizer!r}; "
-                "STAIR4-v2 requires adamwsevo (or its adamw alias)"
+                "STAIR4-v2.1 requires adamwsevo"
             )
 
     def train_per_epoch(self, epoch: int):
-        """Single-epoch training loop with BSF smoother lifecycle.
-
-        Contract:
-        - model.set_epoch(epoch) is called first.
-        - Smoother is cleared in a try/finally regardless of errors.
-        - Nonfinite loss → FloatingPointError (run aborts, no silent skip).
-        """
         model: STAIR4V2 = self.model
         model.set_epoch(epoch)
-
-        lam, zeta, mode = model.effective_coefficients()
 
         for data in self.dataloader:
             data = self.dict_to_device(data)
             model.train()
-            self.optimizer.zero_grad(set_to_none=True)
+            # Keep the baseline coach's clearing semantics for Gate 0 parity.
+            self.optimizer.zero_grad()
             try:
-                # Keep the baseline ordering: clear stale gradients before a
-                # fresh forward pass; model.fit() arms the step-scoped
-                # smoother only after constructing the complete loss graph.
                 loss = model.fit(data)
                 if not torch.isfinite(loss):
                     raise FloatingPointError(
-                        f"Nonfinite loss={loss.item():.4f} at epoch={epoch}; "
-                        "aborting to prevent silent divergence"
+                        f"Nonfinite loss={loss.item():.4f} at epoch={epoch}"
                     )
                 loss.backward()
+                model.update_post_backward_diagnostics()
                 for parameter in model.parameters():
                     if parameter.grad is not None and not torch.isfinite(parameter.grad).all():
                         raise FloatingPointError(
@@ -319,7 +281,6 @@ class CoachForSTAIR4V2(freerec.launcher.Coach):
                         )
                 self.optimizer.step()
             finally:
-                # Always clear smoother state — even if backward() throws
                 model.bsf_smoother.clear_step_snapshot()
                 model.smoother.clear_step_snapshot()
 
@@ -330,14 +291,25 @@ class CoachForSTAIR4V2(freerec.launcher.Coach):
                 mode="train",
                 pool=["LOSS"],
             )
+            self._append_diagnostics(model.last_diagnostics)
+
+    def _append_diagnostics(self, diagnostics: Dict) -> None:
+        """Append detached per-step telemetry when the caller configured a path."""
+        path = getattr(self, "diagnostics_path", None)
+        interval = max(1, int(self.model.options.diagnostic_interval_steps))
+        if path is None or diagnostics.get("step", 0) % interval != 0:
+            return
+        record = {key: value for key, value in diagnostics.items() if isinstance(value, (str, int, float, bool))}
+        record["total_loss"] = float(diagnostics.get("bpr", 0.0) + diagnostics.get("cl_weighted", 0.0))
+        with Path(path).open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(record, sort_keys=True) + "\n")
 
 
 # ---------------------------------------------------------------------------
-# Robust dataset loading (mirrors main.py exactly)
+# Robust dataset loading
 # ---------------------------------------------------------------------------
 
 def _build_dataset():
-    """Reuse the battle-tested dataset loader from main.py verbatim."""
     processed_dir = os.path.join(cfg.root, "Processed", cfg.dataset)
     if os.path.islink(processed_dir) and not os.path.exists(processed_dir):
         try:
@@ -428,7 +400,6 @@ def main():
     dataset = _build_dataset()
     model = STAIR4V2(dataset, cfg)
 
-    # Determine run directory
     ts = time.strftime("%Y%m%d_%H%M%S")
     ablation_id = getattr(cfg, "ablation_id", "A0")
     run_name = f"stair4v2_{cfg.dataset}_{ablation_id}_{ts}"
@@ -437,12 +408,10 @@ def main():
 
     _write_run_manifest(run_dir, model, ablation_id)
 
-    # Build data pipes (mirrors main.py pattern)
     trainpipe = model.sure_trainpipe(cfg.batch_size)
     validpipe = model.sure_validpipe(cfg.ranking)
     testpipe = model.sure_testpipe(cfg.ranking)
 
-    # Build coach (standard FreeRec signature)
     coach = CoachForSTAIR4V2(
         dataset=dataset,
         trainpipe=trainpipe,
@@ -451,6 +420,7 @@ def main():
         model=model,
         cfg=cfg,
     )
+    coach.diagnostics_path = run_dir / "diagnostics.jsonl"
 
     coach.fit()
 
@@ -461,7 +431,6 @@ def main():
         print(f"  Peak allocated : {peak_alloc:.2f} MB")
         print(f"  Peak reserved  : {peak_reserved:.2f} MB")
 
-    # Update manifest status
     manifest_path = run_dir / "run_manifest.json"
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text())

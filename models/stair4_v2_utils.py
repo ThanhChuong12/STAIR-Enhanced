@@ -1,9 +1,11 @@
-"""Static graph utilities and batch supervision for STAIR4-v2 BSF–POCL.
+"""Static graph utilities and batch supervision for STAIR4-v2.1 BCCR.
 
 Public API
 ----------
 - baseline_whitening(features, d) -> Tensor
+- exact_cosine_knn(features, k, block_size) -> LongTensor
 - build_train_positive_index(edge_index, n_users, n_items) -> TrainPositiveIndex
+- transpose_train_positive_index(index) -> TrainPositiveIndex
 - CandidateBatch : NamedTuple
 - make_batch_candidates(users, positives) -> CandidateBatch
 - build_positive_mask(user_ids, item_ids, index) -> BoolTensor[B_u, B_i]
@@ -53,15 +55,15 @@ def _check_nonneg_int(value: int, name: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# MI whitening — mirrors STAIR_MHD_v3.whitening() exactly
+# MI whitening — mirrors the STAIR baseline whitening routine exactly
 # ---------------------------------------------------------------------------
 
 @torch.no_grad()
 def baseline_whitening(features: Tensor, d: int) -> Tensor:
     """Center + full SVD + scale by sqrt(I/d).
 
-    Matches the arithmetic in STAIR_MHD_v3.whitening() so that baseline MI
-    is reproduced bitwise (subject to SVD backend determinism).
+    Matches the arithmetic in ``main.py`` so that baseline MI is reproduced
+    subject to SVD backend determinism.
 
     Parameters
     ----------
@@ -84,6 +86,42 @@ def baseline_whitening(features: Tensor, d: int) -> Tensor:
     x = features - features.mean(0, keepdim=True)
     U, _, _ = torch.linalg.svd(x, full_matrices=False)   # U: [I, min(I,F)]
     return U[:, :d] * math.sqrt(I / d)
+
+
+# ---------------------------------------------------------------------------
+# Item kNN graph construction
+# ---------------------------------------------------------------------------
+
+@torch.no_grad()
+def exact_cosine_knn(features: Tensor, k: int, block_size: int = 256) -> Tensor:
+    """Return exact cosine top-k neighbours without allocating an ``I x I`` matrix.
+
+    The calculation is algebraically identical to the baseline dense cosine
+    graph for non-tied similarities.  PyTorch does not guarantee a common
+    ordering for tied ``topk`` values across devices, therefore each run must
+    record the resulting neighbour hash in its manifest.
+    """
+    _check_2d_float(features, "features")
+    _check_positive_int(block_size, "block_size")
+    if isinstance(k, bool) or not isinstance(k, int) or not 0 <= k < features.shape[0]:
+        raise ValueError(f"k must be an integer in [0, {features.shape[0] - 1}], got {k!r}")
+
+    norms = torch.linalg.vector_norm(features, dim=1, keepdim=True)
+    if (norms <= 0).any():
+        raise ValueError("modality features must not contain zero-norm rows")
+    unit_features = features / norms
+    n_items = features.shape[0]
+    neighbours = torch.empty((n_items, k), dtype=torch.long, device=features.device)
+    if k == 0:
+        return neighbours
+
+    for start in range(0, n_items, block_size):
+        stop = min(start + block_size, n_items)
+        scores = unit_features[start:stop] @ unit_features.T
+        rows = torch.arange(stop - start, device=features.device)
+        scores[rows, rows + start] = -torch.inf
+        neighbours[start:stop] = torch.topk(scores, k, dim=1).indices
+    return neighbours
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +185,21 @@ def build_train_positive_index(
     keys = ei[0] * n_items + ei[1]
     keys = keys.unique()  # also sorts
     return TrainPositiveIndex(keys=keys, n_users=n_users, n_items=n_items)
+
+
+@torch.no_grad()
+def transpose_train_positive_index(index: TrainPositiveIndex) -> TrainPositiveIndex:
+    """Return the item-to-user lookup index for reverse auxiliary supervision."""
+    if not isinstance(index, TrainPositiveIndex):
+        raise TypeError("index must be a TrainPositiveIndex")
+    users = torch.div(index.keys, index.n_items, rounding_mode="floor")
+    items = torch.remainder(index.keys, index.n_items)
+    reverse_keys = (items * index.n_users + users).unique()
+    return TrainPositiveIndex(
+        keys=reverse_keys,
+        n_users=index.n_items,
+        n_items=index.n_users,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -309,24 +362,33 @@ def validate_static_bundle(
     if not torch.isfinite(s_values).all():
         raise ValueError("S contains non-finite values")
 
-    # Symmetry check via dense probe on small graphs; skip for large catalogs
-    if n_items <= 8192:
-        S_dense = S.to_dense()
-        diff = (S_dense - S_dense.T).abs().max().item()
-        if diff > symmetry_tol:
-            raise ValueError(
-                f"S is not symmetric within tol={symmetry_tol}; max |S-S^T|={diff:.3e}"
-            )
-        if not torch.isfinite(S_dense).all():
-            raise ValueError("S contains non-finite values")
-        # Spectral norm proxy: Frobenius norm of each row should be ≤ 1 for
-        # normalized adjacency (not a tight bound but catches obvious errors).
-        row_norms = S_dense.norm(dim=1)
-        if row_norms.max().item() > 2.0:
-            raise ValueError(
-                "S has rows with very large norms; expected normalized adjacency "
-                f"(max row norm = {row_norms.max().item():.3f})"
-            )
+    # Verify symmetry directly on sparse entries.  A dense check here would
+    # allocate an I x I matrix for Baby and larger datasets, defeating the
+    # memory contract of the graph builder.
+    s_coo = S.to_sparse_coo().coalesce()
+    rows, cols = s_coo.indices()
+    values = s_coo.values()
+    forward_keys = rows.to(torch.int64) * n_items + cols.to(torch.int64)
+    reverse_keys = cols.to(torch.int64) * n_items + rows.to(torch.int64)
+    forward_order = torch.argsort(forward_keys)
+    reverse_order = torch.argsort(reverse_keys)
+    if not torch.equal(forward_keys[forward_order], reverse_keys[reverse_order]):
+        raise ValueError("S is structurally asymmetric")
+    max_difference = (values[forward_order] - values[reverse_order]).abs().max().item()
+    if max_difference > symmetry_tol:
+        raise ValueError(
+            f"S is not symmetric within tol={symmetry_tol}; max |S-S^T|={max_difference:.3e}"
+        )
+
+    # This is only a coarse sanity check, not a spectral-norm proof.
+    row_square_sums = torch.zeros(n_items, dtype=values.dtype, device=values.device)
+    row_square_sums.index_add_(0, rows, values.square())
+    max_row_norm = row_square_sums.sqrt().max().item()
+    if max_row_norm > 2.0:
+        raise ValueError(
+            "S has rows with very large norms; expected normalized adjacency "
+            f"(max row norm = {max_row_norm:.3f})"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -394,3 +456,91 @@ def load_checkpoint_checked(path: Union[Path, str],
                     f"got {ckpt.get(key)!r}"
                 )
     return ckpt
+
+
+# ---------------------------------------------------------------------------
+# STAIR4-v2.1 BCCR Mathematical Utilities (§6.2, §6.4 of STAIR4_v2_1_Report.md)
+# ---------------------------------------------------------------------------
+
+def bounded_phase_encoder(
+    x: Tensor,
+    kappa: float = 0.5,
+    eps: float = 1e-8,
+) -> Tuple[Tensor, Tensor]:
+    """Map real embeddings to bounded complex phase features ψ(x) with unit row norm.
+
+    r(x) = x / max(||x||_2, eps)
+    ψ_k(x) = (1 / sqrt(d)) * exp(i * kappa * sqrt(d) * r_k(x))
+           = (1 / sqrt(d)) * [cos(kappa * sqrt(d) * r_k(x)) + i * sin(kappa * sqrt(d) * r_k(x))]
+
+    Guarantees:
+    ||ψ(x)||_2^2 = sum_k (cos^2 + sin^2) / d = sum_k (1 / d) = 1.0.
+
+    Parameters
+    ----------
+    x : Tensor[B, d]  real float32
+    kappa : float  phase scaling coefficient (pilot default 0.5)
+    eps : float  denominator stabilizer for radial normalization
+
+    Returns
+    -------
+    (psi_real, psi_imag) : Tuple[Tensor[B, d], Tensor[B, d]]
+    """
+    _check_2d_float(x, "x")
+    B, d = x.shape
+    norm = torch.linalg.norm(x, ord=2, dim=-1, keepdim=True).clamp_min(eps)
+    r = x / norm  # [B, d] bounded in unit ball
+    angle = (kappa * math.sqrt(d)) * r  # [B, d]
+    inv_sqrt_d = 1.0 / math.sqrt(d)
+    psi_real = torch.cos(angle) * inv_sqrt_d
+    psi_imag = torch.sin(angle) * inv_sqrt_d
+    return psi_real, psi_imag
+
+
+def bounded_real_encoder(
+    x: Tensor,
+    eps: float = 1e-8,
+) -> Tensor:
+    """Radial L2-projection for real-space cosine control (Ablation C0).
+
+    r(x) = x / max(||x||_2, eps)
+    """
+    _check_2d_float(x, "x")
+    norm = torch.linalg.norm(x, ord=2, dim=-1, keepdim=True).clamp_min(eps)
+    return x / norm
+
+
+def complex_hybrid_similarity(
+    q_real: Tensor,
+    q_imag: Tensor,
+    k_real: Tensor,
+    k_imag: Tensor,
+    eta: float = 0.25,
+    temperature: float = 0.2,
+) -> Tensor:
+    """Compute hybrid complex similarity matrix using 2-D GEMM operations.
+
+    Inner product: h(q, k) = q^H k = (q_r - i q_i)^T (k_r + i k_i)
+    Re(h) = q_r k_r^T + q_i k_i^T
+    Im(h) = q_r k_i^T - q_i k_r^T
+    |h|^2 = (Re h)^2 + (Im h)^2
+
+    Hybrid similarity kernel (§6.4):
+    s_eta(q, k) = (1 - eta) * Re(h) + eta * |h|^2
+    logits = s_eta / temperature
+
+    Never materializes 3-D [B_q, B_k, d] tensors.
+    """
+    _check_2d_float(q_real, "q_real")
+    _check_2d_float(q_imag, "q_imag")
+    _check_2d_float(k_real, "k_real")
+    _check_2d_float(k_imag, "k_imag")
+
+    # Real and Imaginary parts of inner product via GEMM
+    re_h = torch.mm(q_real, k_real.T) + torch.mm(q_imag, k_imag.T)
+    im_h = torch.mm(q_real, k_imag.T) - torch.mm(q_imag, k_real.T)
+    mod_sq = re_h.square() + im_h.square()
+
+    # Hybrid blend: eta=0 -> pure signed overlap; eta=1 -> pure squared fidelity
+    s = (1.0 - eta) * re_h + eta * mod_sq
+    return s / temperature
