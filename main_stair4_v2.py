@@ -280,6 +280,7 @@ class CoachForSTAIR4V2(freerec.launcher.Coach):
                             f"Nonfinite gradient in {parameter.__class__.__name__} at epoch={epoch}"
                         )
                 self.optimizer.step()
+                model.update_post_step_diagnostics()
             finally:
                 model.bsf_smoother.clear_step_snapshot()
                 model.smoother.clear_step_snapshot()

@@ -462,6 +462,17 @@ def load_checkpoint_checked(path: Union[Path, str],
 # STAIR4-v2.1 BCCR Mathematical Utilities (§6.2, §6.4 of STAIR4_v2_1_Report.md)
 # ---------------------------------------------------------------------------
 
+def check_view_validity(x: Tensor, eps: float = 1e-8) -> Tensor:
+    """Return BoolTensor[B] where True iff ||x||_2 >= eps.
+
+    Per §6.2 and §6.5 of STAIR4_v2_1_Report.md: Near-zero views are excluded
+    from auxiliary supervision while remaining in BPR.
+    """
+    _check_2d_float(x, "x")
+    norms = torch.linalg.norm(x, ord=2, dim=-1)
+    return norms >= eps
+
+
 def bounded_phase_encoder(
     x: Tensor,
     kappa: float = 0.5,

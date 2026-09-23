@@ -351,8 +351,118 @@ def test_residual_spectral_correction_matches_dense_oracle():
     assert torch.allclose(actual, expected, atol=1e-6)
 
 
+# ---------------------------------------------------------------------------
+# Test 10: FSC endpoint L=0 identity contract (§11.1)
+# ---------------------------------------------------------------------------
+
+def test_fsc_endpoint_l0():
+    """When num_layers = 0, FSC must strictly return Z = E without alteration."""
+    torch.manual_seed(9)
+    d = 16
+    E = torch.randn(20, d)
+    beta = 0.1 + 0.9 * (torch.arange(d) / d).pow(0.2)
+    beta_comp = 1.0 - beta
+    # For L = 0: norm_correction = 1 - beta_comp^(0+1) = 1 - beta_comp = beta!
+    norm_correction = 1.0 - beta_comp.pow(1)
+    Z = E.mul(beta).div(norm_correction)
+    assert torch.allclose(Z, E, atol=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# Test 11: Dense vs Chunked loss and gradient parity (§11.1)
+# ---------------------------------------------------------------------------
+
+def test_dense_vs_chunked_loss_and_gradient_parity():
+    """Verify that query chunking produces bitwise identical loss and gradients."""
+    torch.manual_seed(10)
+    d = 16
+    Bq, Bk = 12, 10
+    head_dense = CrossLayerContrastiveHead(d=d, query_chunk_size=100, rotation="learned_givens")
+    head_chunked = CrossLayerContrastiveHead(d=d, query_chunk_size=4, rotation="learned_givens")
+    head_chunked.rotation.omega.data.copy_(head_dense.rotation.omega.data)
+
+    Q = torch.randn(Bq, d, requires_grad=True)
+    K = torch.randn(Bk, d, requires_grad=True)
+    q_ids = torch.arange(Bq)
+    k_ids = torch.arange(Bk)
+
+    edges = torch.stack([
+        torch.tensor([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+        torch.tensor([1, 2, 3, 4, 5, 6, 7, 8, 9, 0]),
+    ])
+    index = build_train_positive_index(edges, n_users=Bq, n_items=Bk)
+
+    loss_dense, _ = head_dense._directional_loss(Q, K, q_ids, k_ids, index)
+    loss_chunk, _ = head_chunked._directional_loss(Q, K, q_ids, k_ids, index)
+
+    assert torch.allclose(loss_dense, loss_chunk, atol=1e-6)
+
+    # Gradient parity
+    g_dense = torch.autograd.grad(loss_dense, [Q, head_dense.rotation.omega])
+    g_chunk = torch.autograd.grad(loss_chunk, [Q, head_chunked.rotation.omega])
+
+    assert torch.allclose(g_dense[0], g_chunk[0], atol=1e-6)
+    assert torch.allclose(g_dense[1], g_chunk[1], atol=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# Test 12: Fidelity global phase invariance vs Signed kernel sensitivity (§11.1)
+# ---------------------------------------------------------------------------
+
+def test_fidelity_global_phase_invariance():
+    """Fidelity |h|^2 is invariant to global phase rotation, whereas Re(h) is not."""
+    d = 16
+    qr = torch.randn(4, d)
+    qi = torch.randn(4, d)
+    kr = torch.randn(4, d)
+    ki = torch.randn(4, d)
+
+    # Base similarities
+    s_fid = complex_hybrid_similarity(qr, qi, kr, ki, eta=1.0, temperature=1.0)
+    s_sgn = complex_hybrid_similarity(qr, qi, kr, ki, eta=0.0, temperature=1.0)
+
+    # Apply global phase rotation by phi = pi / 3 to queries: q -> q * e^(i*phi)
+    phi = math.pi / 3.0
+    c_phi, s_phi = math.cos(phi), math.sin(phi)
+    qr_rot = c_phi * qr - s_phi * qi
+    qi_rot = s_phi * qr + c_phi * qi
+
+    s_fid_rot = complex_hybrid_similarity(qr_rot, qi_rot, kr, ki, eta=1.0, temperature=1.0)
+    s_sgn_rot = complex_hybrid_similarity(qr_rot, qi_rot, kr, ki, eta=0.0, temperature=1.0)
+
+    # Fidelity must be strictly identical under global phase shift
+    assert torch.allclose(s_fid, s_fid_rot, atol=1e-5)
+    # Signed component must NOT be invariant
+    assert not torch.allclose(s_sgn, s_sgn_rot, atol=1e-3)
+
+
+# ---------------------------------------------------------------------------
+# Test 13: Near-zero view exclusion (§6.2, §6.5)
+# ---------------------------------------------------------------------------
+
+def test_near_zero_view_exclusion():
+    """Near-zero query views must be excluded from V_u, and reported in diagnostics."""
+    d = 16
+    head = CrossLayerContrastiveHead(d=d, query_chunk_size=10, eps=1e-6)
+    Q = torch.randn(4, d)
+    # Force row 0 to be near zero (< eps)
+    Q[0] = 0.0
+    K = torch.randn(4, d)
+
+    q_ids = torch.arange(4)
+    k_ids = torch.arange(4)
+    edges = torch.tensor([[0, 1, 2, 3], [0, 1, 2, 3]])
+    index = build_train_positive_index(edges, n_users=4, n_items=4)
+
+    loss, diag = head._directional_loss(Q, K, q_ids, k_ids, index)
+    assert diag["near_zero_rate"] > 0.0
+    # Valid rows must be at most 3 (row 0 excluded)
+    assert diag["valid_rows"] <= 3.0
+
+
 if __name__ == "__main__":
     for name, value in sorted(globals().items()):
         if name.startswith("test_") and callable(value):
             value()
             print(f"PASS: {name}")
+

@@ -21,7 +21,8 @@ Architecture & Mathematical Contracts:
 
 4. Train-only Multi-Positive Supervised CE:
    Uniform target distribution over train-positive candidate pairs.
-   Filters rows to valid subset V_u having ≥ 1 positive and ≥ 1 non-positive.
+   Filters rows to valid subset V_u having ≥ 1 positive, ≥ 1 non-positive,
+   and valid (non-near-zero) views.
 """
 
 from __future__ import annotations
@@ -40,6 +41,7 @@ from models.stair4_v2_utils import (
     bounded_phase_encoder,
     bounded_real_encoder,
     build_positive_mask,
+    check_view_validity,
     complex_hybrid_similarity,
 )
 
@@ -50,14 +52,16 @@ from models.stair4_v2_utils import (
 
 class BCCRDiagnostics(NamedTuple):
     """Detached per-step diagnostics from CrossLayerContrastiveHead."""
-    cl_raw: float           # raw loss before lambda weighting
-    pos_count_ui: float     # mean positive count per query row (u→i direction)
-    pos_count_iu: float     # mean positive count per query row (i→u direction)
-    sim_q25: float          # 25th percentile of similarity scores
-    sim_q75: float          # 75th percentile of similarity scores
+    cl_raw: float              # raw loss before lambda weighting
+    pos_count_ui: float        # mean positive count per query row (u→i direction)
+    pos_count_iu: float        # mean positive count per query row (i→u direction)
+    sim_q25: float             # 25th percentile of similarity scores
+    sim_q75: float             # 75th percentile of similarity scores
     softmax_entropy_ui: float
     softmax_entropy_iu: float
-    theta_grad_norm: float  # gradient norm of Givens omega (0 if identity)
+    theta_grad_norm: float     # gradient norm of Givens omega (0 if identity)
+    theta_norm: float          # current L2 norm of theta
+    near_zero_view_rate: float # fraction of query/key views with norm < eps
 
 
 # Alias for backward compatibility
@@ -144,6 +148,7 @@ def multi_positive_ce(
     logits: Tensor,
     mask: Tensor,
     temperature: float = 0.2,
+    valid_query_mask: Optional[Tensor] = None,
 ) -> Tuple[Tensor, Dict[str, float]]:
     """Supervised in-batch CE with uniform target over train positives.
 
@@ -156,6 +161,7 @@ def multi_positive_ce(
     Valid rows V_u must have:
       - at least 1 positive: mask.sum(dim=-1) >= 1
       - at least 1 non-positive: (~mask).sum(dim=-1) >= 1
+      - query view is valid (not near-zero) if valid_query_mask provided.
     """
     if logits.ndim != 2:
         raise ValueError("logits must be a 2-D Tensor")
@@ -164,10 +170,12 @@ def multi_positive_ce(
     if not math.isfinite(temperature) or temperature <= 0.0:
         raise ValueError("temperature must be finite and positive")
 
-    # Row filtering for valid supervision
+    # Row filtering for valid supervision (§6.5)
     row_pos = mask.sum(dim=1)
     row_neg = (~mask).sum(dim=1)
     valid_rows = (row_pos >= 1) & (row_neg >= 1)
+    if valid_query_mask is not None:
+        valid_rows = valid_rows & valid_query_mask
 
     n_valid = int(valid_rows.sum().item())
     if n_valid == 0:
@@ -209,6 +217,7 @@ class CrossLayerContrastiveHead(nn.Module):
       - kernel_mode: 'hybrid' (default), 'signed', 'fidelity', 'cosine', 'none'
       - rotation_mode: 'identity' (default), 'learned_givens'
       - Stop-gradient on key (target) branch before rotation
+      - Near-zero view detection & exclusion (§6.2, §6.5)
     """
 
     def __init__(
@@ -220,6 +229,7 @@ class CrossLayerContrastiveHead(nn.Module):
         kappa: float = 0.5,
         temperature: float = 0.2,
         query_chunk_size: int = 256,
+        eps: float = 1e-8,
     ) -> None:
         super().__init__()
         if kernel not in ("hybrid", "signed", "fidelity", "cosine", "none"):
@@ -228,6 +238,8 @@ class CrossLayerContrastiveHead(nn.Module):
             raise ValueError(f"Unsupported rotation: {rotation!r}")
         if d < 2 or d % 2 != 0:
             raise ValueError(f"d must be even and >= 2, got {d}")
+        if query_chunk_size < 1:
+            raise ValueError("query_chunk_size must be positive")
 
         self.d = d
         self.kernel_mode = kernel
@@ -235,21 +247,8 @@ class CrossLayerContrastiveHead(nn.Module):
         self.eta = float(eta)
         self.kappa = float(kappa)
         self.temperature = float(temperature)
-        if not math.isfinite(self.eta) or not 0.0 <= self.eta <= 1.0:
-            raise ValueError(f"eta must be finite and in [0, 1], got {eta!r}")
-        if not math.isfinite(self.kappa) or self.kappa < 0.0:
-            raise ValueError(f"kappa must be finite and non-negative, got {kappa!r}")
-        if not math.isfinite(self.temperature) or self.temperature <= 0.0:
-            raise ValueError(
-                f"temperature must be finite and positive, got {temperature!r}"
-            )
-        if (
-            isinstance(query_chunk_size, bool)
-            or not isinstance(query_chunk_size, int)
-            or query_chunk_size < 1
-        ):
-            raise ValueError("query_chunk_size must be a positive integer")
-        self.query_chunk_size = query_chunk_size
+        self.query_chunk_size = int(query_chunk_size)
+        self.eps = float(eps)
 
         if rotation == "learned_givens":
             self.rotation = PairwiseGivens(d)
@@ -279,14 +278,11 @@ class CrossLayerContrastiveHead(nn.Module):
                 eff_eta = self.eta
 
             # Query: bounded complex phase feature
-            q_real, q_imag = bounded_phase_encoder(q_raw, kappa=self.kappa)
+            q_real, q_imag = bounded_phase_encoder(q_raw, kappa=self.kappa, eps=self.eps)
 
-            # Stop at the target source before encoding.  This is equivalent
-            # to detaching the encoded target, while avoiding saved autograd
-            # tensors for a branch which intentionally has no embedding
-            # gradient.  The subsequent rotation remains trainable.
+            # Stop-gradient at the target source before encoding.
             t_real_sg, t_imag_sg = bounded_phase_encoder(
-                t_raw.detach(), kappa=self.kappa
+                t_raw.detach(), kappa=self.kappa, eps=self.eps
             )
 
             # Key: Givens rotation applied to detached target (omega receives grad)
@@ -300,10 +296,10 @@ class CrossLayerContrastiveHead(nn.Module):
 
         elif self.kernel_mode == "cosine":
             # Real-space cosine control
-            q_norm = bounded_real_encoder(q_raw)
-            t_norm = bounded_real_encoder(t_raw.detach())
+            q_norm = bounded_real_encoder(q_raw, eps=self.eps)
+            t_norm = bounded_real_encoder(t_raw.detach(), eps=self.eps)  # stop-gradient
             k_norm = self.rotation(t_norm)
-            k_norm = bounded_real_encoder(k_norm)
+            k_norm = bounded_real_encoder(k_norm, eps=self.eps)
             sim = torch.mm(q_norm, k_norm.T)
             return sim / self.temperature
 
@@ -318,13 +314,9 @@ class CrossLayerContrastiveHead(nn.Module):
         key_ids: Tensor,
         train_index: TrainPositiveIndex,
     ) -> Tuple[Tensor, Dict[str, float]]:
-        """Compute one directional multi-positive loss in query chunks.
+        """Compute one directional multi-positive loss in query chunks (§6.5).
 
-        The result is exactly the mean over all valid rows.  Each forward
-        calculation uses only a ``query_chunk_size x num_keys`` logit/mask
-        pair, rather than a ``B_q x B_k x d`` broadcast tensor.  Autograd can
-        still retain one graph per chunk; GPU peak memory must therefore be
-        profiled before claiming a fixed memory bound.
+        Excludes near-zero views (norm < eps) per §6.2.
         """
         total_loss = queries.new_zeros(())
         valid_rows = 0
@@ -334,13 +326,30 @@ class CrossLayerContrastiveHead(nn.Module):
         q25_total = 0.0
         q75_total = 0.0
 
+        # Check key view validity
+        key_valid = check_view_validity(targets, eps=self.eps)
+        near_zero_keys = int((~key_valid).sum().item())
+        near_zero_queries = 0
+
         for start in range(0, queries.shape[0], self.query_chunk_size):
             stop = min(start + self.query_chunk_size, queries.shape[0])
-            logits = self._compute_logits(queries[start:stop], targets)
+            chunk_queries = queries[start:stop]
+            chunk_query_valid = check_view_validity(chunk_queries, eps=self.eps)
+            near_zero_queries += int((~chunk_query_valid).sum().item())
+
+            logits = self._compute_logits(chunk_queries, targets)
             mask = build_positive_mask(
                 query_ids[start:stop], key_ids, train_index
             ).to(device=queries.device, non_blocking=True)
-            chunk_loss, chunk_diag = multi_positive_ce(logits, mask)
+
+            # Mask out near-zero keys if any
+            if not key_valid.all():
+                mask = mask & key_valid[None, :]
+                logits = logits.masked_fill(~key_valid[None, :], -1e9)
+
+            chunk_loss, chunk_diag = multi_positive_ce(
+                logits, mask, valid_query_mask=chunk_query_valid
+            )
             chunk_valid = int(chunk_diag["valid_rows"])
             if chunk_valid:
                 total_loss = total_loss + chunk_loss * chunk_valid
@@ -355,6 +364,9 @@ class CrossLayerContrastiveHead(nn.Module):
                     q25_total += float(torch.quantile(scores, 0.25).item()) * scores.numel()
                     q75_total += float(torch.quantile(scores, 0.75).item()) * scores.numel()
 
+        total_views = max(1, queries.shape[0] + targets.shape[0])
+        near_zero_rate = float((near_zero_queries + near_zero_keys) / total_views)
+
         if valid_rows == 0:
             return total_loss, {
                 "pos_count_mean": 0.0,
@@ -362,15 +374,15 @@ class CrossLayerContrastiveHead(nn.Module):
                 "softmax_entropy": 0.0,
                 "sim_q25": 0.0,
                 "sim_q75": 0.0,
+                "near_zero_rate": near_zero_rate,
             }
         return total_loss / valid_rows, {
             "pos_count_mean": positive_total / valid_rows,
             "valid_rows": float(valid_rows),
             "softmax_entropy": entropy_total / valid_rows,
-            # These are weighted means of chunk quantiles, deliberately not
-            # presented as the exact global quantiles.
             "sim_q25": q25_total / score_count if score_count else 0.0,
             "sim_q75": q75_total / score_count if score_count else 0.0,
+            "near_zero_rate": near_zero_rate,
         }
 
     def forward(
@@ -382,7 +394,7 @@ class CrossLayerContrastiveHead(nn.Module):
         reverse_train_index: TrainPositiveIndex,
         n_users: int,
     ) -> Tuple[Tensor, BCCRDiagnostics]:
-        """Compute BCCR auxiliary loss for a minibatch."""
+        """Compute BCCR auxiliary loss for a minibatch (§6.5)."""
         if self.kernel_mode == "none":
             raise RuntimeError("CrossLayerContrastiveHead called with kernel_mode='none'")
 
@@ -395,8 +407,6 @@ class CrossLayerContrastiveHead(nn.Module):
         U1 = X1_all[u_ids]
         I1 = X1_all[n_users + i_ids]
 
-        # Both directions chunk the query axis.  This preserves train-only
-        # multi-positive targets while avoiding B_u * B_i allocations.
         loss_ui, diag_ui = self._directional_loss(
             U0, I1, candidates.user_ids, candidates.item_ids, train_index
         )
@@ -405,7 +415,7 @@ class CrossLayerContrastiveHead(nn.Module):
             reverse_train_index,
         )
 
-        # Combine losses
+        # Combine losses (§6.5): 1/2 factor only applied if both directions valid
         has_ui = diag_ui["valid_rows"] > 0
         has_iu = diag_iu["valid_rows"] > 0
         if has_ui and has_iu:
@@ -415,7 +425,10 @@ class CrossLayerContrastiveHead(nn.Module):
         elif has_iu:
             loss = loss_iu
         else:
-            loss = 0.5 * (loss_ui + loss_iu)
+            loss = 0.0 * (loss_ui + loss_iu)
+
+        avg_near_zero = 0.5 * (diag_ui.get("near_zero_rate", 0.0) + diag_iu.get("near_zero_rate", 0.0))
+        theta_norm = float(self.rotation.theta.detach().norm().item()) if self.has_trainable_parameters else 0.0
 
         diag = BCCRDiagnostics(
             cl_raw=float(loss.detach().item()),
@@ -425,8 +438,8 @@ class CrossLayerContrastiveHead(nn.Module):
             sim_q75=diag_ui["sim_q75"],
             softmax_entropy_ui=diag_ui["softmax_entropy"],
             softmax_entropy_iu=diag_iu["softmax_entropy"],
-            # Gradients do not exist until the caller runs backward().  The
-            # trainer replaces this placeholder with a fresh value afterwards.
             theta_grad_norm=0.0,
+            theta_norm=theta_norm,
+            near_zero_view_rate=avg_near_zero,
         )
         return loss, diag

@@ -434,12 +434,16 @@ class STAIR4V2(freerec.models.GenRecArch):
         norm_correction = 1 - beta_complement ** (self.num_layers + 1)  # [d]
 
         # The L=0 contract deliberately uses X0 as the auxiliary target view.
-        # For L>=1, capture the first hop before FSC channel attenuation.
-        X1_all = X0_all if self.num_layers == 0 else self.Adj @ X0_all
-
-        for _ in range(self.num_layers):
-            features = self.Adj @ features * beta_complement
+        X1_all = None
+        for layer in range(self.num_layers):
+            hop = self.Adj @ features
+            if layer == 0:
+                X1_all = hop
+            features = hop * beta_complement
             smoothed = smoothed + features
+
+        if X1_all is None:
+            X1_all = X0_all
 
         # Core Bug Fix: Multiply by self.beta (b_j), exactly matching baseline main.py line 207:
         # avgEmbds = smoothed.mul(1 - beta).div(norm_correction) where (1 - beta) == cfg.beta3 == self.beta!
@@ -506,13 +510,46 @@ class STAIR4V2(freerec.models.GenRecArch):
             diag["cl_raw"] = cl_diag.cl_raw
             diag["cl_weighted"] = lambda_cl * cl_diag.cl_raw
             diag["pos_count_ui"] = cl_diag.pos_count_ui
+            diag["pos_count_iu"] = cl_diag.pos_count_iu
             diag["sim_q25"] = cl_diag.sim_q25
             diag["sim_q75"] = cl_diag.sim_q75
             diag["entropy_ui"] = cl_diag.softmax_entropy_ui
-            diag["theta_grad_norm"] = cl_diag.theta_grad_norm
+            diag["entropy_iu"] = cl_diag.softmax_entropy_iu
+            diag["theta_norm"] = cl_diag.theta_norm
+            diag["near_zero_view_rate"] = cl_diag.near_zero_view_rate
+
+            # Gradient conflict diagnostics (§6.6): computed only at diagnostic intervals
+            if (
+                self.options.diagnostic_interval_steps > 0
+                and self._global_step % self.options.diagnostic_interval_steps == 0
+            ):
+                with torch.enable_grad():
+                    params = [self.User.embeddings.weight, self.Item.embeddings.weight]
+                    g_bpr = torch.autograd.grad(bpr_loss, params, retain_graph=True, allow_unused=True)
+                    g_cl = torch.autograd.grad(cl_loss, params, retain_graph=True, allow_unused=True)
+
+                    for role, gb, gc in zip(["u", "i"], g_bpr, g_cl):
+                        if gb is not None and gc is not None:
+                            gb_flat = gb.detach().reshape(-1)
+                            gc_flat = gc.detach().reshape(-1)
+                            norm_b = float(gb_flat.norm().item())
+                            norm_c = float(gc_flat.norm().item())
+                            dot = float(torch.dot(gb_flat, gc_flat).item())
+                            cos = dot / (norm_b * norm_c + 1e-8)
+                            ratio = (lambda_cl * norm_c) / (norm_b + 1e-8)
+                            diag[f"grad_bpr_norm_{role}"] = norm_b
+                            diag[f"grad_cl_norm_{role}"] = norm_c
+                            diag[f"grad_cos_{role}"] = cos
+                            diag[f"weighted_grad_ratio_{role}"] = ratio
+                        else:
+                            diag[f"grad_bpr_norm_{role}"] = 0.0
+                            diag[f"grad_cl_norm_{role}"] = 0.0
+                            diag[f"grad_cos_{role}"] = 0.0
+                            diag[f"weighted_grad_ratio_{role}"] = 0.0
         else:
             diag["cl_raw"] = 0.0
             diag["cl_weighted"] = 0.0
+            diag["near_zero_view_rate"] = 0.0
 
         # Arm smoother before backward
         self.bsf_smoother.arm_step(
@@ -524,21 +561,31 @@ class STAIR4V2(freerec.models.GenRecArch):
         return total_loss
 
     def update_post_backward_diagnostics(self) -> None:
-        """Record gradients that are only defined after ``loss.backward()``.
-
-        The head must not inspect ``omega.grad`` during its forward call:
-        doing so would report ``None`` on the first step and stale data on all
-        subsequent steps.  The coach invokes this method immediately after
-        backward and before ``optimizer.step()``.
-        """
+        """Record gradients that are only defined after ``loss.backward()`` (§6.6)."""
         if self.head is None or not self.head.has_trainable_parameters:
             self.last_diagnostics["theta_grad_norm"] = 0.0
+            self.last_diagnostics["theta_norm"] = 0.0
             return
         omega = self.head.rotation.omega
         grad = omega.grad
         self.last_diagnostics["theta_grad_norm"] = (
             float(grad.detach().norm().item()) if grad is not None else 0.0
         )
+        self.last_diagnostics["theta_norm"] = (
+            float(self.head.rotation.theta.detach().norm().item())
+        )
+        self._theta_before_step = self.head.rotation.theta.detach().clone()
+
+    def update_post_step_diagnostics(self) -> None:
+        """Record theta parameter step updates after ``optimizer.step()`` (§6.6)."""
+        if self.head is None or not self.head.has_trainable_parameters:
+            self.last_diagnostics["theta_update_norm"] = 0.0
+            return
+        if hasattr(self, "_theta_before_step"):
+            delta = (self.head.rotation.theta.detach() - self._theta_before_step).norm().item()
+            self.last_diagnostics["theta_update_norm"] = float(delta)
+        else:
+            self.last_diagnostics["theta_update_norm"] = 0.0
 
     # ------------------------------------------------------------------
     # Ranking / evaluation (baseline scorer)
