@@ -1,0 +1,14 @@
+base_config: Amazon2014Electronics_550_MMRec.yaml
+description: STAIR4-CSGC
+ablation_id: V4-C
+alpha: 0.25
+edge_epsilon: 0.5
+support_tau: 5.0
+degree_tau: 10.0
+degree_bins: 4
+min_stratum_edges: 200
+activity_weighting: inverse_degree
+graph_cache_dir: .cache/stair4_v4
+knn_block_size: 256
+num_workers: 0
+finite_check_interval: 0

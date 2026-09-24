@@ -46,7 +46,10 @@ if dp is None or 'torchdata.datapipes' not in sys.modules or not hasattr(sys.mod
         sys.modules['torchdata'] = td
     else:
         td = sys.modules['torchdata']
+    if not hasattr(td, '__path__'):
+        td.__path__ = []
     dp = types.ModuleType('torchdata.datapipes')
+    dp.__path__ = []
     td.datapipes = dp
     sys.modules['torchdata.datapipes'] = dp
 
@@ -56,6 +59,52 @@ if not hasattr(dp, 'iter'):
     sys.modules['torchdata.datapipes.iter'] = iter_mod
 else:
     iter_mod = dp.iter
+
+if 'torchdata.dataloader2' not in sys.modules:
+    dl2 = types.ModuleType('torchdata.dataloader2')
+    sys.modules['torchdata.dataloader2'] = dl2
+    if 'torchdata' in sys.modules:
+        sys.modules['torchdata'].dataloader2 = dl2
+
+    class DataLoader2:
+        def __init__(self, datapipe, reading_service=None):
+            self.datapipe = datapipe
+            self.reading_service = reading_service
+
+        def __iter__(self):
+            return iter(self.datapipe)
+
+        def __len__(self):
+            try:
+                return len(self.datapipe)
+            except Exception:
+                return 0
+
+        def state_dict(self):
+            return {"serialized_datapipe": None}
+
+        def load_state_dict(self, state):
+            pass
+
+        def shutdown(self):
+            pass
+
+    class MultiProcessingReadingService:
+        def __init__(self, num_workers=0):
+            self.num_workers = num_workers
+
+    class SequentialReadingService:
+        def __init__(self, *services):
+            self.services = services
+
+    class DistributedReadingService:
+        def __init__(self):
+            pass
+
+    dl2.DataLoader2 = DataLoader2
+    dl2.MultiProcessingReadingService = MultiProcessingReadingService
+    dl2.SequentialReadingService = SequentialReadingService
+    dl2.DistributedReadingService = DistributedReadingService
 
 import torch.utils.data
 
@@ -305,3 +354,24 @@ except ImportError:
         return float((np.sum(rank[pos]) - n_pos * (n_pos - 1) / 2) / (n_pos * n_neg))
 
     sklearn_metrics.roc_auc_score = roc_auc_score
+
+
+# 5. prettytable compatibility shim for freerec.data.datasets.base
+try:
+    import prettytable
+except ImportError:
+    prettytable = types.ModuleType("prettytable")
+    sys.modules["prettytable"] = prettytable
+
+    class PrettyTable:
+        def __init__(self, *args, **kwargs):
+            self.field_names = []
+            self.rows = []
+
+        def add_row(self, row):
+            self.rows.append(row)
+
+        def __str__(self):
+            return ""
+
+    prettytable.PrettyTable = PrettyTable

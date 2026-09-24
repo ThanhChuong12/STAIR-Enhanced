@@ -1,0 +1,113 @@
+{
+  "audit_date": "2026-09-24",
+  "status": "audit_completed",
+  "dataset": "Amazon2014Baby_550_MMRec",
+  "runtime": {
+    "python": "3.12.14",
+    "torch": "2.14.0+cpu",
+    "freerec": "0.9.7",
+    "numpy": "2.5.3",
+    "scipy": "1.18.1",
+    "numba": "0.67.0",
+    "torchdata": "0.8.0",
+    "torch-geometric": "2.8.0.post1"
+  },
+  "source_hash": "ec792b764fdb0732286a70fe35768e5f3457c27c6be68b61b571668fc80df541",
+  "graph_identity": {
+    "schema": 1,
+    "source": "ec792b764fdb0732286a70fe35768e5f3457c27c6be68b61b571668fc80df541",
+    "options": {
+      "alpha": 0.25,
+      "edge_epsilon": 0.5,
+      "support_tau": 5.0,
+      "degree_tau": 10.0,
+      "degree_bins": 4,
+      "min_stratum_edges": 200,
+      "activity_weighting": "inverse_degree",
+      "ablation_id": "V4-C",
+      "shuffle_seed": 1,
+      "identity_mix": 0.0,
+      "knn_block_size": 256
+    },
+    "raw": "d0e9a7a44d334b19513838663be218bbcc7eb159f32de0d9c29f1ee30bffe8a5",
+    "baseline": "96ce7d1726ca291019f7f5380d55135ddaaf968440a64a30e32af314897eefea",
+    "train_crow": "83771b623e775661feaec4787658db89de7d349bebc8064f8f3a84e9b1d8d3ac",
+    "train_col": "6f7c7b5244b2d305e329b370eab291d7578defd4d6da4eb987ed7ccfd4924717",
+    "train_shape": [
+      19445,
+      7050
+    ],
+    "data": {
+      "features_0": "d64e11b53a34f2c8199f8b5d7d4e81b16f2aba4aa5fa5635a54d7a5bd9c4ffd4",
+      "features_1": "96400c3447da29898265b71fc17850d860f4a2a9d06606dc3367e69b42c72214",
+      "neighbors_0": "d03669b7178c2969ea668c1a2e4d70b5c7c3c2a429db6408c4f5bd0edc9838ce",
+      "neighbors_1": "feb7b9275e9309e1bfd4905ff4f8068d9f6c526bff85a72b2731dbaa11e21036",
+      "neighbors_config": [
+        5,
+        1
+      ],
+      "knn_backend": "torch.topk/cpu/blocked",
+      "dimension": 64,
+      "layers": 3,
+      "gamma": 0.1,
+      "forward_adj": "f59ed84e83af4e94464d3058a62b169d0f2a447b03b0eb948c519d1eeb9d177e"
+    },
+    "torch": "2.14.0+cpu"
+  },
+  "diagnostics": {
+    "gate0": false,
+    "cache_hit": false,
+    "nnz": 59852,
+    "candidates": 29926,
+    "evidence_fraction": 0.1045244937512531,
+    "support_quantiles": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      20.163587084887507
+    ],
+    "reliability_quantiles": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.7413388066339176
+    ],
+    "supported_edge_support_quantiles": [
+      1.0,
+      1.0,
+      1.0,
+      1.4382022471910112,
+      20.163587084887507
+    ],
+    "supported_edge_reliability_quantiles": [
+      0.027777777777777776,
+      0.08455689858307837,
+      0.10910894511799618,
+      0.14357315820820482,
+      0.7413388066339176
+    ],
+    "positive_signal_edges": 3128,
+    "negative_signal_edges": 0,
+    "signal_quantiles": [
+      0.0,
+      0.0,
+      -0.0,
+      -0.0,
+      0.7325822909592137
+    ],
+    "multiplier_quantiles": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.366291145479607
+    ],
+    "strata_count": 10,
+    "operator_relative_frobenius": 0.003953570034354925,
+    "operator_relative_probe_action": 0.004001913592219353
+  },
+  "preparation_seconds": 46.41532929999994,
+  "note": "CPU graph preparation only; no full dataset training or recommendation gain measured. Runtime includes concurrent local test workload."
+}

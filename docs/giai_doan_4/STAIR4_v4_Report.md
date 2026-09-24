@@ -391,7 +391,9 @@ External comparator ưu tiên EVEN và SMORE trên cùng split/features; nếu c
 | Precompute có đắt hơn tiết kiệm training? | Hubs làm intersection nặng | Report amortized và one-run total cost, cache validity |
 | Current graph tốt rồi thì sao? | CSGC chỉ thêm noise | Alpha=0 được phép thắng; công bố negative result, không ép chọn v4 |
 
-## 13. Kế hoạch triển khai mã nguồn — chưa triển khai trong lượt này
+## 13. Kế hoạch triển khai mã nguồn
+
+**Cập nhật triển khai 2026-09-23:** các module CSGC, training engine, ba YAML, tests, notebook và scripts dưới đây đã được bổ sung. Chi tiết API thực tế, lệnh chạy, giới hạn resume và kiểm thử nằm trong [STAIR4_v4_Implementation.md](STAIR4_v4_Implementation.md); đối chiếu code tác giả tại [STAIR4_v4_Source_Audit.md](STAIR4_v4_Source_Audit.md). Các kết quả test không phải bằng chứng tăng Recall/NDCG. Phần pseudocode bên dưới mô tả ý tưởng, không thay thế API trong mã nguồn.
 
 | File dự kiến | Trách nhiệm chính |
 |---|---|
@@ -443,9 +445,8 @@ Pseudocode là interface dự kiến, không phải callable code đã có.
 ## 14. Config pilot và kiểm thử bắt buộc
 
 ~~~yaml
-# Proposed fields; not executable until v4 implementation exists.
+# Minimal executable example for main_stair4_v4.py.
 base_config: Amazon2014Baby_550_MMRec.yaml
-calibration_mode: confidence_shrunk
 alpha: 0.25
 edge_epsilon: 0.5
 support_tau: 5.0
@@ -453,8 +454,6 @@ degree_tau: 10.0
 degree_bins: 4
 min_stratum_edges: 200
 activity_weighting: inverse_degree
-graph_refresh: never
-auxiliary_loss: none
 ablation_id: V4-C
 ~~~
 

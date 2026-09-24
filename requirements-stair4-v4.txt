@@ -1,0 +1,9 @@
+# Keep the host's CUDA-compatible PyTorch installation on Kaggle.
+freerec==0.9.7
+torchdata==0.8.0
+torch-geometric>=2.5,<3
+numpy>=1.26,<3
+scipy>=1.11,<2
+numba>=0.60,<1
+PyYAML>=6,<7
+pytest>=8,<10
