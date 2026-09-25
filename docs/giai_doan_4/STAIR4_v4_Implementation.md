@@ -13,7 +13,8 @@ The implementation follows the static CSGC core in `STAIR4_v4_Report.md`. It doe
 | `main_stair4_v4.py` | YAML inheritance, CLI, baseline FreeRec evaluation, checkpoint/resume, epoch telemetry and selected-checkpoint metrics |
 | `configs/dataset_stair4_v4_*.yaml` | Inherit the respective baseline; add only calibration/runtime fields |
 | `tests/test_stair4_v4.py` | Algebraic oracle, sparse invariants, actual baseline comparison, checkpoint and real CLI smoke tests |
-| `notebook/P4/stair4_v4.ipynb` | Fresh-process Kaggle preflight, writable data bridge, graph audit, matched benchmark and Baby pilot |
+| `notebook/P4/stair4_v4.ipynb` | Fresh-process Kaggle preflight, writable data bridge, graph audit, matched benchmark, full/pilot training, resume and measured-result plots |
+| `tests/test_stair4_v4_notebook.py` | Clean-namespace plotting, epoch budgets, selected metrics, matched splits, runner failures, completed-run reuse, resume and report exports |
 | `scripts/audit_stair4_v4_graph.py` | Run production preparation without optimization |
 | `scripts/summarize_stair4_runs.py` | Read metrics at the checkpoint selected by validation NDCG@20 |
 
@@ -97,7 +98,7 @@ The SH control deliberately breaks the correspondence between evidence and weigh
 
 Executed locally on Python 3.12 / PyTorch 2.14 CPU / FreeRec 0.9.7:
 
-Test suite: **17 passed, 1 skipped** (CUDA unavailable). All seven notebook code cells also passed Python syntax parsing; the full notebook was not executed on Kaggle.
+Model/engine test suite: **17 passed, 1 skipped** (CUDA unavailable). Notebook cells are syntax-checked and its reporting helpers are executed in a fresh namespace by tests/test_stair4_v4_notebook.py. The full updated notebook was not executed on Kaggle locally.
 
 - Dense candidate-statistics oracle, duplicate interactions, zero overlap, tied ranks, isolated nodes and empty support.
 - Randomized sparse symmetry/support/spectral bounds and cache identity/corruption checks.
@@ -126,3 +127,37 @@ The compact graph diagnostics and source/data identity are preserved in `artifac
 These checks establish implementation contracts on tested inputs. They do not establish GPU bitwise parity, Kaggle throughput, full-dataset accuracy or an improvement over STAIR. The notebook is a runnable pipeline whose full Kaggle training remains to be executed. TorchData deprecation and PyTorch CSR notices remain visible; they are not silently suppressed.
 
 Use the registered Baby pilot, paired seeds and validation-only tuning before Sports/Electronics. A null or negative result remains a valid outcome.
+
+## Kaggle notebook correction — 2026-09-25
+
+Local verification: **11 notebook tests passed**, including actual PNG rendering and CSV/LaTeX export from fixture JSONL. The model/engine suite was rerun: **17 passed, 1 skipped** (CUDA unavailable), including real toy CLI training/evaluation/resume. Fixture metrics are test data, not research results. No 500-epoch Kaggle run was performed during this correction.
+
+The supplied Kaggle log shows both Baby V4-B1 and V4-C completing 50 training epochs, loading the validation-selected model at epoch 50 and writing their artifacts. The subsequent NameError occurred in notebook plotting, after training had finished. The local fixes do not change the model, optimizer, baseline evaluation or checkpoint selection.
+
+### Findings and corrections
+
+- The learning-curve function called np.argmax without importing NumPy. Plotting now marks the epoch recorded in the completed run manifest, using the same validation-NDCG selection for both Recall and NDCG. Plot helpers have local imports and are tested without hidden kernel variables.
+- FreeRec JSONL uses RECALL@20, whereas the old per-dataset plot requested Recall@20 and substituted zero when missing. Metric spelling is now normalized, and missing values are omitted rather than plotted as zero.
+- Hard-coded historical baseline values were overlaid on validation curves without establishing split/protocol compatibility. These overlays were removed; measured B1/C curves provide the control comparison.
+- Training invoked plotting automatically and then the following cells repeated the plots. Training now returns after saving its runs. The dedicated plot cells can regenerate figures without launching training.
+- Plotting reads one explicit stage, with stage-specific output filenames. It no longer falls back from full to benchmark silently. Resumed duplicate epochs use the last record.
+- CUDA telemetry is labelled cumulative PyTorch peak allocated memory sampled at epoch boundaries, not instantaneous or whole-device VRAM. The counter resets after preparation, so this is not a measurement of preparation's peak.
+- Report deltas also require matching whole-dataset fingerprints, including held-out files. Seed summaries separate epoch budgets, preventing a resumed 500-epoch pilot from being averaged with a short pilot.
+- Resume setup keeps the original experiment's artifact root for reports/export. Repeated resume uses the latest requested epoch budget, rather than reverting to the original 50-epoch command.
+
+### Epoch budget and use
+
+The previous notebook explicitly passed --epochs 50 because RUN_MODE was pilot and PILOT_EPOCHS was 50. This overrode the inherited YAML value of 500; it was not early stopping or a model failure.
+
+The corrected notebook defaults to RUN_MODE='full': each selected B1/C run receives the inherited **500 epochs**. Optional pilot mode now defaults to **100 epochs**, matching Stage B of the architecture report. The resolved budget is printed before training. Baby/seed 1 remains the default dataset/seed; a single seed is exploratory, not the report's multi-seed confirmation protocol.
+
+To repair figures for the existing Kaggle session, retain the original artifact root, execute the updated train-helper definition cell, then run:
+
+~~~python
+plot_single_dataset_learning_curves('baby', stage='pilot')
+plot_vram_profile('baby', stage='pilot')
+~~~
+
+Do not call train_dataset merely to regenerate figures. For a fresh full comparison, set RUN_MODE='full' in the control panel and execute the setup/training cells; /full/ output remains separate from the old /pilot/ output. Existing repository checkouts are preserved, so explicitly upload/sync the corrected notebook and required code rather than assuming clone refreshes an existing checkout.
+
+Rounded selected-test values in the supplied log were B1 Recall@20=0.0960 / NDCG@20=0.0418 and C Recall@20=0.0961 / NDCG@20=0.0419. These 50-epoch, single-seed observations do not establish improvement at convergence or statistical significance. Read exact values from evaluation.jsonl; do not derive a precise gain from the rounded console output.
