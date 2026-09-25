@@ -217,3 +217,45 @@ def test_report_cells_export_real_jsonl_without_hidden_imports(scope, cells):
     assert len(scope["FIGURES"]) == 2
     assert all(path.stat().st_size > 1000 for path in scope["FIGURES"])
     assert not plt.get_fignums()
+
+
+@pytest.mark.parametrize("key", ["sports", "electronics"])
+def test_explicit_dataset_request_from_baby_kernel(scope, cells, tmp_path, key):
+    """Stage real fixture files and construct both commands from a Baby-only kernel."""
+    scope.update(WORK=tmp_path, INPUT_ROOT=tmp_path / "input", DATA_ROOT=tmp_path / "staged",
+                 DATASET_SOURCES={}, DATASET_NAMES={
+                     "sports": "Amazon2014Sports_550_MMRec",
+                     "electronics": "Amazon2014Electronics_550_MMRec"},
+                 REQUIRED_FILES=("train.txt", "valid.txt", "test.txt",
+                                 "textual_modality.pkl", "visual_modality.pkl"))
+    from main_stair4_v4 import load_config
+    scope["CONFIGS"][key] = load_config(ROOT / f"configs/dataset_stair4_v4_{key}.yaml")
+    for cell in ("v4-source-functions", "v4-data-functions"):
+        exec(compile(cells[cell], cell, "exec"), scope)
+    directory = scope["INPUT_ROOT"] / key
+    directory.mkdir(parents=True)
+    for name in scope["REQUIRED_FILES"]:
+        (directory / name).write_text("fixture")
+    calls = []
+    scope["launch"] = lambda *args: calls.append(scope["make_command"](*args))
+    scope["train_dataset"](key)
+    assert scope["DATASETS_TO_RUN"] == ["baby"]  # No hidden selection mutation.
+    assert key in scope["PREPARED"] and len(calls) == 2
+    assert (Path(scope["PREPARED"][key]["processed"]) / "train.txt").read_text() == "fixture"
+    for argv, directory in calls:
+        assert argv[argv.index("--config") + 1].endswith(f"dataset_stair4_v4_{key}.yaml")
+        assert argv[argv.index("--epochs") + 1] == "500"
+        assert directory.parent.parent.name == key
+    # Two possible attached splits must not be resolved by arbitrary path length.
+    other = scope["INPUT_ROOT"] / (key + "_other")
+    shutil.copytree(scope["INPUT_ROOT"] / key, other)
+    with pytest.raises(RuntimeError, match="ambiguous"):
+        scope["discover_dataset"](key, scope["INPUT_ROOT"])
+
+
+def test_run_all_does_not_retrain_completed_baby(scope, cells):
+    scope["DATASETS_TO_RUN"] = ["sports", "electronics"]
+    scope["launch"] = lambda *a: pytest.fail("Baby must remain unselected")
+    exec(cells["train-baby"], scope)
+    with pytest.raises(ValueError, match="Unknown"):
+        scope["train_dataset"]("typo")
