@@ -30,6 +30,12 @@ ROOT = Path(__file__).resolve().parents[1]
 torch.set_num_threads(1)
 
 
+def pytest_configure(config):
+    basetemp = getattr(config.option, "basetemp", None)
+    if basetemp:
+        Path(basetemp).mkdir(parents=True, exist_ok=True)
+
+
 @pytest.fixture
 def toy(tmp_path):
     from main_stair4_v4 import build_dataset
