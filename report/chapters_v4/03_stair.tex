@@ -277,33 +277,152 @@ Quỹ đạo học tập của mô hình STAIR-CNLGCL v1-R cung cấp bằng ch�
 
 \subsubsection{Động lực kỹ thuật và kiến trúc đề xuất}
 
-Trong giai đoạn cải tiến thứ hai, mục tiêu của hệ thống là thiết lập một hàm mục tiêu phụ trợ nhằm điều chuẩn không gian biểu diễn giữa các tầng tích chập lân cận mà không làm biến dạng cấu trúc đồ thị gốc. Phiên bản thử nghiệm ban đầu (v2) đã cố gắng chuyển đổi không gian nhúng sang dạng phức và áp dụng các phép lọc phổ. Tuy nhiên, kết quả thực nghiệm của v2 ghi nhận sự suy thoái nghiêm trọng trên toàn bộ các chỉ số, với Recall@20 giảm từ 32\% đến 41\% so với baseline. Quá trình rà soát mã nguồn chỉ ra nguyên nhân xuất phát từ lỗi sai lệch trong quá trình chuẩn hóa của Forward Stepwise Convolution, khiến trọng số đóng góp của các chiều đặc trưng bị thay đổi theo bình phương tỷ lệ nghịch, làm sai lệch hoàn toàn biểu diễn gốc. Đồng thời, việc tính toán độ tương đồng pha thiếu cơ chế kiểm soát biên độ đã gây ra hiện tượng triệt tiêu gradient giữa hàm mục tiêu chính và hàm mục tiêu phụ trợ.
+Trong giai đoạn cải tiến thứ hai, mục tiêu của hệ thống là thiết lập một hàm mục tiêu phụ trợ nhằm điều chuẩn không gian biểu diễn giữa các tầng tích chập lân cận mà không làm biến dạng cấu trúc đồ thị gốc. Phiên bản thử nghiệm ban đầu v2 áp dụng biến đổi sang không gian phức và các phép lọc phổ. Tuy nhiên, kết quả thực nghiệm ghi nhận sự suy thoái nghiêm trọng trên toàn bộ các chỉ số, với Recall@20 giảm từ 32\% đến 41\% so với baseline. Quá trình kiểm tra mã nguồn chỉ ra nguyên nhân xuất phát từ lỗi sai lệch trong quá trình chuẩn hóa của Forward Stepwise Convolution, khiến trọng số đóng góp của các chiều đặc trưng bị thay đổi theo bình phương tỷ lệ nghịch, làm sai lệch hoàn toàn biểu diễn gốc. Đồng thời, việc tính toán độ tương đồng pha thiếu cơ chế kiểm soát biên độ và thiếu cơ chế stop-gradient đã gây ra xung đột gradient giữa hàm mục tiêu chính BPR và hàm mục tiêu phụ trợ.
 
-Để khắc phục các lỗi cấu trúc này, phiên bản STAIR-BCCR v2.1 (Baseline-preserving Complex Cross-layer Regularization) được đề xuất với những điều chỉnh toán học cốt lõi sau:
+Để khắc phục các lỗi này, phiên bản STAIR-BCCR v2.1, viết tắt của Baseline-preserving Complex Cross-layer Regularization, được đề xuất với sáu thành phần toán học cốt lõi sau:
 
 \noindent\textbf{1. Phục hồi và chuẩn hóa Forward Stepwise Convolution}
 
-Thuật toán FSC được hiệu chỉnh để đảm bảo tính nhất quán với mô hình STAIR gốc. Với $\beta_j = 0.1 + 0.9(j/d)^\gamma$ và $\alpha_j = 1 - \beta_j$, biểu diễn tại tầng cuối cùng được tính toán chính xác theo công thức:
+Thuật toán FSC được hiệu chỉnh để đảm bảo tính nhất quán với mô hình STAIR gốc. Đặt $b_j = 0.1 + 0.9(j/d)^\gamma$ và $a_j = 1 - b_j$, biểu diễn tại tầng cuối cùng được tính toán chính xác theo công thức:
 \begin{equation}
-Z_{:,j} = \frac{\beta_j}{1 - \alpha_j^{L+1}} \sum_{l=0}^{L} F^{(l)}_{:,j}
+Z_{:,j} = \frac{b_j}{1 - a_j^{L+1}} \sum_{l=0}^{L} F^{(l)}_{:,j}
 \end{equation}
-Sự hiệu chỉnh này đảm bảo mô hình có thể phục hồi hoàn toàn mức hiệu năng của baseline khi trọng số của hàm mất mát phụ trợ tiến về 0.
+với $F^{(0)} = E$ và $F^{(l+1)} = A F^{(l)} \text{diag}(a)$. Trong phiên bản v2 bị lỗi, công thức tính toán vô tình nhân $a_j$ thay vì $b_j$ ở tử số, dẫn đến tỷ lệ biểu diễn bị lệch $Z_{:,j}^{\text{v2}} = \frac{1-b_j}{b_j} Z_{:,j}^{\text{baseline}}$. Tích vô hướng điểm số làm thay đổi trọng số đóng góp của chiều $j$ theo bình phương tỷ lệ này, làm sai lệch phân bố nhúng. Sự hiệu chỉnh này đảm bảo mô hình phục hồi hoàn toàn mức hiệu năng của baseline khi trọng số hàm mất mát phụ trợ tiến về 0.
 
-\noindent\textbf{2. Ánh xạ đặc trưng pha chuẩn hóa}
+\noindent\textbf{2. Ánh xạ đặc trưng pha có chặn}
 
-Thay vì sử dụng các hàm kích hoạt dễ bão hòa, biểu diễn tại tầng 0 và tầng 1 được chuẩn hóa L2 trên từng dòng và chuyển đổi sang không gian phức thông qua hàm ánh xạ pha. Với vector đầu vào $x \in \mathbb{R}^d$, phép biến đổi được định nghĩa:
+Biểu diễn tại tầng 0 và tầng 1 được chuẩn hóa L2 trên từng dòng và chuyển đổi sang không gian phức thông qua hàm ánh xạ pha có chặn bounded phase encoder. Với vector đầu vào $x \in \mathbb{R}^d$, phép biến đổi được định nghĩa:
 \begin{equation}
 r(x) = \frac{x}{\max(\|x\|_2, \epsilon)}, \quad \psi_k(x) = \frac{1}{\sqrt{d}} \exp\left\{i \kappa \sqrt{d} \, r_k(x)\right\}
 \end{equation}
-với $\kappa = 0.5$ và $\epsilon = 10^{-8}$. Phép biến đổi này đảm bảo module của vector luôn bằng 1, loại bỏ sự phụ thuộc của góc pha vào bình phương độ lớn vector gốc.
+với $\kappa = 0.5$ và $\epsilon = 10^{-8}$. Phép biến đổi này đảm bảo chuẩn L2 của vector phức luôn bằng 1 ($\|\psi(x)\|_2 = 1.0$), loại bỏ sự phụ thuộc của góc pha vào biên độ của vector gốc và tránh hiện tượng bão hòa gradient thường gặp khi dùng hàm tang hypebolic hoặc arctan.
 
-\noindent\textbf{3. Độ tương đồng hỗn hợp (Fidelity Mixture)}
+\noindent\textbf{3. Cơ chế stop-gradient trên nhánh mục tiêu và phép quay Givens}
 
-Để đo lường khoảng cách giữa biểu diễn truy vấn $q$ và đích $k$ trong không gian phức, mô hình sử dụng hàm độ tương đồng hỗn hợp kết hợp giữa phần thực của tích vô hướng và bình phương độ lớn:
+Hai góc nhìn biểu diễn chéo tầng được tạo từ biểu diễn gốc $X_0 = E$ và biểu diễn lan truyền tầng đầu $X_1 = A E$ trước khi áp dụng hệ số suy giảm theo chiều. Vector query $q$ và vector key $k$ được xác định theo công thức:
+\begin{equation}
+q = \psi(X_0), \quad t = \text{stopgrad}(\psi(X_1)), \quad k = G_\theta(t)
+\end{equation}
+Toán tử $G_\theta$ gồm $d/2$ khối quay Givens hai chiều độc lập trên từng cặp tọa độ:
+\begin{equation}
+\begin{pmatrix} k_{2j} \\ k_{2j+1} \end{pmatrix} = \begin{pmatrix} \cos\theta_j & -\sin\theta_j \\ \sin\theta_j & \cos\theta_j \end{pmatrix} \begin{pmatrix} t_{2j} \\ t_{2j+1} \end{pmatrix}, \quad \theta_j = \frac{\pi}{4}\tanh(\omega_j)
+\end{equation}
+với tham số học $\omega \in \mathbb{R}^{d/2}$ được khởi tạo bằng 0, tương đương phép quay đồng nhất $G_\theta = I$ tại bước khởi đầu. Phép chặn gradient stopgrad trên vector đích $t$ loại bỏ hoàn toàn xung đột gradient giữa hàm mất mát phụ trợ và hàm BPR trên biểu diễn $X_1$, đồng thời đảm bảo tham số quay $\omega$ vẫn nhận gradient cập nhật bình thường từ hàm đối chiếu.
+
+\noindent\textbf{4. Độ tương đồng hỗn hợp trong không gian phức}
+
+Để đo lường khoảng cách giữa biểu diễn query $q$ và key $k$ trong không gian số phức, hệ thống sử dụng hàm tương đồng hỗn hợp kết hợp giữa phần thực của tích vô hướng Hermitian và bình phương độ lớn:
 \begin{equation}
 h(q,k) = q^H k, \quad s_\eta(q,k) = (1 - \eta)\Re(h) + \eta|h|^2
 \end{equation}
-Trong cấu hình v2.1, hệ số $\eta = 0.25$ được sử dụng. Hàm mất mát đối chiếu InfoNCE sau đó được tính toán dựa trên ma trận độ tương đồng này trong phạm vi mini-batch. 
+với hệ số hỗn hợp $\eta = 0.25$. Điểm số tương đồng được chia cho tham số nhiệt độ $\tau = 0.2$ để tạo ma trận logit $\ell(q,k) = s_\eta(q,k) / \tau$. Phép tính được thực hiện trực tiếp bằng hai phép nhân ma trận hai chiều GEMM trên phần thực và phần ảo:
+\begin{equation}
+\Re(h) = q_{\text{real}} k_{\text{real}}^T + q_{\text{imag}} k_{\text{imag}}^T, \quad \Im(h) = q_{\text{real}} k_{\text{imag}}^T - q_{\text{imag}} k_{\text{real}}^T
+\end{equation}
+Cách tiếp cận này loại bỏ hoàn toàn việc cấp phát tensor ba chiều kích thước $B \times B \times d$, tiết kiệm đáng kể bộ nhớ VRAM.
+
+\noindent\textbf{5. Hàm mất mát đối chiếu đa mục tiêu dương trong tập huấn luyện}
+
+Để tránh việc xem các cặp sản phẩm có tương tác thật là mẫu âm, tập các user duy nhất $U_B$ và item dương duy nhất $I_B$ trong mini-batch được trích xuất để tạo mặt nạ tương tác $M_{ui} \in \{0, 1\}$. Phân phối mục tiêu được chuẩn hóa đều trên các tương tác dương:
+\begin{equation}
+Y_{ui} = \frac{M_{ui}}{\sum_{j \in I_B} M_{uj}}
+\end{equation}
+Hàm mất mát multi-positive cross-entropy được tính đối xứng theo hai chiều truy vấn:
+\begin{equation}
+\mathcal{L}_{u \to i} = -\frac{1}{|V_u|} \sum_{u \in V_u} \sum_{i \in I_B} Y_{ui} \log \left( \frac{\exp(\ell(q_u, k_i))}{\sum_{j \in I_B} \exp(\ell(q_u, k_j))} \right)
+\end{equation}
+\begin{equation}
+\mathcal{L}_{i \to u} = -\frac{1}{|V_i|} \sum_{i \in V_i} \sum_{u \in U_B} Y_{iu} \log \left( \frac{\exp(\ell(q_i, k_u))}{\sum_{v \in U_B} \exp(\ell(q_i, k_v))} \right)
+\end{equation}
+với $V_u, V_i$ là tập các hàng hợp lệ có ít nhất một mục tiêu dương và một ứng viên không dương. Hàm mất mát đối chiếu tổng hợp là trung bình của hai hướng:
+\begin{equation}
+\mathcal{L}_{\text{CL}} = \frac{1}{2}(\mathcal{L}_{u \to i} + \mathcal{L}_{i \to u})
+\end{equation}
+
+\noindent\textbf{6. Lịch trình điều tiết trọng số theo epoch}
+
+Trọng số $\lambda(e)$ của hàm mất mát đối chiếu được kiểm soát theo lịch trình tuyến tính:
+\begin{equation}
+\lambda(e) = \lambda_{\max} \cdot \text{clip}\left(\frac{e - W}{R}, 0, 1\right)
+\end{equation}
+với số epoch khởi động $W = 10$, chu kỳ tăng dần $R = 20$ và mức trần $\lambda_{\max} = 10^{-4}$. Hàm mục tiêu tổng quát được tối ưu hóa theo công thức:
+\begin{equation}
+\mathcal{L} = \mathcal{L}_{\text{BPR}} + \lambda(e) \cdot \mathcal{L}_{\text{CL}}
+\end{equation}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.82, transform shape,
+    inputbox/.style={rectangle, draw=blue!60!black, line width=0.8pt, rounded corners=4pt, minimum height=0.75cm, text width=2.4cm, font=\footnotesize, align=center, fill=blue!6, inner sep=3pt},
+    block/.style={rectangle, draw=blue!60!black, line width=0.8pt, rounded corners=4pt, minimum height=0.9cm, text width=5.4cm, font=\footnotesize, align=center, fill=blue!6, inner sep=4pt},
+    layerbox/.style={rectangle, draw=teal!70!black, line width=0.8pt, rounded corners=4pt, minimum height=0.9cm, text width=5.4cm, font=\footnotesize\bfseries, align=center, fill=teal!8, inner sep=4pt},
+    clbox/.style={rectangle, draw=orange!80!black, dashed, line width=1pt, rounded corners=6pt, text width=5.4cm, font=\footnotesize, align=left, fill=orange!8, inner sep=6pt},
+    finalbox/.style={rectangle, draw=blue!85!black, line width=1.2pt, rounded corners=6pt, minimum height=1.1cm, text width=11.6cm, font=\small, align=center, fill=blue!12, inner sep=6pt},
+    arr/.style={-{Stealth[length=2.5mm, width=1.8mm]}, line width=0.9pt, draw=gray!75!black},
+    dasharr/.style={-{Stealth[length=2.5mm, width=1.8mm]}, line width=0.9pt, dashed, draw=purple!80!black},
+    subbgleft/.style={draw=blue!35, dashed, fill=blue!2, rounded corners=8pt},
+    subbgright/.style={draw=orange!45, dashed, fill=orange!2, rounded corners=8pt}
+]
+
+% Khung nền bao quanh hai cột
+\draw[subbgleft] (-7.5, 1.8) rectangle (-1.1, -7.0);
+\node[font=\small\bfseries\color{blue!70!black}, anchor=north] at (-4.3, 1.55) {Nhánh biểu diễn chính và hàm BPR};
+
+\draw[subbgright] (1.1, 1.8) rectangle (7.5, -7.0);
+\node[font=\small\bfseries\color{orange!80!black}, anchor=north] at (4.3, 1.55) {Nhánh điều chuẩn chéo tầng trong không gian phức};
+
+% --- CỘT TRÁI (FORWARD VÀ BPR) ---
+\node[inputbox, anchor=north] (raw_u) at (-5.7, 0.8) {User ID $E_u$};
+\node[inputbox, anchor=north] (raw_i) at (-2.9, 0.8) {Item SVD $E_i$};
+
+\node[block, anchor=north] (x0) at (-4.3, -0.6) {\textbf{Tầng 0: Ego embeddings}\\[2pt]$X_0 = E = [E_u \,;\, E_i]$};
+\draw[arr] (raw_u.south) -- ++(0,-0.2) -| ([xshift=-1.3cm]x0.north);
+\draw[arr] (raw_i.south) -- ++(0,-0.2) -| ([xshift=1.3cm]x0.north);
+
+\node[block, anchor=north] (x1) at (-4.3, -2.1) {\textbf{Tầng 1: Lan truyền láng giềng}\\[2pt]$X_1 = A E$};
+\draw[arr] (x0.south) -- (x1.north);
+
+\node[layerbox, anchor=north] (fsc) at (-4.3, -3.6) {\textbf{Forward Stepwise Convolution}\\[2pt]$Z_{:,j} = \frac{b_j}{1 - a_j^{L+1}} \sum_{l=0}^L F^{(l)}_{:,j}$};
+\draw[arr] (x1.south) -- (fsc.north);
+
+\node[block, anchor=north] (bpr) at (-4.3, -5.3) {\textbf{BPR ranking loss}\\[2pt]$\mathcal{L}_{\text{BPR}} = -\sum_{(u,i,j)} \ln \sigma(Z_u^T Z_i - Z_u^T Z_j)$};
+\draw[arr] (fsc.south) -- (bpr.north);
+
+% --- CỘT PHẢI (CROSS-LAYER COMPLEX REGULARIZATION) ---
+\node[block, anchor=north] (query) at (4.3, 0.8) {\textbf{Query encoder}\\[2pt]$q = \psi(X_0), \quad \|q\|_2 = 1$};
+
+\node[block, anchor=north] (stopgrad) at (4.3, -1.0) {\textbf{Target view \& stop-gradient}\\[2pt]$t = \text{stopgrad}(\psi(X_1))$};
+
+\node[layerbox, anchor=north] (givens) at (4.3, -2.5) {\textbf{Key Givens rotation}\\[2pt]$k = G_\theta(t), \quad \theta_j = \frac{\pi}{4}\tanh(\omega_j)$};
+\draw[arr] (stopgrad.south) -- (givens.north);
+
+\node[block, anchor=north] (similarity) at (4.3, -4.0) {\textbf{Complex hybrid similarity}\\[2pt]$s_\eta(q,k) = (1-\eta)\Re(q^H k) + \eta |q^H k|^2$};
+\draw[arr] (givens.south) -- (similarity.north);
+
+\node[clbox, anchor=north] (cl) at (4.3, -5.4) {
+    \textbf{\small Multi-positive CE loss}\\[2pt]
+    $\mathcal{L}_{\text{CL}} = \frac{1}{2}(\mathcal{L}_{u \to i} + \mathcal{L}_{i \to u})$\\
+    Tập tương tác dương huấn luyện $M_{ui}$
+};
+\draw[arr] (similarity.south) -- (cl.north);
+
+% Liên kết ngang giữa hai cột
+\draw[dasharr] (x0.east) -- ++(0.7, 0) |- (query.west);
+\draw[dasharr] (x1.east) -- ++(1.0, 0) |- (stopgrad.west);
+
+% --- KHỐI ĐÍCH CHUNG ---
+\node[finalbox, anchor=north] (total) at (0.0, -7.6) {
+    \textbf{Kiến trúc tổng thể STAIR-BCCR v2.1}\\[3pt]
+    $\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{BPR}} + \lambda(e) \cdot \mathcal{L}_{\text{CL}}$ kết hợp lịch trình warmup 10 epoch và ramp 20 epoch
+};
+
+\draw[arr] (bpr.south) -- ++(0, -0.5) -| ([xshift=-3.0cm]total.north);
+\draw[arr] (cl.south) -- ++(0, -0.5) -| ([xshift=3.0cm]total.north);
+
+\end{tikzpicture}
+\caption{Cấu trúc tổng thể của STAIR-BCCR v2.1. Nhánh BPR duy trì lan truyền FSC chuẩn hóa; nhánh điều chuẩn chéo tầng trong không gian phức sử dụng stop-gradient và phép quay Givens để loại bỏ xung đột gradient.}
+\label{fig:stair_bccr_v2_architecture}
+\end{figure}
 
 \subsubsection{Kết quả thực nghiệm và đối chuẩn}
 
@@ -375,37 +494,94 @@ Thực nghiệm phiên bản v2.1 xác nhận việc hiệu chỉnh công thức
 
 Các phương pháp cải tiến trước đây chủ yếu tập trung vào việc gán trọng số cho từng cạnh độc lập trong đồ thị cặp. Tuy nhiên, cách tiếp cận này bỏ qua mối tương quan nhóm bậc cao giữa một sản phẩm trung tâm và tập hợp láng giềng ngữ nghĩa của nó. Hơn nữa, việc gộp chung các phương thức vào một đồ thị duy nhất làm mờ đi ranh giới tín hiệu của từng phương thức, đặc biệt khi mô tả văn bản chứa nhiều từ khóa gây nhiễu.
 
-Kiến trúc STAIR-MHD v3 được đề xuất nhằm mô hình hóa trực tiếp các cấu trúc nhóm thông qua ma trận liên thuộc (Incidence Matrix) và mạng Gating có điều kiện hành vi. Kiến trúc được xây dựng dựa trên các trụ cột toán học sau:
+Kiến trúc STAIR-MHD v3 được đề xuất nhằm mô hình hóa trực tiếp các cấu trúc nhóm thông qua ma trận liên thuộc incidence matrix và mạng gating có điều kiện hành vi. Kiến trúc được xây dựng dựa trên năm thành phần toán học cốt lõi sau:
 
-\noindent\textcolor{lightblue}{\textbf{1. Biểu diễn Incidence đa phương thức}}
+\noindent\textbf{1. Biểu diễn ma trận liên thuộc theo từng phương thức}
 
-Thay vì sử dụng ma trận kề $N \times N$, hệ thống xây dựng ma trận liên thuộc $H \in \mathbb{R}^{N \times 2N}$ ghép khối từ $H_{\text{text}}$ và $H_{\text{vis}}$. Mỗi siêu cạnh (hyperedge) đại diện cho một nhóm gồm sản phẩm trung tâm và các láng giềng gần nhất của nó. Phần tử $H_{i, e} = 1$ nếu sản phẩm $i$ thuộc siêu cạnh $e$.
-
-\noindent\textcolor{lightblue}{\textbf{2. Mạng Gating có điều kiện hành vi}}
-
-Mô hình học trọng số mềm $g_e$ cho từng siêu cạnh thông qua mạng nơ-ron hai tầng. Vector đầu vào $x_e$ của mạng Gating được tổng hợp từ biểu diễn trung bình của siêu cạnh, tín hiệu hỗ trợ hành vi từ ma trận đồng mua và biểu diễn của sản phẩm trung tâm:
+Thay vì xây dựng ma trận kề cặp $N \times N$, hệ thống xây dựng hai ma trận liên thuộc thưa độc lập $H_{\text{text}}, H_{\text{vis}} \in \{0, 1\}^{N \times N}$ cho hai phương thức văn bản và hình ảnh. Mỗi sản phẩm trung tâm $c$ tạo nên một siêu cạnh hyperedge chứa chính nó và các láng giềng ngữ nghĩa gần nhất từ thuật toán exact kNN:
 \begin{equation}
-x_e = \left[ h_e^{(m)} \parallel \text{support}_e \parallel \text{centroid}_i \right]
+e_c^{(m)} = \{c\} \cup \text{kNN}_m(c), \quad m \in \{\text{text}, \text{vis}\}
 \end{equation}
-Trọng số siêu cạnh được tính toán qua hàm Sigmoid và kẹp cận dưới để tránh hiện tượng cô lập đỉnh:
+Phần tử $H_m[i, c] = 1$ nếu sản phẩm $i$ thuộc siêu cạnh của tâm $c$. Bậc siêu cạnh tĩnh được xác định bởi tổng số thành viên $d_e = H_m^T \mathbf{1}$.
+
+\noindent\textbf{2. Mạng gating có điều kiện hành vi}
+
+Mô hình học trọng số mềm $w_e$ cho từng siêu cạnh thông qua mạng nơ-ron hai tầng kết hợp với tín hiệu hành vi đồng mua. Vector đầu vào $x_e \in \mathbb{R}^4$ của mạng gating được xây dựng từ bốn đặc trưng thống kê tĩnh đã chuẩn hóa z-score trên toàn bộ danh mục sản phẩm:
 \begin{equation}
-g_e = g_{\text{floor}} + (1 - g_{\text{floor}}) \cdot \sigma(W_2 \cdot \text{LeakyReLU}(W_1 x_e + b_1) + b_2)
+x_e = \left[ \mu_{\cos}, \, \sigma_{\cos}, \, \bar{d}_{\log}, \, d_{\log}^{\min} \right]
 \end{equation}
-
-\noindent\textcolor{lightblue}{\textbf{3. Lan truyền nhân tử hóa (Factorized Propagation)}}
-
-Để triệt tiêu chi phí bộ nhớ $O(N^2)$ khi tính toán trên không gian lớn, quá trình lan truyền thông tin được nhân tử hóa thành hai bước nhân ma trận thưa. Toán tử truyền $\tilde{P}$ được định nghĩa:
+trong đó $\mu_{\cos}$ và $\sigma_{\cos}$ là trung bình và độ lệch chuẩn của độ tương đồng cosine giữa sản phẩm tâm $c$ và các láng giềng; $\bar{d}_{\log}$ và $d_{\log}^{\min}$ là giá trị trung bình và giá trị nhỏ nhất của $\log(1 + n_i)$ trong siêu cạnh, với $n_i$ là số lượng người dùng tương tác với sản phẩm $i$ trong tập huấn luyện. Mạng nơ-ron hai tầng $g_m: \mathbb{R}^4 \to \mathbb{R}^{16} \to \mathbb{R}^1$ với hàm kích hoạt GELU được định nghĩa:
 \begin{equation}
-\tilde{P} = D_v^{-1/2} H W_e D_e^{-1} H^T D_v^{-1/2}
+g_m(x_e) = W_2 \cdot \text{GELU}(W_1 x_e + b_1) + b_2
 \end{equation}
-với $D_v$ và $D_e$ lần lượt là ma trận đường chéo bậc đỉnh và bậc siêu cạnh, $W_e = \text{diag}(g_1, \dots, g_E)$.
+với trọng số lớp cuối được khởi tạo bằng 0 và bias $b_2 = \text{logit}(p_0)$ với $p_0 = 0.8$.
 
-\noindent\textcolor{lightblue}{\textbf{4. Hàm mục tiêu tương phản Hypergraph và Budget Regularization}}
+Tín hiệu hành vi đồng mua được tích hợp thông qua độ gắn kết $C_e$ và độ tin cậy hỗ trợ $\rho_e$. Với mỗi cặp sản phẩm $(a, b)$ trong tập $T_e$ của siêu cạnh $e$:
+\begin{equation}
+c_{ab} = |U_a \cap U_b|, \quad o_{ab} = \frac{c_{ab}}{\sqrt{n_a n_b} + \epsilon}, \quad r_{ab} = \frac{\min(n_a, n_b)}{\min(n_a, n_b) + s}
+\end{equation}
+\begin{equation}
+C_e = \frac{\sum_{(a,b) \in T_e} r_{ab} o_{ab}}{\sum_{(a,b) \in T_e} r_{ab} + \epsilon}, \quad \rho_e = \frac{1}{|T_e|} \sum_{(a,b) \in T_e} r_{ab}
+\end{equation}
+với tham số hỗ trợ $s = 10$. Logit của siêu cạnh nhận thêm dịch chuyển tuyến tính từ tín hiệu hành vi:
+\begin{equation}
+a_e = g_m(x_e) + \eta \cdot \rho_e \cdot C_e
+\end{equation}
+với $\eta = 1.0$. Trọng số siêu cạnh được tính qua hàm Sigmoid và kẹp cận dưới bằng giá trị sàn $\delta = 0.05$ để ngăn hiện tượng cô lập đỉnh:
+\begin{equation}
+p_e = \sigma(a_e), \quad w_e = \delta + (1 - \delta) p_e
+\end{equation}
+Bậc nút động có trọng số được tính toán trực tiếp: $d_v = H_m w_m > 0$.
 
-Hệ thống sử dụng nhánh mất mát phụ trợ Hypergraph Contrastive Learning (HCL) kết hợp với hàm phạt ngân sách nhằm định hướng mạng Gating:
+\noindent\textbf{3. Lan truyền nhân tử hóa hai bước}
+
+Để triệt tiêu chi phí bộ nhớ $O(N^2)$ khi tính toán trên danh mục lớn, toán tử lan truyền siêu đồ thị cho từng phương thức được định nghĩa:
+\begin{equation}
+\tilde{P}_m = D_v^{-1/2} H_m W_m D_e^{-1} H_m^T D_v^{-1/2}
+\end{equation}
+với $D_v = \text{diag}(d_v)$, $D_e = \text{diag}(d_e)$ và $W_m = \text{diag}(w_m)$. Thay vì nhân ma trận trực tiếp, phép lan truyền trên ma trận đặc trưng $X \in \mathbb{R}^{N \times d}$ được nhân tử hóa thành hai bước nhân ma trận thưa:
+\begin{equation}
+Y = D_v^{-1/2} X, \quad T = H_m^T Y, \quad \tilde{T} = T \odot (w_m \oslash d_e), \quad \tilde{P}_m X = D_v^{-1/2} (H_m \tilde{T})
+\end{equation}
+Toán tử tổng hợp hai phương thức được kết hợp tuyến tính với tỷ lệ cố định $\alpha = (5/6, 1/6)$:
+\begin{equation}
+\tilde{P}_H X = \alpha_t \tilde{P}_t X + \alpha_v \tilde{P}_v X
+\end{equation}
+Quy trình này giữ độ phức tạp ở mức $O(N \cdot k \cdot d)$, loại bỏ hoàn toàn nguy cơ quá tải bộ nhớ.
+
+\noindent\textbf{4. Toán tử làm mịn BSC phân tách trong pha tối ưu hóa}
+
+Trong pha tối ưu hóa của thuật toán AdamWSEvo, toán tử làm mịn kết hợp được áp dụng cho hướng cập nhật tham số $\Delta$:
+\begin{equation}
+\mathcal{T} = (1 - \zeta) S_0 + \zeta \cdot \text{stopgrad}(\tilde{P}_H)
+\end{equation}
+với $S_0$ là ma trận kề chuẩn hóa đa phương thức cơ sở và $\zeta \in [0, 0.25]$ được điều tiết theo lịch trình ramp. Việc áp dụng toán tử stopgrad lên toàn bộ trạng thái của $\tilde{P}_H$ bao gồm trọng số $w_m$ và bậc nút $d_v$ tách biệt hoàn toàn quá trình làm mịn gradient khỏi đồ thị tính toán tự động của mạng gating. Hướng cập nhật tham số item được tính toán qua chuỗi đa thức:
+\begin{equation}
+\widehat{\Delta}_{:,j} = \frac{1 - b_j}{1 - b_j^{L+1}} \sum_{\ell=0}^{L} b_j^\ell \mathcal{T}^\ell \Delta_{:,j}
+\end{equation}
+
+\noindent\textbf{5. Hàm mục tiêu đối chiếu hypergraph và phạt ngân sách}
+
+Hệ thống sử dụng nhánh đối chiếu Hypergraph Contrastive Learning (HCL) giữa hai góc nhìn: biểu diễn sau FSC $Z_{\text{CF}} = Z_i$ và biểu diễn qua siêu đồ thị $Z_{\text{hyper}} = \tilde{P}_H E_i$. Tập các sản phẩm dương duy nhất trong mini-batch $\mathcal{B}_{\text{pos}}$ được trích xuất để loại trừ mẫu âm giả do trùng ID. Hai biểu diễn được chiếu qua đầu chiếu tuyến tính $q(x) = W_p x$ (khởi tạo bằng ma trận đơn vị) và chuẩn hóa L2:
+\begin{equation}
+u_i = \frac{q(Z_{\text{CF}}[i])}{\|q(Z_{\text{CF}}[i])\|_2}, \quad v_i = \frac{q(Z_{\text{hyper}}[i])}{\|q(Z_{\text{hyper}}[i])\|_2}
+\end{equation}
+Hàm mất mát InfoNCE đối xứng được tính toán theo công thức:
+\begin{equation}
+\ell(u, v) = -\frac{1}{|\mathcal{B}_{\text{pos}}|} \sum_{i \in \mathcal{B}_{\text{pos}}} \log \left( \frac{\exp(u_i^T v_i / \tau)}{\sum_{j \in \mathcal{B}_{\text{pos}}} \exp(u_i^T v_j / \tau)} \right)
+\end{equation}
+\begin{equation}
+\mathcal{L}_{\text{HCL}} = \frac{1}{2}\left[\ell(u, v) + \ell(v, u)\right]
+\end{equation}
+với nhiệt độ $\tau = 0.2$. Để ngăn chặn hiện tượng trôi dạt trọng số cổng về các giá trị cực trị, hàm phạt ngân sách phạt độ lệch của giá trị cổng trung bình so với mức tiên nghiệm $p_0 = 0.8$:
+\begin{equation}
+\mathcal{L}_{\text{budget}} = \frac{1}{2} \sum_{m \in \{t, v\}} \left( \frac{1}{N} \sum_{e=1}^{N} p_{e, m} - p_0 \right)^2
+\end{equation}
+Hàm mục tiêu tổng quát của STAIR-MHD v3 là sự kết hợp của ba thành phần:
 \begin{equation}
 \mathcal{L}_{\text{total}} = \mathcal{L}_{\text{BPR}} + \lambda_{\text{cl}}(t) \cdot \mathcal{L}_{\text{HCL}} + \lambda_{\text{budget}}(t) \cdot \mathcal{L}_{\text{budget}}
 \end{equation}
+với $\lambda_{\text{cl}}^{\max} = 10^{-3}$ và $\lambda_{\text{budget}}^{\max} = 10^{-4}$. Hình~\ref{fig:stair_mhd_v3_architecture} minh họa tổng thể kiến trúc và luồng dữ liệu của STAIR-MHD v3.
 
 \begin{figure}[H]
 \centering
@@ -422,37 +598,37 @@ Hệ thống sử dụng nhánh mất mát phụ trợ Hypergraph Contrastive Le
 ]
 
 % Khung bao nền hai khối
-\draw[subbgleft] (-7.5, 1.8) rectangle (-1.1, -6.8);
-\node[font=\small\bfseries\color{blue!70!black}, anchor=north] at (-4.3, 1.55) {Hypergraph Construction \& Gating};
+\draw[subbgleft] (-7.5, 1.8) rectangle (-1.1, -7.0);
+\node[font=\small\bfseries\color{blue!70!black}, anchor=north] at (-4.3, 1.55) {Khởi tạo siêu đồ thị và mạng gating};
 
-\draw[subbgright] (1.1, 1.8) rectangle (7.5, -6.8);
-\node[font=\small\bfseries\color{orange!80!black}, anchor=north] at (4.3, 1.55) {Factorized Propagation \& Optimization};
+\draw[subbgright] (1.1, 1.8) rectangle (7.5, -7.0);
+\node[font=\small\bfseries\color{orange!80!black}, anchor=north] at (4.3, 1.55) {Lan truyền nhân tử hóa và tối ưu hóa};
 
 % --- KHỐI TRÁI ---
-\node[inputbox, anchor=north] (raw_feat) at (-5.7, 0.8) {Item Features};
-\node[inputbox, anchor=north] (raw_beh) at (-2.9, 0.8) {Interaction Matrix};
+\node[inputbox, anchor=north] (raw_feat) at (-5.7, 0.8) {Item features $F_t, F_v$};
+\node[inputbox, anchor=north] (raw_beh) at (-2.9, 0.8) {Tương tác $R$};
 
-\node[block, anchor=north] (incidence) at (-4.3, -0.6) {\textbf{Incidence Matrix $H$}\\[2pt]$H = [H_{\text{text}} \parallel H_{\text{vis}}] \in \mathbb{R}^{N \times 2N}$};
+\node[block, anchor=north] (incidence) at (-4.3, -0.6) {\textbf{Ma trận liên thuộc $H_m$}\\[2pt]$H_t, H_v \in \{0,1\}^{N \times N}$ qua exact kNN};
 \draw[arr] (raw_feat.south) -- ++(0,-0.2) -| ([xshift=-1.3cm]incidence.north);
 \draw[arr] (raw_beh.south) -- ++(0,-0.2) -| ([xshift=1.3cm]incidence.north);
 
-\node[layerbox, anchor=north] (gating) at (-4.3, -2.1) {\textbf{Behavior-Conditioned Gating}\\[2pt]$g_e = \sigma(\text{MLP}(h_e \parallel \text{support}_e \parallel \text{centroid}_i))$};
+\node[layerbox, anchor=north] (gating) at (-4.3, -2.1) {\textbf{Mạng gating điều kiện hành vi}\\[2pt]$a_e = g_m(x_e) + \eta \rho_e C_e$\\[2pt]$w_e = \delta + (1-\delta)\sigma(a_e)$};
 \draw[arr] (incidence.south) -- (gating.north);
 
-\node[clbox, anchor=north] (hcl) at (-4.3, -3.8) {
-    \textbf{\small Hypergraph Contrastive Loss}\\[2pt]
-    Tối ưu hóa trọng số cổng $g_e$\\[2pt]
-    Kết hợp $\mathcal{L}_{\text{budget}}$ chống suy biến cổng
+\node[clbox, anchor=north] (hcl) at (-4.3, -3.9) {
+    \textbf{\small Đối chiếu HCL và phạt ngân sách}\\[2pt]
+    $\mathcal{L}_{\text{HCL}}$ đối xứng giữa $Z_{\text{CF}}$ và $\tilde{P}_H E_i$\\[2pt]
+    $\mathcal{L}_{\text{budget}}$ khống chế trung bình $p_e \to p_0$
 };
 \draw[arr] (gating.south) -- (hcl.north);
 
 % --- KHỐI PHẢI ---
-\node[block, anchor=north] (factorized) at (4.3, 0.8) {\textbf{Factorized Propagation}\\[2pt]$Y = H^T D_v^{-1/2} X$\\[2pt]$\tilde{X} = D_v^{-1/2} H (W_e D_e^{-1} Y)$};
+\node[block, anchor=north] (factorized) at (4.3, 0.8) {\textbf{Lan truyền nhân tử hóa}\\[2pt]$\tilde{P}_m = D_v^{-1/2} H_m W_m D_e^{-1} H_m^T D_v^{-1/2}$\\[2pt]$\tilde{P}_H = \alpha_t \tilde{P}_t + \alpha_v \tilde{P}_v$};
 
-\node[layerbox, anchor=north] (bsc) at (4.3, -2.1) {\textbf{Decoupled BSC Smoother}\\[2pt]Làm mịn gradient qua ma trận liên thuộc};
+\node[layerbox, anchor=north] (bsc) at (4.3, -2.1) {\textbf{Toán tử BSC phân tách}\\[2pt]$\mathcal{T} = (1-\zeta)S_0 + \zeta \cdot \text{stopgrad}(\tilde{P}_H)$\\[2pt]Làm mịn gradient tham số item};
 \draw[arr] (factorized.south) -- (bsc.north);
 
-\node[block, anchor=north] (bpr) at (4.3, -3.8) {\textbf{BPR Ranking Loss}\\[2pt]Cập nhật embedding độc lập với HCL};
+\node[block, anchor=north] (bpr) at (4.3, -3.9) {\textbf{BPR ranking loss}\\[2pt]Cập nhật ID embeddings qua AdamWSEvo\\[2pt]Không truyền gradient ngược về gating};
 \draw[arr] (bsc.south) -- (bpr.north);
 
 % Liên kết ngang giữa hai cột
@@ -460,16 +636,16 @@ Hệ thống sử dụng nhánh mất mát phụ trợ Hypergraph Contrastive Le
 \draw[dasharr] (gating.east) -- ++(1.0, 0) |- ([yshift=-4pt]factorized.west);
 
 % --- KHỐI ĐÍCH CHUNG ---
-\node[finalbox, anchor=north] (total) at (0.0, -7.5) {
+\node[finalbox, anchor=north] (total) at (0.0, -7.6) {
     \textbf{Kiến trúc tổng thể STAIR-MHD v3}\\[3pt]
-    Lan truyền nhân tử hóa $O(N \cdot k)$ kết hợp mạng Gating điều kiện hành vi
+    Lan truyền nhân tử hóa $O(N \cdot k \cdot d)$ kết hợp mạng gating điều kiện hành vi và toán tử BSC phân tách
 };
 
-\draw[arr] (hcl.south) -- ++(0, -0.6) -| ([xshift=-3.0cm]total.north);
-\draw[arr] (bpr.south) -- ++(0, -0.6) -| ([xshift=3.0cm]total.north);
+\draw[arr] (hcl.south) -- ++(0, -0.5) -| ([xshift=-3.0cm]total.north);
+\draw[arr] (bpr.south) -- ++(0, -0.5) -| ([xshift=3.0cm]total.north);
 
 \end{tikzpicture}
-\caption{Cấu trúc tổng thể của STAIR-MHD v3. Lan truyền nhân tử hóa giúp loại bỏ ma trận $N \times N$, kết hợp mạng Gating phân tách nhiễu đa phương thức thông qua nhánh HCL.}
+\caption{Cấu trúc tổng thể của STAIR-MHD v3. Lan truyền nhân tử hóa giúp loại bỏ ma trận $N \times N$, kết hợp mạng gating phân tách nhiễu đa phương thức thông qua nhánh HCL và toán tử BSC phân tách.}
 \label{fig:stair_mhd_v3_architecture}
 \end{figure}
 
@@ -542,12 +718,12 @@ Nhờ áp dụng cơ chế lan truyền nhân tử hóa trên ma trận liên th
 }
 \end{table}
 
-Mức tiêu thụ bộ nhớ đạt độ tối ưu cực hạn. Trên tập Amazon Electronics với 63001 sản phẩm, đỉnh VRAM tensor chỉ dừng ở 1125.3 MB, thiết lập kỷ lục tiết kiệm bộ nhớ cho toàn bộ dự án. Đồ thị bộ nhớ duy trì độ phẳng tuyệt đối xuyên suốt quá trình huấn luyện, khẳng định tính an toàn và khả năng vận hành trơn tru trên các hạ tầng phần cứng giới hạn. Thời gian huấn luyện tăng nhẹ do chi phí tính toán nhánh HCL, tuy nhiên tốc độ suy diễn (inference) thực tế hoàn toàn tương đương với Baseline.
+Mức tiêu thụ bộ nhớ được kiểm soát hiệu quả. Trên tập Amazon Electronics với 63.001 sản phẩm, đỉnh VRAM tensor phân bổ trong huấn luyện đạt 1125.3 MB (1.10 GB), thấp hơn đáng kể so với mức 1648.0 MB của v1-R và 2512.0 MB của STAIR-NE-NLGCL+. Lượng bộ nhớ cấp phát duy trì ổn định xuyên suốt các epoch, loại trừ nguy cơ tràn bộ nhớ trên các hệ thống phần cứng giới hạn. Thời gian huấn luyện mỗi epoch tăng thêm do việc tính toán bổ sung nhánh HCL, tuy nhiên trong pha kiểm định và suy diễn, mô hình chỉ sử dụng biểu diễn ID sau FSC nên tốc độ xếp hạng hoàn toàn tương đương với baseline.
 
 \subsubsection{Động lực học hội tụ và phân kỳ trọng số cổng}
 
-Phân tích động lực học hội tụ chỉ ra hiện tượng phân kỳ trọng số cổng (Gate Divergence), phản ánh năng lực lọc nhiễu tự động của mạng Gating. Xuất phát từ mức khởi tạo đồng nhất 0.80, trọng số cổng của phương thức văn bản giảm mạnh và ổn định ở mức 0.57 -- 0.62. Ngược lại, trọng số cổng của phương thức hình ảnh duy trì ổn định ở mức 0.79 -- 0.80.
+Phân tích động lực học hội tụ chỉ ra hiện tượng phân kỳ trọng số cổng gate divergence, phản ánh khả năng điều chỉnh trọng số tự động của mạng gating. Xuất phát từ mức khởi tạo đồng nhất 0.80, trọng số cổng của phương thức văn bản giảm dần và duy trì trong khoảng 0.57 đến 0.62. Ngược lại, trọng số cổng của phương thức hình ảnh duy trì ổn định quanh mức 0.79 đến 0.80.
 
-Sự phân kỳ này phản ánh chính xác đặc tính của dữ liệu thương mại điện tử: mô tả văn bản thường chứa nhiều từ khóa chung chung gây nhiễu liên kết, trong khi hình ảnh thể hiện trực tiếp hình thái và phân loại sản phẩm. Mạng Gating đã tự động học cách triệt tiêu các siêu cạnh văn bản gây nhiễu và bảo lưu siêu cạnh thị giác chất lượng cao. Cơ chế này xác thực giả thuyết lọc nhiễu bất đối xứng đa phương thức, giúp tối ưu hóa không gian biểu diễn mà không làm xáo trộn hàm mất mát BPR, đảm bảo mô hình hội tụ mượt mà.
+Sự phân kỳ này phù hợp với đặc tính của dữ liệu thương mại điện tử: mô tả văn bản thường chứa nhiều từ khóa chung dễ tạo liên kết nhiễu giữa các sản phẩm không cùng nhu cầu, trong khi đặc trưng hình ảnh phản ánh trực tiếp kiểu dáng và danh mục trực quan. Mạng gating đã tự động hạ thấp trọng số của các siêu cạnh văn bản có độ tương đồng thấp và bảo lưu các siêu cạnh thị giác có độ tin cậy cao. Cơ chế này xác thực tính hiệu quả của việc điều kiện hóa cấu trúc siêu đồ thị bằng hành vi tương tác, giúp tối ưu hóa không gian biểu diễn mà không làm xáo trộn quá trình hội tụ của hàm mất mát BPR.
 
 \clearpage

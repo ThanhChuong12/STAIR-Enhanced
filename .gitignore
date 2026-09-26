@@ -20,8 +20,10 @@ data/Processed/
 __pycache__/
 *.pyc
 .pytest_cache/
+.pytest-tmp*/
 scratch/
 .venv-v4/
-.cache/stair4_v4/
+.cache/
 v4_install.log
 scratch_v4_*.txt
+report/*.log

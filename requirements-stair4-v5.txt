@@ -1,0 +1,3 @@
+# Reuse the tested FreeRec bridge without replacing the host CUDA PyTorch wheel.
+-r requirements-stair4-v4.txt
+matplotlib>=3.7,<4
