@@ -70,10 +70,22 @@ class STAIR5_v1_Model(freerec.models.GenRecArch):
             "embeddings", nn.Embedding(self.Item.count, cfg.embedding_dim)
         )
 
-        self.register_buffer(
-            "Adj",
-            self.dataset.train().to_normalized_adj(normalization="sym")
-        )
+        try:
+            adj = self.dataset.train().to_normalized_adj(normalization="sym")
+        except Exception:
+            from freerec.graph import to_adjacency, to_normalized
+            User = self.User
+            Item = self.Item
+            data = self.dataset.train()[(User, Item)]
+            u = torch.as_tensor(data[User], dtype=torch.long)
+            i = torch.as_tensor(data[Item], dtype=torch.long) + User.count
+            row = torch.cat([u, i], dim=0)
+            col = torch.cat([i, u], dim=0)
+            edge_index = torch.stack([row, col], dim=0)
+            edge_index, edge_weight = to_normalized(edge_index, normalization="sym")
+            adj = to_adjacency(edge_index, edge_weight, num_nodes=User.count + Item.count)
+
+        self.register_buffer("Adj", adj)
         self.register_buffer("beta3", cfg.beta3)
 
         # ─── 2. Node Degrees for Self-Return Removal ─────────────────────

@@ -229,16 +229,75 @@ _need_tg_shim = (
 if _need_tg_shim:
     if 'torch_geometric' not in sys.modules or not isinstance(sys.modules.get('torch_geometric'), types.ModuleType):
         tg = types.ModuleType('torch_geometric')
+        tg.__path__ = []
         sys.modules['torch_geometric'] = tg
     else:
         tg = sys.modules['torch_geometric']
+        if not hasattr(tg, '__path__'):
+            tg.__path__ = []
 
     if 'torch_geometric.utils' not in sys.modules or not isinstance(sys.modules.get('torch_geometric.utils'), types.ModuleType):
         tg_utils = types.ModuleType('torch_geometric.utils')
+        tg_utils.__path__ = []
         sys.modules['torch_geometric.utils'] = tg_utils
     else:
         tg_utils = sys.modules['torch_geometric.utils']
     tg.utils = tg_utils
+
+    if 'torch_geometric.data' not in sys.modules or not isinstance(sys.modules.get('torch_geometric.data'), types.ModuleType):
+        tg_data = types.ModuleType('torch_geometric.data')
+        tg_data.__path__ = []
+        sys.modules['torch_geometric.data'] = tg_data
+    else:
+        tg_data = sys.modules['torch_geometric.data']
+    tg.data = tg_data
+
+    class Data:
+        def __init__(self, edge_index=None, edge_weight=None, num_nodes=None, **kwargs):
+            self.edge_index = edge_index
+            self.edge_weight = edge_weight
+            self.num_nodes = num_nodes
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
+    class HeteroData:
+        def __init__(self):
+            self._data = {}
+            self._nodes = {}
+
+        def __getitem__(self, key):
+            if isinstance(key, str):
+                if key not in self._nodes:
+                    self._nodes[key] = types.SimpleNamespace(x=None)
+                return self._nodes[key]
+            else:
+                if key not in self._data:
+                    self._data[key] = types.SimpleNamespace(edge_index=None)
+                return self._data[key]
+
+        def coalesce(self):
+            return self
+
+        def to_homogeneous(self):
+            edge_indices = []
+            for (src, edge, dst), edge_obj in self._data.items():
+                if edge_obj.edge_index is not None:
+                    u = edge_obj.edge_index[0]
+                    v = edge_obj.edge_index[1]
+                    src_count = getattr(self._nodes.get(src, None), 'x', None)
+                    src_n = src_count.size(0) if src_count is not None and hasattr(src_count, 'size') else (int(u.max()) + 1 if u.numel() > 0 else 0)
+                    v_shifted = v + src_n
+                    edge_indices.append(torch.stack([u, v_shifted], dim=0))
+            if edge_indices:
+                total_edge_index = torch.cat(edge_indices, dim=1)
+            else:
+                total_edge_index = torch.empty((2, 0), dtype=torch.long)
+            return Data(edge_index=total_edge_index)
+
+    if not hasattr(tg_data, "Data"):
+        tg_data.Data = Data
+    if not hasattr(tg_data, "HeteroData"):
+        tg_data.HeteroData = HeteroData
 
     if 'torch_geometric.utils.num_nodes' not in sys.modules or not isinstance(sys.modules.get('torch_geometric.utils.num_nodes'), types.ModuleType):
         tg_num_nodes = types.ModuleType('torch_geometric.utils.num_nodes')
@@ -325,6 +384,32 @@ if _need_tg_shim:
     ]:
         if not hasattr(tg_utils, _stub_fn):
             setattr(tg_utils, _stub_fn, _stub)
+
+# 4b. Direct, ultra-fast monkey-patch for dataset.to_normalized_adj (Zero torch_geometric dependency)
+try:
+    import freerec.data.datasets.base as _freerec_base
+    from freerec.graph import to_adjacency, to_normalized
+    from freerec.data.tags import USER, ITEM, ID
+
+    def _robust_to_normalized_adj(self, src=(USER, ID), dst=(ITEM, ID), normalization="sym"):
+        User = self.fields[src]
+        Item = self.fields[dst]
+        data = self[(User, Item)]
+        u = torch.as_tensor(data[User], dtype=torch.long)
+        i = torch.as_tensor(data[Item], dtype=torch.long) + User.count
+        # Symmetric undirected bipartite edges: (u, i + |U|) and (i + |U|, u)
+        row = torch.cat([u, i], dim=0)
+        col = torch.cat([i, u], dim=0)
+        edge_index = torch.stack([row, col], dim=0)
+        edge_index, edge_weight = to_normalized(edge_index, normalization=normalization)
+        return to_adjacency(edge_index, edge_weight, num_nodes=User.count + Item.count)
+
+    if hasattr(_freerec_base, 'RecDataSet'):
+        _freerec_base.RecDataSet.to_normalized_adj = _robust_to_normalized_adj
+    if hasattr(_freerec_base, 'BaseSet'):
+        _freerec_base.BaseSet.to_normalized_adj = _robust_to_normalized_adj
+except Exception:
+    pass
 
 
 # 4. scikit-learn compatibility shim for freerec.metrics

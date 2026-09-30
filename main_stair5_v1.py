@@ -29,6 +29,14 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 if script_dir not in sys.path:
     sys.path.insert(0, script_dir)
 
+try:
+    import models.freerec_compat
+except Exception:
+    try:
+        import freerec_compat
+    except Exception:
+        pass
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
