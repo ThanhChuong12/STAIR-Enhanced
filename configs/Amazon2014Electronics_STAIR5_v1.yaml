@@ -1,0 +1,32 @@
+root: data
+dataset: Amazon2014Electronics_550_MMRec
+
+embedding_dim: 64
+num_layers: 3
+
+epochs: 500
+batch_size: 4096
+optimizer: adamwsevo
+lr: 1.e-3
+weight_decay: 0.1
+
+gamma: 0.2
+mfiles: textual_modality.pkl,visual_modality.pkl
+num_neighbors: '5-1'
+
+# STAIR-LHC v1 Parameters
+lhc_arm: H0
+lambda_lhc: 1.e-4
+lhc_tau: 0.3
+lhc_kappa: 1.0
+radius_cap: 2.0
+w_hybrid: 0.0
+eps_taylor: 1.e-4
+eps_floor: 1.e-2
+eps_beta: 0.05
+warmup_start: 20
+warmup_end: 50
+grad_diag_every: 10
+
+monitors: [LOSS, Recall@1, Recall@10, Recall@20, NDCG@10, NDCG@20]
+which4best: NDCG@20
