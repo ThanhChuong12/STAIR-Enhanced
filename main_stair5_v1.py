@@ -124,6 +124,12 @@ cfg.add_argument("--mfiles", type=str, default="textual_modality.pkl,visual_moda
 cfg.add_argument("--num-neighbors", type=str, default="5-1", help="kNN counts per modality (default: '5-1')")
 cfg.add_argument("--gamma", type=float, default=0.2, help="Spectral decay exponent for beta3 (default: 0.2)")
 
+# -- Optimizer Hyperparameters --
+cfg.add_argument("--beta1", type=float, default=0.9, help="Adam beta1 (default: 0.9)")
+cfg.add_argument("--beta2", type=float, default=0.999, help="Adam beta2 (default: 0.999)")
+cfg.add_argument("--momentum", type=float, default=0.9, help="SGD momentum (default: 0.9)")
+cfg.add_argument("--nesterov", action="store_true", default=False, help="Enable Nesterov momentum for SGD")
+
 # ── STAIR-LHC v1 Parameters ──
 cfg.add_argument("--lhc-arm", type=str, default="H0",
                  choices=["H0", "B0", "E0", "HC", "H0W5", "H0-REWEIGHT", "H0-NOSELF"],
