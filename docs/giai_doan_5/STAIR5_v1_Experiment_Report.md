@@ -71,45 +71,65 @@
 
 ### 1.3. Ma trận đối chuẩn đa thế hệ (Master Audit Matrix)
 
+> [!IMPORTANT]
+> **Quy chuẩn đối soát số liệu (Audit Protocol):**  
+> Toàn bộ số liệu baseline trong báo cáo này được đối soát trực tiếp với **Kết quả tái lập thực nghiệm gốc** tại Mục 3.2 (Bảng 3.1 `tab:stair_reproduction`) và Bảng 3.7 (`tab:stair_all_six_versions_comparison`) trong tài liệu khóa luận [`report/chapters_v2/03_stair.tex`](file:///d:/4thY_HCMUS/KLTN/STAIR-Enhanced/report/chapters_v2/03_stair.tex).
+> Quy trình chọn checkpoint được cố định nghiêm ngặt theo **Validation NDCG@20 cao nhất**, và toàn bộ metric công bố là kết quả trên tập **Test** tại đúng checkpoint đó.
+
 #### Bảng 1.1: Kết quả TEST SET — Amazon Sports (35,598 Users, 18,357 Items, 296,337 Interactions, Density: 4.53×10⁻⁴)
 
-| Thế hệ mô hình | R@1 | R@10 | R@20 | NDCG@10 | NDCG@20 |
-|:---|:---:|:---:|:---:|:---:|:---:|
-| STAIR Baseline (GĐ1) | 0.0143 | 0.0743 | 0.1063 | 0.0388 | 0.0480 |
-| STAIR GĐ3-v4.1 | 0.0145 | 0.0744 | 0.1064 | 0.0390 | 0.0483 |
-| STAIR GĐ3-v5 (BSC-Reweight) | 0.0145 | 0.0744 | 0.1071 | 0.0390 | 0.0485 |
-| STAIR GĐ4-v1-R (CNLGCL) | **0.0149** | **0.0747** | 0.1124 | 0.0391 | **0.0509** |
-| **STAIR GĐ5-v1 (LHC-H0)** | 0.0140 | **0.0747** | **0.1133** | **0.0407** | 0.0506 |
-| **Δ vs Baseline** | -4.9% | +0.54% | **+6.6%** 🚀 | **+4.9%** 🚀 | **+5.4%** ✅ |
-| **Δ vs GĐ4-CNLGCL** | -6.0% | 0.00% | **+0.80%** ✅ | **+4.1%** 🚀 | -0.59% |
+| Thế hệ mô hình / Nguồn đối chiếu | R@1 | R@10 | R@20 | NDCG@10 | NDCG@20 | Ghi chú & Nguồn |
+|:---|:---:|:---:|:---:|:---:|:---:|:---|
+| **STAIR Paper Gốc (Table 2)** | — | 0.0743 | 0.1117 | 0.0407 | 0.0503 | Công bố bài báo gốc STAIR |
+| **STAIR Baseline Tái Lập (03_stair.tex)** | — | 0.0743 | 0.1111 | 0.0405 | 0.0500 | Checkpoint best ep. 500 (Bảng 3.1 & 3.7) |
+| STAIR-NLGCL v4 (03_stair.tex) | — | **0.0761** | 0.1110 | **0.0417** | 0.0507 | Giai đoạn 2 (Bảng 3.7 `03_stair.tex`) |
+| STAIR-NE-NLGCL v5 (03_stair.tex) | — | 0.0753 | 0.1113 | 0.0415 | **0.0508** | Giai đoạn 2 (Bảng 3.7 `03_stair.tex`) |
+| STAIR GĐ4-v1-R (CNLGCL) | **0.0149** | 0.0747 | 0.1124 | 0.0391 | **0.0509** | Giai đoạn 4 (`sports_v1_r.log`) |
+| **STAIR GĐ5-v1 (LHC-H0)** | 0.0140 | 0.0747 | **0.1133** | 0.0407 | 0.0506 | Best ep. 500 (`sports_stair5_v1.log`) |
+| **Δ vs Baseline Tái Lập** | — | **+0.54%** | **+1.98%** 🚀 | **+0.49%** | **+1.20%** ✅ | Tuyệt đối: R20 +0.0022, NDCG20 +0.0006 |
+| **Δ vs Paper Gốc** | — | **+0.54%** | **+1.43%** 🚀 | -0.03% (≈) | **+0.62%** ✅ | Vượt cả paper gốc về R@20 và NDCG@20 |
+| **Δ vs v5 (STAIR-NE-NLGCL)** | — | -0.80% | **+1.80%** 🚀 | -1.93% | -0.39% | **R@20 phá vỡ trần bão hòa lịch sử (0.1113)** |
 
 #### Bảng 1.2: Kết quả TEST SET — Amazon Baby (19,445 Users, 7,050 Items, 160,792 Interactions, Density: 1.17×10⁻³)
 
-| Thế hệ mô hình | R@1 | R@10 | R@20 | NDCG@10 | NDCG@20 |
-|:---|:---:|:---:|:---:|:---:|:---:|
-| STAIR Baseline (GĐ1) | 0.0110 | 0.0591 | 0.0979 | 0.0311 | 0.0402 |
-| STAIR GĐ3-v4.1 | 0.0109 | 0.0587 | 0.0972 | 0.0309 | 0.0399 |
-| STAIR GĐ3-v5 (BSC-Reweight) | 0.0112 | 0.0597 | 0.0985 | 0.0318 | 0.0409 |
-| STAIR GĐ4-v1-R (CNLGCL) | 0.0116 | 0.0650 | 0.1010 | 0.0347 | 0.0440 |
-| **STAIR GĐ5-v1 (LHC-H0)** | **0.0115** | **0.0660** | **0.1030** | **0.0352** | **0.0447** |
-| **Δ vs Baseline** | +4.5% | **+11.7%** 🚀 | **+5.2%** ✅ | **+13.2%** 🚀 | **+11.2%** 🚀 |
-| **Δ vs GĐ4-CNLGCL** | -0.86% | **+1.5%** ✅ | **+2.0%** ✅ | **+1.4%** ✅ | **+1.6%** ✅ |
+| Thế hệ mô hình / Nguồn đối chiếu | R@1 | R@10 | R@20 | NDCG@10 | NDCG@20 | Ghi chú & Nguồn |
+|:---|:---:|:---:|:---:|:---:|:---:|:---|
+| **STAIR Paper Gốc (Table 2)** | — | **0.0674** | **0.1042** | **0.0359** | 0.0453 | Công bố bài báo gốc STAIR |
+| **STAIR Baseline Tái Lập (03_stair.tex)** | — | **0.0674** | **0.1042** | **0.0359** | **0.0454** | Checkpoint best ep. 455 (Bảng 3.1 & 3.7) |
+| STAIR-NLGCL v4 (03_stair.tex) | — | 0.0666 | 0.1028 | 0.0360 | 0.0453 | Giai đoạn 2 (Bảng 3.7 `03_stair.tex`) |
+| STAIR-NE-NLGCL v5 (03_stair.tex) | — | 0.0666 | 0.1022 | **0.0361** | 0.0452 | Giai đoạn 2 (Bảng 3.7 `03_stair.tex`) |
+| STAIR GĐ4-v1-R (CNLGCL) | 0.0116 | 0.0650 | 0.1010 | 0.0347 | 0.0440 | Giai đoạn 4 |
+| **STAIR GĐ5-v1 (LHC-H0) [Best ep. 215]** | 0.0115 | 0.0660 | **0.1030** | 0.0352 | 0.0447 | Best Valid ep. 215 (`baby_stair5_v1.log`) |
+| *STAIR GĐ5-v1 (LHC-H0) [Ep. 500]* | 0.0122 | 0.0668 | 0.1039 | 0.0359 | 0.0454 | Điểm cuối ep. 500 (bảo toàn 100% baseline) |
+| **Δ vs Baseline Tái Lập (ep. 215)** | — | **-2.08%** | **-1.15%** | **-1.95%** | **-1.54%** | Tuyệt đối: R20 -0.0012, NDCG20 -0.0007 |
+| **Δ vs Paper Gốc (ep. 215)** | — | **-2.08%** | **-1.15%** | **-1.95%** | **-1.32%** | Thấp hơn nhẹ so với paper |
+| **Δ vs v5 (STAIR-NE-NLGCL)** | — | -0.90% | **+0.78%** ✅ | -2.49% | -1.11% | **R@20 cao hơn v5 (0.1030 vs 0.1022)** |
+| **Δ vs GĐ4-CNLGCL** | -0.86% | **+1.54%** ✅ | **+1.98%** ✅ | **+1.44%** ✅ | **+1.59%** ✅ | Vượt toàn diện GĐ4 |
 
 ---
 
 ### 1.4. Những phát hiện khoa học cốt lõi
 
 > [!IMPORTANT]
-> **Phát hiện #1 — NDCG@10 cải thiện mạnh hơn NDCG@20:** Trên Sports, NDCG@10 tăng +4.9% trong khi NDCG@20 chỉ tăng +5.4% nhưng ở tầng tuyệt đối cao hơn. Không gian hyperbolic đặc biệt tốt cho xếp hạng top-k nhỏ — phản ánh cấu trúc phân cấp tiềm ẩn được nắm bắt.
+> **Phát hiện #1 — Đột phá thực chất trên đồ thị siêu thưa Sports:**  
+> Trên Amazon Sports (mật độ $4.53\times 10^{-4}$), STAIR-LHC v1 đạt mức tăng trưởng thực sự vững chắc: Recall@20 tăng từ $0.1111$ lên **$0.1133$ (+1.98% so với Baseline tái lập, +1.43% so với Paper gốc, +1.80% so với đỉnh cao v5 $0.1113$)** — đây là kỷ lục Recall@20 cao nhất trong toàn bộ lịch sử đề tài! NDCG@20 đạt **$0.0506$ (+1.20% so với Baseline, +0.62% so với Paper)**.  
+> Không gian Lorentz cong âm với $\kappa=1.0$ đã phát huy tối đa dung lượng hình học trên đồ thị thưa có cấu trúc phân cấp mạnh.
+
+> [!WARNING]
+> **Phát hiện #2 — Minh bạch khoa học trên đồ thị Baby (Nhận diện chính xác giới hạn):**  
+> Khác với so sánh ban đầu vô tình đối chiếu với bản GĐ1 chưa chuẩn hóa (vốn chỉ đạt R@20=0.0979 do chọn sai checkpoint), đối chiếu chuẩn với **Kết quả tái lập thực nghiệm gốc trong `03_stair.tex` (Baseline R@20=0.1042, NDCG@20=0.0454)** cho thấy:  
+> - Tại checkpoint tốt nhất theo chuẩn validation (Epoch 215), STAIR-LHC v1 đạt $R@20=0.1030$ và $NDCG@20=0.0447$, **giảm nhẹ -1.15% đến -1.54% so với Baseline tái lập**.  
+> - Dù vậy, STAIR-LHC v1 vẫn vượt qua cả v4 ($0.1028$) và v5 ($0.1022$) trên Recall@20, và vượt xa GĐ4 ($0.1010, +1.98\%$).  
+> - Đến Epoch 500, mô hình hồi phục đạt $NDCG@20=0.0454$ (ngang bằng 100% Baseline) và $R@20=0.1039$ (chênh lệch -0.29%).  
+> - *Nguyên nhân bản chất:* Đồ thị Baby có mật độ dày hơn gần 2.6× ($1.17\times 10^{-3}$) và ít item hơn ($7,050$), cấu trúc hình học ít dạng cây hơn; đồng thời cấu hình $wd=0.3$ kết hợp với điều hòa LHC đã khiến mô hình sớm đạt plateau (sau epoch 215).
 
 > [!NOTE]
-> **Phát hiện #2 — Baby hội tụ sớm (Ep. 215), Sports chưa dừng (Ep. 500+):** Mật độ đồ thị cao hơn (Baby 1.17×10⁻³ vs Sports 4.53×10⁻⁴) cung cấp nhiều tín hiệu dương tính hơn cho LHC, khiến Baby hội tụ sớm hơn gần 2.3×.
-
-> [!NOTE]
-> **Phát hiện #3 — Gradient Cosine luôn dương (ρ ∈ [+0.15, +0.28]):** Không có xung đột gradient giữa BPR và LHC trên cả hai dataset xuyên suốt 500 epochs. Hai hàm mất mát cộng hưởng trực giao.
+> **Phát hiện #3 — Gradient Cosine luôn dương (ρ ∈ [+0.15, +0.28]):**  
+> Không có xung đột gradient giữa BPR và LHC trên cả hai dataset xuyên suốt 500 epochs. Hai hàm mất mát cộng hưởng trực giao.
 
 > [!TIP]
-> **Phát hiện #4 — Alignment↑ và |Uniformity|↑ đồng thời:** Biểu diễn vừa tập trung hơn (aligned) vừa phân tán đồng đều hơn (uniform) — biểu hiện lý tưởng của contrastive learning chất lượng cao.
+> **Phát hiện #4 — Alignment↑ và |Uniformity|↑ đồng thời:**  
+> Biểu diễn vừa tập trung hơn (aligned) vừa phân tán đồng đều hơn (uniform) — biểu hiện lý tưởng của contrastive learning chất lượng cao.
 
 ---
 
@@ -136,8 +156,9 @@
 **Nhận xét:**
 - BPR Loss giảm 0.609→0.025 trong 500 epochs — **giảm 95.9%**, hội tụ sâu và ổn định.
 - Sau warmup (epoch 50→500), NDCG@20 tăng từ 0.0430→0.0482 (+12.1%) với tốc độ đều đặn.
-- **Mô hình chưa bão hòa** sau 500 epochs (best = epoch 500), tiềm năng còn cải thiện.
-- Gap **Test > Valid** (+0.024 cho R@20): phổ biến trong gợi ý — valid khó hơn test về phân bố.
+- **Mô hình chưa bão hòa** sau 500 epochs (best = epoch 500), tiềm năng còn tiếp tục cải thiện nếu tăng epoch.
+- Trên tập TEST: R@20 đạt **0.1133** — vượt cả STAIR Baseline tái lập (**0.1111**, **+1.98%**), vượt Paper gốc (**0.1117**, **+1.43%**), và phá vỡ kỷ lục lịch sử của STAIR-NE-NLGCL v5 (**0.1113**, **+1.80%**). NDCG@20 đạt **0.0506** (vượt baseline **0.0500**, **+1.20%** và vượt paper **0.0503**, **+0.62%**).
+- Gap **Test > Valid** (+0.024 cho R@20): phổ biến trong các tập benchmark gợi ý — tập test có phân bố item thuận lợi hơn.
 
 ---
 
@@ -156,12 +177,14 @@
 | 95 | 0.1631 | 0.0427 | 0.0984 | 0.0335 | 3.0e-4 |
 | 155 | 0.1486 | 0.0428 | 0.0989 | 0.0340 | 3.0e-4 |
 | **Best (Ep.215)** | ~0.143 | **0.0434** | **0.0999** | **0.0343** | 3.0e-4 |
-| **TEST (Ep.215)** | — | — | **0.1030** | **0.0352** | — |
+| **TEST (Ep.215)** | — | — | **0.1030** | **0.0352** | — (NDCG@20: 0.0447) |
+| *TEST (Ep.500)* | — | — | *0.1039* | *0.0359* | — (NDCG@20: 0.0454) |
 
-**Nhận xét đặc biệt:**
-- Best model ở **epoch 215** (trong 500) — Baby hội tụ sớm hơn Sports do mật độ cao hơn.
-- Sau epoch 215, mô hình **plateau nhẹ** (NDCG@20 quanh 0.0427–0.0428) do weight_decay = 0.3 mạnh.
-- LHC kích hoạt epoch 21: mỗi epoch tăng từ ~2s lên ~18s, nhưng NDCG@20 tiếp tục cải thiện.
+**Nhận xét đặc biệt & Đối soát khoa học:**
+- Best model được chọn nghiêm ngặt theo chỉ số cao nhất của Validation NDCG@20 ở **epoch 215** (trong 500) — Baby đạt đỉnh sớm hơn Sports do mật độ đồ thị cao hơn (1.17e-3 vs 4.53e-4).
+- Sau epoch 215, mô hình **plateau nhẹ** (NDCG@20 dao động quanh 0.0427–0.0431) do trọng số `weight_decay = 0.3` mạnh kết hợp ràng buộc hình học.
+- Trên tập TEST tại checkpoint epoch 215: Mô hình đạt R@20 = **0.1030** và NDCG@20 = **0.0447**. Mức này **thấp hơn nhẹ** so với Baseline tái lập chuẩn trong `03_stair.tex` (R@20=0.1042 [-1.15%], NDCG@20=0.0454 [-1.54%]), nhưng **vẫn cao hơn** các thế hệ can thiệp biểu diễn trước như v4 (0.1028), v5 (0.1022) và GĐ4 (0.1010).
+- Nếu quan sát đến cuối epoch 500: Test NDCG@20 hồi phục lên **0.0454** (đạt 100% ngang bằng Baseline tái lập và vượt paper 0.0453), Test Recall@20 đạt **0.1039** (chỉ lệch -0.29% so với baseline 0.1042).
 
 ---
 
@@ -374,51 +397,53 @@ Chi phí tăng vọt từ epoch 21 xuất phát từ việc xây dựng **ma tr�
 
 ## 6. ĐỊNH VỊ HỌC THUẬT & KẾT LUẬN
 
-### 6.1. Tổng kết cải thiện so với STAIR Baseline
+### 6.1. Tổng kết cải thiện so với STAIR Baseline tái lập (`03_stair.tex`)
 
-**Bảng 6.1: Tóm tắt đóng góp STAIR-LHC v1**
+**Bảng 6.1: Tóm tắt đối soát đóng góp STAIR-LHC v1 so với Baseline tái lập và Paper gốc**
 
-| Tập DL | Metric | Baseline | LHC v1 | Δ | Nhận xét |
-|:---|:---:|:---:|:---:|:---:|:---|
-| Sports | NDCG@20 | 0.0480 | **0.0506** | **+5.4%** ✅ | SOTA mới |
-| Sports | NDCG@10 | 0.0388 | **0.0407** | **+4.9%** 🚀 | Top-10 tốt nhất |
-| Sports | R@20 | 0.1063 | **0.1133** | **+6.6%** 🚀 | Recall kỷ lục |
-| Sports | R@10 | 0.0743 | **0.0747** | +0.54% | Đạt ngang GĐ4 |
-| Baby | NDCG@20 | 0.0402 | **0.0447** | **+11.2%** 🚀 | Cải thiện lớn nhất |
-| Baby | NDCG@10 | 0.0311 | **0.0352** | **+13.2%** 🚀 | Kỷ lục tuyệt đối |
-| Baby | R@10 | 0.0591 | **0.0660** | **+11.7%** 🚀 | Phân cấp rõ |
-| Baby | R@20 | 0.0979 | **0.1030** | **+5.2%** ✅ | Vượt GĐ4 |
+| Tập DL | Chỉ Số | Paper Gốc (Table 2) | Baseline Tái Lập (03_stair.tex) | STAIR-LHC v1 (H0) | Δ vs Tái Lập | Δ vs Paper | Nhận xét khoa học |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---|
+| **Sports** | Recall@20 | 0.1117 | 0.1111 | **0.1133** | **+1.98%** 🚀 | **+1.43%** 🚀 | **Kỷ lục mới, phá vỡ trần v5 (0.1113)** |
+| **Sports** | NDCG@20 | 0.0503 | 0.0500 | **0.0506** | **+1.20%** ✅ | **+0.62%** ✅ | **Vượt cả Paper và Baseline tái lập** |
+| **Sports** | Recall@10 | 0.0743 | 0.0743 | **0.0747** | **+0.54%** | **+0.54%** | Vượt Baseline, ngang GĐ4 |
+| **Sports** | NDCG@10 | 0.0407 | 0.0405 | **0.0407** | **+0.49%** | -0.03% (≈) | Bảo toàn Top-10 |
+| **Baby** | Recall@20 | 0.1042 | 0.1042 | 0.1030 | **-1.15%** 🟡 | **-1.15%** 🟡 | Thấp hơn Baseline, cao hơn v5 (0.1022) |
+| **Baby** | NDCG@20 | 0.0453 | 0.0454 | 0.0447 | **-1.54%** 🟡 | **-1.32%** 🟡 | Thấp hơn Baseline, cao hơn GĐ4 (0.0440) |
+| **Baby** | Recall@10 | 0.0674 | 0.0674 | 0.0660 | **-2.08%** 🔴 | **-2.08%** 🔴 | Giảm nhẹ |
+| **Baby** | NDCG@10 | 0.0359 | 0.0359 | 0.0352 | **-1.95%** 🔴 | **-1.95%** 🔴 | Giảm nhẹ |
+| *Baby (ep.500)* | NDCG@20 | 0.0453 | 0.0454 | **0.0454** | **0.00%** (≈) | **+0.22%** | Hồi phục đạt 100% Baseline |
 
 ### 6.2. Vị trí trong tiến trình nghiên cứu
 
 ```
 GĐ1: STAIR Baseline (BPR + Euclidean Graph)
-  └─> GĐ2: + NLGCL (Contrastive trên mặt cầu đơn vị)
-       └─> GĐ3: + BSC-Reweight (Spectral graph optimization)
-            └─> GĐ4: STAIR-CNLGCL v1-R (Tích hợp GĐ2+GĐ3)
-                 └─> GĐ5: STAIR-LHC v1 ← Bước nhảy vọt kiến trúc
-                           (Contrastive trên đa tạp Riemann âm κ=1.0)
+  └─> Tái lập độc lập (03_stair.tex): Xác nhận độ tin cậy pipeline (NDCG@20: Sports 0.0500, Baby 0.0454)
+        └─> GĐ2: + NLGCL / NE-NLGCL v5 (Tương phản Euclidean có nhiễu phổ)
+              └─> GĐ3: + BSC-Reweight (Tối ưu phổ đồ thị)
+                    └─> GĐ4: STAIR-CNLGCL v1-R / STAIR-RAM v5
+                          └─> GĐ5: STAIR-LHC v1 (Điều hòa Lorentz trên đa tạp Riemann âm κ=1.0)
+                                    • Sports: Đột phá kỷ lục R@20 = 0.1133 (+1.98%), NDCG@20 = 0.0506 (+1.20%)
+                                    • Baby: Thấp hơn Baseline (-1.15% R@20), cao hơn v5 (+0.78% R@20)
 ```
 
 ### 6.3. Kết luận khoa học và hướng phát triển
 
-**Kết luận chính:**
+**Kết luận khoa học cốt lõi:**
 
-1. **Xác nhận giả thuyết hyperbolic:** Nhúng biểu diễn vào không gian Lorentz với κ = 1.0 mang lại cải thiện nhất quán, đặc biệt mạnh về NDCG@10 — không gian hyperbolic tốt hơn Euclidean cho xếp hạng top-k nhỏ.
+1. **Đột phá thực chất trên đồ thị thưa lớn (Sports):** Nhúng biểu diễn vào không gian Lorentz với độ cong $\kappa = 1.0$ mang lại cải thiện thực chất trên Amazon Sports (Recall@20 tăng lên **0.1133**, NDCG@20 đạt **0.0506**), phá vỡ kỷ lục của toàn bộ các phiên bản trước (v4: 0.1110, v5: 0.1113) và vượt paper gốc. Điều này khẳng định không gian hyperbolic đặc biệt hữu hiệu trên đồ thị thưa mang cấu trúc phân cấp cây tiềm ẩn.
 
-2. **Gradient Cosine > 0 toàn thời gian:** Thiết kế warmup schedule + spectral-weighted pairing đảm bảo BPR và LHC bổ sung nhau.
+2. **Bài học liêm chính học thuật trên đồ thị dày (Baby):** So sánh chuẩn hóa với Kết quả tái lập thực nghiệm gốc trong `03_stair.tex` (NDCG@20=0.0454, R@20=0.1042) giúp nhận diện rõ ràng mô hình STAIR-LHC v1 tại checkpoint validation (ep. 215) đạt 0.0447/0.1030 (giảm -1.15% đến -1.54%), loại bỏ kết luận sai lệch do từng so sánh với bản GĐ1 chưa chuẩn hóa. Đồ thị Baby dày hơn (1.17e-3) ít cần đến độ cong hyperbolic lớn, và trọng số điều hòa $\lambda=3\times 10^{-4}$ kết hợp $wd=0.3$ cần được tinh chỉnh mềm hơn.
 
-3. **LHC overhead đáng kể nhưng chấp nhận được:** +520–800% chi phí/epoch, tổng thời gian vẫn trong giới hạn Kaggle T4.
+3. **Gradient Cosine $\rho > 0$ toàn thời gian:** Thiết kế warmup schedule + spectral-weighted pairing đảm bảo BPR và LHC tương hỗ, không triệt tiêu gradient ($\rho \in [+0.15, +0.28]$).
 
-4. **Mật độ đồ thị ảnh hưởng tốc độ hội tụ:** Dataset dày (Baby) → LHC nhiều tín hiệu dương → hội tụ sớm hơn 2.3×.
+4. **Tối ưu hóa tính toán đã hoàn tất:** Qua 4 bước tái cấu trúc (vector hóa ma trận $P$, fused Lorentz $\exp_0$, tái sử dụng khoảng cách), thời gian tính toán LHC cho tập quy mô lớn như Electronics đã giảm từ ~430s xuống ước tính ~100–150s/epoch.
 
 **Hướng phát triển tiếp theo:**
-- **Tối ưu chi phí LHC:** Sparse positive sampling để giảm overhead từ ~31s → ~8–10s/epoch
-- **Ablation study đầy đủ:** H0 vs B0 vs E0 vs HC để định lượng đóng góp từng thành phần
-- **Electronics dataset:** Mở rộng sang tập lớn nhất (63,001 items, ~1.7M interactions)
-- **Multi-curvature search:** Tìm κ tối ưu cho từng dataset thay vì cố định κ = 1.0
+- **Ablation study đầy đủ:** $H_0$ vs $B_0$ vs $E_0$ vs $HC$ để định lượng đóng góp từng thành phần (Geometry vs Kernel trick).
+- **Electronics dataset:** Mở rộng sang tập lớn nhất (63,001 items, ~1.7M interactions) với mã nguồn tối ưu hóa mới.
+- **Multi-curvature search & regularization tuning:** Điều chỉnh $\kappa$ và $\lambda_{\text{lhc}}$ riêng cho từng dataset (đặc biệt giảm $\lambda$ hoặc $\kappa$ cho Baby để khắc phục hiện tượng underfitting).
 
 ---
 
-*Báo cáo tổng hợp từ log thực nghiệm chính thức tại: `logs/GD5/stair5_v1/` — 30/09/2026*  
+*Báo cáo tổng hợp từ log thực nghiệm chính thức tại: `logs/GD5/stair5_v1/` — 30/09/2026 (Đối soát chuẩn hóa theo `report/chapters_v2/03_stair.tex`)*  
 *Sinh viên: Lê Hà Thanh Chương & Bùi Trung Hiếu | GVHD: TS. Nguyễn Ngọc Thảo*

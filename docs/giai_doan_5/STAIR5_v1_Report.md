@@ -27,6 +27,7 @@
    - 2.1. Nguồn gốc tài liệu và phạm vi kiểm định mã nguồn
    - 2.2. Phân định rạch ròi các thế hệ nghiên cứu (GĐ2, GĐ3, GĐ4 v1-v5 và GĐ5)
    - 2.3. Tính toán lại tăng trưởng thực chất của tiền thân NE-NLGCL
+   - 2.4. Đối soát thực nghiệm sơ bộ: STAIR-LHC v1 so với STAIR Baseline tái lập (03_stair.tex)
 3. [PHÂN TÍCH TOÁN HỌC CHUYÊN SÂU & PHẢN BIỆN NGƯỢC ĐỐI VỚI PEER REVIEW](#3-phân-tích-toán-học-chuyên-sâu--phản-biện-ngược-đối-với-peer-review)
    - 3.1. Phản biện ngược Peer Review về "Squared Distance": Đúng số học nhưng tiềm ẩn 3 rủi ro lớn & Giải pháp Hybrid Kernel
    - 3.2. Xử lý triệt để hiện tượng suy giảm phổ $\beta$ decay trong tầng $H^{(1)}$: Ba phương án & Lựa chọn Spectral Re-weighting
@@ -150,10 +151,33 @@ $$\%\,\text{Thay đổi} = \left(\frac{M_{\text{variant}}}{M_{\text{baseline}}} 
 | **Amazon Sports** | Recall@10 | 0.0743 | 0.0753 | +0.0010 | **+1.35%** 🟢 | Tăng trưởng thực tế |
 | *(35.6K Users,* | Recall@20 | 0.1111 | 0.1113 | **+0.0002** | **+0.18%** 🟡 | **Chỉ tăng 0.02 điểm phần trăm** |
 | *18.4K Items)* | NDCG@10 | 0.0405 | 0.0415 | +0.0010 | **+2.47%** 🟢 | Cải thiện xếp hạng đầu danh sách |
-| | NDCG@20 | 0.0500 | 0.0508 | +0.0080 | **+1.60%** 🟢 | Tăng trưởng có ý nghĩa |
+| | NDCG@20 | 0.0500 | 0.0508 | +0.0008 | **+1.60%** 🟢 | Tăng trưởng có ý nghĩa |
 
 *Bài học thực nghiệm sâu sắc:*  
 Mức tăng Recall@20 trên Amazon Sports thực chất chỉ là **+0.0002 tuyệt đối** (từ 0.1111 lên 0.1113), tương đương **0.18% tương đối**, không phải 18%. Trên Amazon Baby, mô hình bị thoái hóa trên hầu hết các chỉ số. Do đó, **chưa hề có bằng chứng thực nghiệm nào khẳng định không gian Euclidean 64 chiều đã bị bão hòa dung lượng** hay hình học hyperbolic chắc chắn sẽ mang lại bước nhảy vọt. Mọi giả thuyết cần được kiểm chứng bằng thái độ hoài nghi khoa học nghiêm ngặt nhất.
+
+---
+
+### 2.4. Đối soát thực nghiệm sơ bộ: STAIR-LHC v1 so với STAIR Baseline tái lập (`03_stair.tex`)
+
+Sau khi hoàn tất đợt chạy 500 epochs trên Amazon Sports (Run ID: `0930090605`) và Amazon Baby (Run ID: `0930132222`), nhóm nghiên cứu tiến hành đối chuẩn trực tiếp STAIR-LHC v1 với **Kết quả tái lập thực nghiệm gốc** công bố tại Mục 3.2 và Bảng 3.7 trong `report/chapters_v2/03_stair.tex`. Checkpoint được lựa chọn nghiêm ngặt theo **Validation NDCG@20 cao nhất**, và toàn bộ số liệu công bố là kết quả trên tập **Test** tại đúng checkpoint này.
+
+#### Bảng 2.2: Đối soát kết quả TEST SET của STAIR-LHC v1 so với STAIR Baseline tái lập và Paper gốc
+
+| Tập Dữ Liệu | Chỉ Số Metric | Paper Gốc (Table 2) | STAIR Baseline (Tái Lập) | STAIR-LHC v1 (H0) | Thay Đổi vs Tái Lập | Thay Đổi vs Paper | Đánh Giá Khoa Học |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Amazon Sports** | Recall@10 | 0.0743 | 0.0743 | **0.0747** | **+0.54%** (+0.0004) | **+0.54%** | Cải thiện ổn định |
+| *(Best Epoch 500/500)* | Recall@20 | 0.1117 | 0.1111 | **0.1133** | **+1.98%** (+0.0022) 🚀 | **+1.43%** (+0.0016) 🚀 | **Kỷ lục mới, phá vỡ trần v5 (0.1113)** |
+| | NDCG@10 | 0.0407 | 0.0405 | **0.0407** | **+0.49%** (+0.0002) | -0.03% (Ngang bằng) | Bảo toàn Top-10 |
+| | NDCG@20 | 0.0503 | 0.0500 | **0.0506** | **+1.20%** (+0.0006) ✅ | **+0.62%** (+0.0003) | **Vượt cả Paper và Baseline** |
+| **Amazon Baby** | Recall@10 | 0.0674 | 0.0674 | 0.0660 | **-2.08%** (-0.0014) 🔴 | **-2.08%** | Giảm nhẹ |
+| *(Best Epoch 215/500)* | Recall@20 | 0.1042 | 0.1042 | 0.1030 | **-1.15%** (-0.0012) 🟡 | **-1.15%** | Thấp hơn Baseline, nhưng cao hơn v5 (0.1022) |
+| *(Ep. 500: R20=0.1039,* | NDCG@10 | 0.0359 | 0.0359 | 0.0352 | **-1.95%** (-0.0007) 🔴 | **-1.95%** | Giảm nhẹ |
+| *NDCG20=0.0454)* | NDCG@20 | 0.0453 | 0.0454 | 0.0447 | **-1.54%** (-0.0007) 🟡 | **-1.32%** | Thấp hơn Baseline, nhưng cao hơn GĐ4 (0.0440) |
+
+*Đánh giá trung thực khoa học:*  
+- **Amazon Sports:** Nhánh Lorentz H0 đạt bước tiến thực chất trên toàn bộ 4 chỉ số, đặc biệt Recall@20 lập kỷ lục mới **0.1133 (+1.98% vs Baseline, +1.43% vs Paper)** và NDCG@20 đạt **0.0506 (+1.20% vs Baseline, +0.62% vs Paper)**. Điều này thỏa mãn điều kiện Tầng 1 Go/No-Go ($\Delta \text{NDCG@20} \ge +0.5\%$).
+- **Amazon Baby:** Tại checkpoint tốt nhất trên validation (Epoch 215), mô hình ghi nhận mức suy giảm nhẹ (-1.15% đến -2.08%) so với Baseline tái lập chuẩn, dù vẫn cao hơn các thế hệ trước (v5 đạt 0.1022, GĐ4 đạt 0.1010). Điều này cho thấy đồ thị dày hơn (Baby) ít hưởng lợi từ không gian Lorentz ở cấu hình $\lambda=3\times 10^{-4}, wd=0.3$ mặc định, và cần được tinh chỉnh siêu tham số khắt khe hơn.
 
 ---
 
