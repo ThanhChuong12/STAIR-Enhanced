@@ -74,6 +74,47 @@ class LorentzGeometryModule(nn.Module):
         scale = torch.tanh(norm / self.radius_cap) / safe_norm
         return self.radius_cap * scale * a
 
+    def fused_scale_cap_exp0(self, a: torch.Tensor, q: float) -> torch.Tensor:
+        """
+        Fused operation: scale normalization + radius capping + Lorentz exp map in a single pass.
+        Equivalent to: lorentz_exp0(cap_radius(a / max(q, 1e-4)))
+        but eliminates 2 intermediate tensor allocations.
+
+        Args:
+            a: (N, D) raw embeddings (layer 0 or layer 1).
+            q: float scale factor (median norm).
+
+        Returns:
+            x: (N, D+1) points on Lorentz manifold in Minkowski space.
+        """
+        a_fp32 = a.float() / max(q, 1e-4)
+        norm = torch.norm(a_fp32, p=2, dim=-1, keepdim=True)
+        safe_norm = norm + 1e-8
+
+        if self.arm == "HC":
+            # Constant-Radius Control: normalize to unit sphere, then exp map
+            v = a_fp32 / safe_norm
+        else:
+            # Tanh radius capping
+            scale = torch.tanh(norm / self.radius_cap) / safe_norm
+            v = self.radius_cap * scale * a_fp32
+
+        # Lorentz exp map from origin (fused — no intermediate storage)
+        r = torch.norm(v, p=2, dim=-1, keepdim=True)
+        kappa = max(self.kappa, 1e-6)
+        sqrt_k = math.sqrt(kappa)
+        kr = sqrt_k * r
+
+        sinhc = torch.where(
+            kr < 1e-5,
+            1.0 + (kr ** 2) / 6.0,
+            torch.sinh(torch.clamp(kr, max=15.0)) / (kr + 1e-8),
+        )
+        x0 = torch.cosh(torch.clamp(kr, max=15.0)) / sqrt_k
+        xs = sinhc * v
+
+        return torch.cat([x0, xs], dim=-1)
+
     def lorentz_exp0(self, v: torch.Tensor) -> torch.Tensor:
         """
         Lorentz Exponential Map from origin o = [1/sqrt(kappa), 0_D]^T:
@@ -256,6 +297,47 @@ class LorentzGeometryModule(nn.Module):
             d2 = self.pairwise_lorentz_distance_squared(u_lor, i_lor)
 
         # Apply Hybrid Kernel weighting if w_hybrid > 0
+        if self.w_hybrid > 0.0:
+            return (1.0 - self.w_hybrid) * d2 + self.w_hybrid * torch.log1p(d2)
+        return d2
+
+    def compute_distance_matrix_from_lorentz(
+        self,
+        u_lor: torch.Tensor,
+        i_lor: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Computes pairwise distance matrix from PRE-COMPUTED Lorentz embeddings.
+        Avoids redundant exp map computations when embeddings are already projected.
+
+        Args:
+            u_lor: (B_u, D+1) points already on Lorentz manifold.
+            i_lor: (B_i, D+1) points already on Lorentz manifold.
+
+        Returns:
+            D_matrix: (B_u, B_i) pairwise distance matrix.
+        """
+        d2 = self.pairwise_lorentz_distance_squared(u_lor, i_lor)
+        if self.w_hybrid > 0.0:
+            return (1.0 - self.w_hybrid) * d2 + self.w_hybrid * torch.log1p(d2)
+        return d2
+
+    def compute_paired_distance_from_lorentz(
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Computes paired distance vector from PRE-COMPUTED Lorentz embeddings.
+
+        Args:
+            x: (N, D+1) points already on Lorentz manifold.
+            y: (N, D+1) points already on Lorentz manifold.
+
+        Returns:
+            d2: (N,) paired distance vector.
+        """
+        d2 = self.paired_lorentz_distance_squared(x, y)
         if self.w_hybrid > 0.0:
             return (1.0 - self.w_hybrid) * d2 + self.w_hybrid * torch.log1p(d2)
         return d2

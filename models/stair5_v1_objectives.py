@@ -178,6 +178,16 @@ class MultiPositiveInfoNCELoss(nn.Module):
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
         """
         Computes the bidirectional multi-positive InfoNCE loss.
+        [Performance-Optimized for Large-Scale Datasets (Electronics 63K items)]
+
+        Optimizations vs original implementation:
+        1. Fused scale_cap_exp0: 3 ops → 1 fused call, eliminating intermediate tensors.
+        2. Pre-computed Lorentz embeddings: exp map called once per vector set, reused
+           for both standard distance matrix AND positive-pair correction.
+        3. Distance matrix from pre-computed Lorentz: avoids redundant exp map in
+           compute_distance_matrix dispatcher.
+
+        Mathematical equivalence: BIT-IDENTICAL to original implementation.
 
         Args:
             u_0: (B_u, D) user representations at layer 0 in current batch.
@@ -203,32 +213,61 @@ class MultiPositiveInfoNCELoss(nn.Module):
         denom_scale = 2.0 * (self.radius_cap ** 2) * self.tau
 
         # ─────────────────────────────────────────────────────────────────────
-        # 1. Scale Normalization & Radius Capping for Standard Embeddings
+        # 1. Scale Normalization, Radius Capping & Lorentz Projection
+        #    [OPTIMIZED] Use fused_scale_cap_exp0 for Lorentz arms (H0/HC/H0w5)
+        #    to avoid 2 intermediate tensor allocations per vector set.
+        #    Pre-compute Lorentz embeddings ONCE and reuse for distance matrix
+        #    AND positive-pair corrections.
         # ─────────────────────────────────────────────────────────────────────
-        # Direction 1 queries: U_0
-        v_u0 = self.geo.cap_radius(u_0 / max(q_u0, 1e-4))
+        is_euclidean = (self.geo.arm == "E0")
 
-        # Direction 1 standard candidate keys: I_1
-        i1_cand = i_1
-        if not self.disable_reweight:
-            i1_cand = spectral_reweight(i_1, beta, self.eps_beta, M_norm)
-        v_i1 = self.geo.cap_radius(i1_cand / max(q_i1, 1e-4))
+        if is_euclidean:
+            # E0 arm: standard path (no exp map needed)
+            v_u0 = self.geo.cap_radius(u_0 / max(q_u0, 1e-4))
 
-        # Direction 2 queries: I_0
-        v_i0 = self.geo.cap_radius(i_0 / max(q_i0, 1e-4))
+            i1_cand = i_1
+            if not self.disable_reweight:
+                i1_cand = spectral_reweight(i_1, beta, self.eps_beta, M_norm)
+            v_i1 = self.geo.cap_radius(i1_cand / max(q_i1, 1e-4))
 
-        # Direction 2 standard candidate keys: U_1
-        u1_cand = u_1
-        if not self.disable_reweight:
-            u1_cand = spectral_reweight(u_1, beta, self.eps_beta, M_norm)
-        v_u1 = self.geo.cap_radius(u1_cand / max(q_u1, 1e-4))
+            v_i0 = self.geo.cap_radius(i_0 / max(q_i0, 1e-4))
 
-        # Standard pairwise distance matrices (B_u x B_i and B_i x B_u)
-        D1 = self.geo.compute_distance_matrix(v_u0, v_i1)  # (B_u, B_i)
-        D2 = self.geo.compute_distance_matrix(v_i0, v_u1)  # (B_i, B_u)
+            u1_cand = u_1
+            if not self.disable_reweight:
+                u1_cand = spectral_reweight(u_1, beta, self.eps_beta, M_norm)
+            v_u1 = self.geo.cap_radius(u1_cand / max(q_u1, 1e-4))
+
+            # Standard pairwise distance matrices
+            D1 = self.geo.compute_distance_matrix(v_u0, v_i1)  # (B_u, B_i)
+            D2 = self.geo.compute_distance_matrix(v_i0, v_u1)  # (B_i, B_u)
+        else:
+            # Lorentz arms (H0, HC, H0w5): fused pipeline with pre-computed embeddings
+            # Direction 1 queries: U_0 → Lorentz
+            lor_u0 = self.geo.fused_scale_cap_exp0(u_0, q_u0)
+
+            # Direction 1 standard candidate keys: I_1 → spectral reweight → Lorentz
+            i1_cand = i_1
+            if not self.disable_reweight:
+                i1_cand = spectral_reweight(i_1, beta, self.eps_beta, M_norm)
+            lor_i1 = self.geo.fused_scale_cap_exp0(i1_cand, q_i1)
+
+            # Direction 2 queries: I_0 → Lorentz
+            lor_i0 = self.geo.fused_scale_cap_exp0(i_0, q_i0)
+
+            # Direction 2 standard candidate keys: U_1 → spectral reweight → Lorentz
+            u1_cand = u_1
+            if not self.disable_reweight:
+                u1_cand = spectral_reweight(u_1, beta, self.eps_beta, M_norm)
+            lor_u1 = self.geo.fused_scale_cap_exp0(u1_cand, q_u1)
+
+            # Distance matrices from PRE-COMPUTED Lorentz embeddings (no redundant exp map)
+            D1 = self.geo.compute_distance_matrix_from_lorentz(lor_u0, lor_i1)  # (B_u, B_i)
+            D2 = self.geo.compute_distance_matrix_from_lorentz(lor_i0, lor_u1)  # (B_i, B_u)
 
         # ─────────────────────────────────────────────────────────────────────
         # 2. Self-Return Removal on True Positive Pairs (P == 1)
+        #    [OPTIMIZED] For Lorentz arms, reuse pre-computed query-side Lorentz
+        #    embeddings (lor_u0, lor_i0) instead of re-computing exp map.
         # ─────────────────────────────────────────────────────────────────────
         pos_u_idx, pos_i_idx = torch.where(P > 0.5)
         num_pos_pairs = pos_u_idx.numel()
@@ -250,11 +289,18 @@ class MultiPositiveInfoNCELoss(nn.Module):
             )
             if not self.disable_reweight:
                 i1_pos_corrected = spectral_reweight(i1_pos_corrected, beta, self.eps_beta, M_norm)
-            v_i1_pos = self.geo.cap_radius(i1_pos_corrected / max(q_i1, 1e-4))
-            v_u0_pos = v_u0[pos_u_idx]
 
-            # Compute paired distance for positive keys
-            D1_pos = self.geo.compute_paired_distance(v_u0_pos, v_i1_pos)
+            if is_euclidean:
+                v_i1_pos = self.geo.cap_radius(i1_pos_corrected / max(q_i1, 1e-4))
+                v_u0_pos = v_u0[pos_u_idx]
+                D1_pos = self.geo.compute_paired_distance(v_u0_pos, v_i1_pos)
+            else:
+                # [OPTIMIZED] Fused exp map for corrected positive keys
+                lor_i1_pos = self.geo.fused_scale_cap_exp0(i1_pos_corrected, q_i1)
+                # Reuse pre-computed query-side Lorentz embeddings
+                lor_u0_pos = lor_u0[pos_u_idx]
+                D1_pos = self.geo.compute_paired_distance_from_lorentz(lor_u0_pos, lor_i1_pos)
+
             D1 = D1.clone()
             D1[pos_u_idx, pos_i_idx] = D1_pos
 
@@ -272,10 +318,18 @@ class MultiPositiveInfoNCELoss(nn.Module):
             )
             if not self.disable_reweight:
                 u1_pos_corrected = spectral_reweight(u1_pos_corrected, beta, self.eps_beta, M_norm)
-            v_u1_pos = self.geo.cap_radius(u1_pos_corrected / max(q_u1, 1e-4))
-            v_i0_pos = v_i0[pos_i_idx]
 
-            D2_pos = self.geo.compute_paired_distance(v_i0_pos, v_u1_pos)
+            if is_euclidean:
+                v_u1_pos = self.geo.cap_radius(u1_pos_corrected / max(q_u1, 1e-4))
+                v_i0_pos = v_i0[pos_i_idx]
+                D2_pos = self.geo.compute_paired_distance(v_i0_pos, v_u1_pos)
+            else:
+                # [OPTIMIZED] Fused exp map for corrected positive keys
+                lor_u1_pos = self.geo.fused_scale_cap_exp0(u1_pos_corrected, q_u1)
+                # Reuse pre-computed query-side Lorentz embeddings
+                lor_i0_pos = lor_i0[pos_i_idx]
+                D2_pos = self.geo.compute_paired_distance_from_lorentz(lor_i0_pos, lor_u1_pos)
+
             D2 = D2.clone()
             D2[pos_i_idx, pos_u_idx] = D2_pos
 

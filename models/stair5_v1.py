@@ -150,14 +150,116 @@ class STAIR5_v1_Model(freerec.models.GenRecArch):
         self.last_diagnostics: Dict[str, float] = {}
 
     def _build_train_interaction_table(self, edge_index_ui: torch.Tensor) -> None:
-        """Builds fast lookup mapping user_id -> set of train positive item_ids."""
-        u_indices = edge_index_ui[0].cpu().tolist()
-        i_indices = edge_index_ui[1].cpu().tolist()
+        """Builds fast lookup structures for in-batch positive matrix construction.
+
+        Creates two complementary data structures:
+        1. Dict[int, Set[int]] for backward compatibility and gradient diagnostics.
+        2. Sorted COO + CSR-offset tensors for O(|E_batch|) vectorized P construction
+           (critical for Electronics where B_u~3900 × B_i~3700 = 14.4M Python comparisons).
+        """
+        u_indices = edge_index_ui[0].cpu()
+        i_indices = edge_index_ui[1].cpu()
+
+        # --- Legacy dict (kept for gradient diagnostics in Coach) ---
+        u_list = u_indices.tolist()
+        i_list = i_indices.tolist()
         self.train_u2i_set: Dict[int, Set[int]] = {}
-        for u, i in zip(u_indices, i_indices):
+        for u, i in zip(u_list, i_list):
             if u not in self.train_u2i_set:
                 self.train_u2i_set[u] = set()
             self.train_u2i_set[u].add(i)
+
+        # --- Vectorized COO + CSR-offset structure ---
+        # Sort edges by user ID for searchsorted-based batch intersection
+        sort_order = torch.argsort(u_indices)
+        self.train_u_sorted = u_indices[sort_order].contiguous()  # (|E|,)
+        self.train_i_for_u = i_indices[sort_order].contiguous()   # (|E|,)
+
+        # CSR-like offsets: for each user u, train_i_for_u[offsets[u]:offsets[u+1]] = items of u
+        # Use searchsorted on sorted user IDs to find boundaries
+        unique_users = torch.unique(self.train_u_sorted)
+        max_uid = int(unique_users.max().item()) + 2
+        self.train_u_offsets = torch.zeros(max_uid, dtype=torch.long)  # (max_uid,)
+        # Left boundary for each user
+        left = torch.searchsorted(self.train_u_sorted, unique_users, side='left')
+        right = torch.searchsorted(self.train_u_sorted, unique_users, side='right')
+        self.train_u_offsets[unique_users] = left
+        self.train_u_offsets[unique_users + 1] = right
+        # Fill gaps (users with no interactions get empty ranges)
+        # We only need lookup for users that exist, so this is sufficient.
+        self._train_edge_right = torch.zeros(max_uid, dtype=torch.long)
+        self._train_edge_right[unique_users] = right
+
+    def _build_positive_matrix_vectorized(
+        self,
+        u_unique: torch.Tensor,
+        i_unique: torch.Tensor,
+        device: torch.device,
+    ) -> torch.Tensor:
+        """Constructs binary ground-truth train positive matrix P in-batch using vectorized ops.
+
+        Replaces O(B_u × B_i) Python loop with:
+        1. O(B_u) searchsorted lookups to find each user's edge range.
+        2. O(|E_batch|) isin check to filter items present in current batch.
+        3. O(|E_batch_filtered|) scatter to fill P.
+
+        On Electronics (B_u~3900, B_i~3700): reduces 14.4M Python dict lookups to ~4K
+        vectorized tensor operations per batch.
+
+        Args:
+            u_unique: (B_u,) unique user IDs in current batch (on GPU).
+            i_unique: (B_i,) unique item IDs in current batch (on GPU).
+            device: target device for output.
+
+        Returns:
+            P: (B_u, B_i) binary positive matrix on target device.
+        """
+        B_u = u_unique.size(0)
+        B_i = i_unique.size(0)
+
+        u_cpu = u_unique.cpu()
+        i_cpu = i_unique.cpu()
+
+        # Build reverse mapping: item_id -> column index in P
+        # Use a dense lookup table (fast for bounded item IDs)
+        max_iid = max(int(i_cpu.max().item()) + 1, int(self.train_i_for_u.max().item()) + 1)
+        item_to_col = torch.full((max_iid,), -1, dtype=torch.long)
+        item_to_col[i_cpu] = torch.arange(B_i, dtype=torch.long)
+
+        # Collect all train edges for batch users
+        row_indices_list = []
+        col_indices_list = []
+
+        offsets = self.train_u_offsets
+        rights = self._train_edge_right
+
+        for a_idx in range(B_u):
+            uid = int(u_cpu[a_idx].item())
+            if uid >= offsets.size(0):
+                continue
+            start = int(offsets[uid].item())
+            end = int(rights[uid].item())
+            if start >= end:
+                continue
+
+            # Items interacted by this user in train set
+            items_of_u = self.train_i_for_u[start:end]
+
+            # Map to column indices (filter items not in current batch)
+            col_mapped = item_to_col[items_of_u]
+            valid = col_mapped >= 0
+            if valid.any():
+                n_valid = valid.sum().item()
+                row_indices_list.append(torch.full((n_valid,), a_idx, dtype=torch.long))
+                col_indices_list.append(col_mapped[valid])
+
+        P = torch.zeros((B_u, B_i), dtype=torch.float32, device=device)
+        if row_indices_list:
+            all_rows = torch.cat(row_indices_list)
+            all_cols = torch.cat(col_indices_list)
+            P[all_rows, all_cols] = 1.0
+
+        return P
 
     def reset_parameters(self) -> None:
         """Initializes model parameters identical to STAIR baseline."""
@@ -416,16 +518,10 @@ class STAIR5_v1_Model(freerec.models.GenRecArch):
             B_u = u_unique.size(0)
             B_i = i_unique.size(0)
 
-            # Construct binary ground-truth train positive matrix P in-batch
-            # P[a, b] = 1 if i_unique[b] in train_interactions(u_unique[a])
-            P = torch.zeros((B_u, B_i), dtype=torch.float32, device=device)
-            u_list = u_unique.cpu().tolist()
-            i_list = i_unique.cpu().tolist()
-            for a_idx, u_id in enumerate(u_list):
-                u_pos_set = self.train_u2i_set.get(u_id, set())
-                for b_idx, i_id in enumerate(i_list):
-                    if i_id in u_pos_set:
-                        P[a_idx, b_idx] = 1.0
+            # [OPTIMIZED] Construct binary ground-truth train positive matrix P in-batch
+            # using vectorized COO-based lookup instead of O(B_u × B_i) Python loop.
+            # On Electronics: reduces ~14.4M Python dict lookups to ~4K vectorized ops.
+            P = self._build_positive_matrix_vectorized(u_unique, i_unique, device)
 
             # Extract layer 0 and layer 1 embeddings for unique batch entities
             H0 = layer_embeds[0]

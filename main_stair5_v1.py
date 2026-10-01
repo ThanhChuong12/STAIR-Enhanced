@@ -265,14 +265,8 @@ class CoachForSTAIR5_v1(freerec.launcher.Coach):
         B_i = i_unique.size(0)
 
         device = u_emb.device
-        P = torch.zeros((B_u, B_i), dtype=torch.float32, device=device)
-        u_list = u_unique.cpu().tolist()
-        i_list = i_unique.cpu().tolist()
-        for a_idx, u_id in enumerate(u_list):
-            u_pos_set = self.model.train_u2i_set.get(u_id, set())
-            for b_idx, i_id in enumerate(i_list):
-                if i_id in u_pos_set:
-                    P[a_idx, b_idx] = 1.0
+        # [OPTIMIZED] Use vectorized P matrix construction
+        P = self.model._build_positive_matrix_vectorized(u_unique, i_unique, device)
 
         H0 = layer_embeds[0]
         H1 = layer_embeds[1]
