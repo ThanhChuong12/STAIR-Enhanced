@@ -1,6 +1,6 @@
 # STAIR5-v2: Phản biện STAIR-HET và thiết kế Confidence-calibrated Edge Trust
 
-**Ngày đối soát:** 01/10/2026. **Trạng thái:** đề xuất nghiên cứu đã điều chỉnh; chưa triển khai, chưa có kết quả v2. Vị trí báo cáo được giữ đúng yêu cầu `docs/giai_doan_4/`, dù các báo cáo tiền nhiệm nằm trong `docs/giai_doan_5/`.
+**Ngày đối soát kiến trúc:** 01/10/2026. **Cập nhật triển khai:** 02/10/2026. Mã nguồn đã triển khai và kiểm thử CPU; chưa có kết quả ranking v2 trên Amazon hay benchmark GPU Kaggle. Báo cáo hiện được tổ chức tại `docs/giai_doan_5/` cùng v1. Xem [biên bản triển khai và xác minh](STAIR5_v2_Implementation.md) để phân biệt specification với kết quả đã kiểm tra.
 
 ## 1. Quyết định nghiên cứu
 
