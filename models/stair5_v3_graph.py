@@ -256,6 +256,11 @@ def build_calibrated_graph_v3(raw_graph, baseline_graph, train_edges, num_users,
       - 'DP-placebo': DP projection on stratified degree-shuffled scores.
       - 'DP-zero': Negative control (scores set to 0, mathematically recovers S0).
     """
+    if arm == "ET":
+        arm = "ET-ref"
+    elif arm == "DP":
+        arm = "DP-ref"
+
     if not math.isfinite(strength) or strength < 0 or not math.isfinite(mix) or not 0 <= mix <= 1:
         raise ValueError("edge_strength must be >= 0 and edge_mix must be in [0, 1].")
     if not math.isfinite(shrinkage) or shrinkage <= 0:

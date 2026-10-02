@@ -208,9 +208,27 @@ def load_dataset(cfg):
     if not processed.is_dir():
         direct = Path(cfg.root) / cfg.dataset
         if not direct.is_dir():
-            raise FileNotFoundError(f"Expected processed dataset at {processed}; prepare data before training.")
+            for cand_root in [
+                "/kaggle/data",
+                "/kaggle/working/STAIR-Enhanced/data",
+                "data", "../data", str(Path(cfg.root).parent),
+            ]:
+                p_cand = Path(cand_root) / "Processed" / cfg.dataset
+                d_cand = Path(cand_root) / cfg.dataset
+                if p_cand.is_dir():
+                    direct = p_cand
+                    break
+                elif d_cand.is_dir():
+                    direct = d_cand
+                    break
+            else:
+                raise FileNotFoundError(f"Expected dataset at {processed} or {direct}; prepare data before training.")
         processed.parent.mkdir(parents=True, exist_ok=True)
-        processed.symlink_to(direct.resolve(), target_is_directory=True)
+        try:
+            processed.symlink_to(direct.resolve(), target_is_directory=True)
+        except Exception:
+            import shutil
+            shutil.copytree(direct.resolve(), processed, dirs_exist_ok=True)
     return MatchingRecDataSet(cfg.root, cfg.dataset, tasktag=freerec.data.tags.MATCHING)
 
 

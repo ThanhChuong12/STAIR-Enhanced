@@ -13,15 +13,15 @@ import torch
 import torch.nn.functional as F
 
 from models.stair5_v1 import STAIR5_v1_Model
-from models.stair5_v2_geometry import AuditedGeometry
-from models.stair5_v2_objectives import AuditedContrastiveLoss
+from models.stair5_v3_geometry import AuditedGeometry
+from models.stair5_v3_objectives import AuditedContrastiveLoss
 from models.stair5_v3_graph import build_calibrated_graph_v3
 from optimizers.stair5_v3_smoother import STAIR5V3Smoother
 
 
-ARMS_V3 = ("B0", "ET-ref", "DP-ref", "DP-placebo", "DP-zero", "DP+LHC", "ET+LHC", "LHC-only")
+ARMS_V3 = ("B0", "ET", "ET-ref", "DP", "DP-ref", "DP-placebo", "DP-zero", "DP+LHC", "ET+LHC", "LHC-only")
 LHC_ARMS_V3 = ("DP+LHC", "ET+LHC", "LHC-only")
-GRAPH_ARMS_V3 = ("ET-ref", "DP-ref", "DP-placebo", "DP-zero", "DP+LHC", "ET+LHC")
+GRAPH_ARMS_V3 = ("ET", "ET-ref", "DP", "DP-ref", "DP-placebo", "DP-zero", "DP+LHC", "ET+LHC")
 
 
 class STAIR5_v3_Model(STAIR5_v1_Model):
@@ -29,6 +29,10 @@ class STAIR5_v3_Model(STAIR5_v1_Model):
     def __init__(self, dataset, cfg):
         effective = copy.copy(cfg)
         arm = getattr(cfg, "v3_arm", "DP-ref")
+        if arm == "ET":
+            arm = "ET-ref"
+        elif arm == "DP":
+            arm = "DP-ref"
         if arm not in ARMS_V3:
             raise ValueError(f"Unknown v3 arm: {arm}. Must be one of {ARMS_V3}")
         if cfg.num_layers < 1 and arm in LHC_ARMS_V3:
@@ -163,6 +167,12 @@ class STAIR5_v3_Model(STAIR5_v1_Model):
                 Path(path) / filename,
                 Path(cfg.root) / cfg.dataset / filename,
                 Path(cfg.root) / "Processed" / cfg.dataset / filename,
+                Path("data") / cfg.dataset / filename,
+                Path("data") / "Processed" / cfg.dataset / filename,
+                Path("/kaggle/data") / cfg.dataset / filename,
+                Path("/kaggle/data/Processed") / cfg.dataset / filename,
+                Path("/kaggle/working/STAIR-Enhanced/data") / cfg.dataset / filename,
+                Path("/kaggle/working/STAIR-Enhanced/data/Processed") / cfg.dataset / filename,
             )
             source = next((p for p in candidates if p.is_file()), None)
             if source is None:
