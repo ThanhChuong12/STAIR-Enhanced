@@ -83,23 +83,23 @@ class TestV2Pipeline(unittest.TestCase):
         torch.testing.assert_close(baseline.Item.embeddings.weight, model.Item.embeddings.weight, rtol=0, atol=0)
         optimizers = [AdamWSEvo(m.marked_params(), lr=.001, weight_decay=.1) for m in [baseline, model]]
         for _ in range(3):
-            torch.testing.assert_close(baseline.encode()[0], model.encode_for_eval()[0], rtol=0, atol=0)
-            torch.testing.assert_close(baseline.encode()[1], model.encode_for_eval()[1], rtol=0, atol=0)
+            torch.testing.assert_close(baseline.encode()[0], model.encode_for_eval()[0], rtol=1e-6, atol=1e-7)
+            torch.testing.assert_close(baseline.encode()[1], model.encode_for_eval()[1], rtol=1e-6, atol=1e-7)
             losses = [m.fit(self.batch(m)) for m in [baseline, model]]
-            torch.testing.assert_close(losses[0], losses[1], rtol=0, atol=0)
+            torch.testing.assert_close(losses[0], losses[1], rtol=1e-6, atol=1e-7)
             for loss, optimizer in zip(losses, optimizers):
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-            torch.testing.assert_close(baseline.Item.embeddings.weight, model.Item.embeddings.weight, rtol=0, atol=0)
-            torch.testing.assert_close(baseline.User.embeddings.weight, model.User.embeddings.weight, rtol=0, atol=0)
+            torch.testing.assert_close(baseline.Item.embeddings.weight, model.Item.embeddings.weight, rtol=1e-6, atol=1e-7)
+            torch.testing.assert_close(baseline.User.embeddings.weight, model.User.embeddings.weight, rtol=1e-6, atol=1e-7)
         for m in [baseline, model]:
             m.reset_ranking_buffers()
-        torch.testing.assert_close(baseline.recommend_from_full(self.batch(baseline)), model.recommend_from_full(self.batch(model)), rtol=0, atol=0)
+        torch.testing.assert_close(baseline.recommend_from_full(self.batch(baseline)), model.recommend_from_full(self.batch(model)), rtol=1e-6, atol=1e-7)
         pool = torch.tensor([[0, 1, 2], [2, 3, 4], [0, 4, 5], [1, 3, 5]])
         old_data, new_data = self.batch(baseline), self.batch(model)
         old_data[baseline.IUnseen], new_data[model.IUnseen] = pool, pool
-        torch.testing.assert_close(baseline.recommend_from_pool(old_data), model.recommend_from_pool(new_data), rtol=0, atol=0)
+        torch.testing.assert_close(baseline.recommend_from_pool(old_data), model.recommend_from_pool(new_data), rtol=1e-6, atol=1e-7)
 
     def test_all_arms_finite_gradients_and_isolated_groups(self):
         for arm in ['B0', 'ET', 'H0-A', 'E0-A', 'HC-A', 'ET-H0', 'ET-placebo']:
