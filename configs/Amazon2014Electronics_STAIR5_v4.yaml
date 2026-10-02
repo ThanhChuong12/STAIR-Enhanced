@@ -1,0 +1,35 @@
+# STAIR5-v4 Configuration: Amazon Electronics
+description: STAIR5-v4-NLGCL-CSE
+root: data
+dataset: Amazon2014Electronics_550_MMRec
+
+embedding_dim: 64
+num_layers: 3
+mfiles: textual_modality.pkl,visual_modality.pkl
+num_neighbors: 5-1
+gamma: 0.4
+
+optimizer: adamwsevo
+lr: 0.001
+weight_decay: 0.1
+batch_size: 4096
+epochs: 500
+eval_freq: 5
+seed: 1
+
+which4best: NDCG@20
+monitors: ['LOSS', 'Recall@1', 'Recall@10', 'Recall@20', 'NDCG@10', 'NDCG@20']
+
+# STAIR5-v4 / NLGCL-CSE parameters
+v4_arm: N-CSE
+lambda_nlgcl: 0.01
+nlgcl_tau: 0.2
+nlgcl_G: 1
+nlgcl_alpha: 0.5
+
+eta: 0.1
+k_cf: 5
+c_min: 2
+t_shrinkage: 5.0
+placebo_seed: 1
+cl_chunk_size: 1024
