@@ -33,3 +33,12 @@ c_min: 2
 t_shrinkage: 5.0
 placebo_seed: 1
 cl_chunk_size: 1024
+
+# Exact preprocessing and backward memory budgets (also applied to N0)
+knn_device: auto
+knn_chunk_size: 1024
+cf_block_size: 64
+cf_memory_budget_mib: 128.0
+eval_valid: true
+eval_test: false
+ranking: full

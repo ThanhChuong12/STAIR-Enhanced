@@ -8,6 +8,8 @@ Tests:
 5. Arm properties and behavior: B0, N0, C0, N-CSE, N-CSE-placebo, v4b.
 6. Checkpoint roundtrip and state restoration.
 """
+import ast
+from typing import Dict, List, Tuple
 import copy
 import math
 import os
@@ -89,7 +91,7 @@ class TestSTAIR5V4Pipeline(unittest.TestCase):
         # Create dummy feature files
         gen = torch.Generator().manual_seed(42)
         for name in ["text.pkl", "image.pkl"]:
-            feat = torch.randn(30, 16, generator=gen).numpy()
+            feat = torch.randn(30, 16, generator=gen)
             with open(Path(self.temp_dir.name) / name, "wb") as h:
                 pickle.dump(feat, h)
 
@@ -126,8 +128,8 @@ class TestSTAIR5V4Pipeline(unittest.TestCase):
 
     def _batch(self, model):
         return {
-            model.User: torch.tensor([0, 1, 2, 3]),
-            model.Item: torch.tensor([1, 2, 3, 4]),
+            model.User: self.dataset.edge_index[0, :4].clone(),
+            model.Item: self.dataset.edge_index[1, :4].clone(),
             model.INeg: torch.tensor([5, 6, 7, 8]),
         }
 
@@ -204,6 +206,76 @@ class TestSTAIR5V4Pipeline(unittest.TestCase):
         self.assertEqual(payload["epoch"], 5)
         self.assertTrue(torch.allclose(model.User.embeddings.weight, model2.User.embeddings.weight))
         self.assertTrue(torch.allclose(model.Item.embeddings.weight, model2.Item.embeddings.weight))
+
+    def test_n0_reference_forward_backward_optimizer_and_ranking_parity(self):
+        from optimizers.utils import Smoother
+        cfg = copy.copy(self.cfg); cfg.v4_arm = "N0"; cfg.cl_chunk_size = 3; cfg.knn_chunk_size = 5; cfg.knn_device = "cpu"
+        path = Path(__file__).resolve().parents[1] / "main_stair_nlgcl_v4.py"
+        nodes = [n for n in ast.parse(path.read_text(encoding="utf-8")).body
+                 if isinstance(n, ast.ClassDef) and n.name in ("NLGCL_Module", "STAIR_NLGCL")]
+        namespace = dict(cfg=cfg, torch=torch, nn=nn, F=F, math=math, os=os,
+                         freerec=freerec, Smoother=Smoother, Dict=Dict, List=List, Tuple=Tuple)
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), "exec"), namespace)
+        torch.manual_seed(121); old = namespace["STAIR_NLGCL"](self.dataset)
+        torch.manual_seed(121); new = STAIR5_v4_Model(self.dataset, cfg)
+        for left, right in zip(old.encode()[:2], new.encode()[:2]):
+            torch.testing.assert_close(left, right, rtol=1e-6, atol=1e-7)
+        torch.testing.assert_close(old.mAdj.to_dense(), new.mAdj.to_dense(), rtol=0, atol=0)
+        opts = [AdamWSEvo(m.marked_params(), lr=.001, weight_decay=.1) for m in (old,new)]
+        for _ in range(2):
+            losses = []
+            for model,opt in zip((old,new), opts):
+                data = {field: ids[:,None] for field,ids in self._batch(model).items()}
+                opt.zero_grad(set_to_none=True)
+                loss = model.fit(data); loss.backward(); losses.append(loss.detach())
+            torch.testing.assert_close(*losses, rtol=1e-6, atol=1e-7)
+            for left,right in zip(old.parameters(), new.parameters()):
+                torch.testing.assert_close(left.grad, right.grad, rtol=1e-5, atol=1e-7)
+            for opt in opts: opt.step()
+            for left,right in zip(old.parameters(), new.parameters()):
+                torch.testing.assert_close(left, right, rtol=1e-5, atol=1e-7)
+                for key in ("exp_avg", "exp_avg_sq"):
+                    torch.testing.assert_close(opts[0].state[left][key], opts[1].state[right][key], rtol=1e-5, atol=1e-8)
+        old.eval(); new.eval(); old.reset_ranking_buffers(); new.reset_ranking_buffers()
+        data_old, data_new = self._batch(old), self._batch(new)
+        data_old[old.User] = data_old[old.User][:,None]; data_new[new.User] = data_new[new.User][:,None]
+        pool = torch.tensor([[0,1,2],[3,4,5],[6,7,8],[9,10,11]])
+        data_old[old.IUnseen] = pool; data_new[new.IUnseen] = pool
+        torch.testing.assert_close(old.recommend_from_full(data_old), new.recommend_from_full(data_new), rtol=1e-5, atol=1e-7)
+        torch.testing.assert_close(old.recommend_from_pool(data_old), new.recommend_from_pool(data_new), rtol=1e-5, atol=1e-7)
+        params = [p for g in new.marked_params() for p in g["params"]]
+        self.assertEqual(len(params), len({id(p) for p in params}))
+        self.assertEqual({id(p) for p in params}, {id(p) for p in new.parameters()})
+
+    def test_checkpoint_rejects_mismatch_and_continues_exact_update(self):
+        model = STAIR5_v4_Model(self.dataset,self.cfg)
+        opt = AdamWSEvo(model.marked_params(), lr=.001, weight_decay=.1)
+        model.fit(self._batch(model)).backward(); opt.step()
+        path = Path(self.temp_dir.name)/"checked.pt"
+        save_training_checkpoint(path,model,opt,1)
+        resumed = STAIR5_v4_Model(self.dataset,self.cfg)
+        resumed_opt = AdamWSEvo(resumed.marked_params(),lr=.001,weight_decay=.1)
+        load_training_checkpoint(path,resumed,resumed_opt)
+        for current,optimizer in ((model,opt),(resumed,resumed_opt)):
+            optimizer.zero_grad(); current.fit(self._batch(current)).backward(); optimizer.step()
+        for left,right in zip(model.parameters(),resumed.parameters()):
+            torch.testing.assert_close(left,right,rtol=0,atol=0)
+        changed = copy.copy(self.cfg); changed.eta=.2
+        mismatch = STAIR5_v4_Model(self.dataset,changed)
+        before = mismatch.Item.embeddings.weight.detach().clone()
+        mismatch_opt = AdamWSEvo(mismatch.marked_params(),lr=.001)
+        with self.assertRaisesRegex(ValueError,"provenance"):
+            load_training_checkpoint(path,mismatch,mismatch_opt)
+        torch.testing.assert_close(before,mismatch.Item.embeddings.weight,rtol=0,atol=0)
+        self.assertFalse(mismatch_opt.state)
+
+    @unittest.skipUnless(torch.cuda.is_available(), "CUDA unavailable")
+    def test_cuda_checkpointed_loss_and_static_csr_update(self):
+        model = STAIR5_v4_Model(self.dataset,self.cfg).to(torch.device("cuda"))
+        opt = AdamWSEvo(model.marked_params(),lr=.001)
+        batch = {k:v.cuda() for k,v in self._batch(model).items()}
+        model.fit(batch).backward(); opt.step()
+        self.assertTrue(torch.isfinite(model.Item.embeddings.weight).all())
 
 
 if __name__ == "__main__":

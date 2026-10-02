@@ -176,6 +176,65 @@ class TestSTAIR5V4Graph(unittest.TestCase):
         self.assertFalse(state_eta0.metadata["active"])
         self.assertIs(state_eta0.operator, baseline_s0)
 
+    def test_exact_empty_cf_fallback_and_invalid_parameters(self):
+        original = torch.eye(4).to_sparse_csr()
+        args = dict(raw_semantic=original, baseline_normalized=original,
+                    train_edges=torch.tensor([[0, 1], [0, 1]]), n_users=2, n_items=4)
+        state = build_calibrated_graph_v4(**args, eta=.3, c_min=2)
+        self.assertIs(state.operator, original)
+        self.assertFalse(state.metadata["active"])
+        self.assertEqual(state.metadata["nnz"], 4)
+        for overrides in ({"eta": -1}, {"eta": 2}, {"eta": float("nan")}, {"arm": "typo"}, {"t_shrinkage": 0}):
+            with self.assertRaises(ValueError):
+                build_calibrated_graph_v4(**args, **overrides)
+        with self.assertRaises(ValueError):
+            build_candidate_support_graph(torch.tensor([[0, 0], [0, 4]]), 4, 2)
+
+    def test_dense_oracle_ties_duplicates_and_budget(self):
+        edges = torch.tensor([[0,0,0,0,1,1,1,2,2,2], [0,0,1,2,0,1,3,0,2,3]])
+        n, k = 4, 1
+        R = np.zeros((3, n), dtype=np.int64)
+        R[edges[0], edges[1]] = 1
+        counts, degrees = R.T @ R, R.sum(0)
+        directed = np.zeros((n, n), dtype=np.float32)
+        for i in range(n):
+            candidates = [(compute_evidence_score(counts[i,j], degrees[i], degrees[j]), j)
+                          for j in range(n) if i != j and counts[i,j] >= 1]
+            for score, j in sorted(candidates, key=lambda pair: (-pair[0], pair[1]))[:k]:
+                directed[i,j] = score
+        oracle = np.maximum(directed, directed.T)
+        for block in (1,2,64):
+            actual = build_candidate_support_graph(edges, n, 3, k, 1, block_size=block,
+                                                   memory_budget_mib=.001)
+            np.testing.assert_allclose(actual.toarray(), oracle, rtol=1e-6, atol=1e-7)
+            self.assertLessEqual(actual.nnz, 2*n*k)
+        with self.assertRaises(MemoryError):
+            build_candidate_support_graph(edges, n, 3, memory_budget_mib=.00001)
+
+    def test_cache_uses_full_data_and_reuses_across_eta_seeds(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as directory:
+            graph = torch.eye(4).to_sparse_csr()
+            # Large duplicate prefix exposed the previous first-100000-byte hash.
+            prefix = torch.tensor([[0], [0]]).repeat(1, 14000)
+            a = torch.cat((prefix, torch.tensor([[0,1,1], [1,0,1]])), 1)
+            b = torch.cat((prefix, torch.tensor([[0,1,1], [2,0,2]])), 1)
+            args = dict(raw_semantic=graph, baseline_normalized=graph, n_users=2, n_items=4,
+                        c_min=1, cache_dir=directory)
+            first = build_calibrated_graph_v4(**args, train_edges=a)
+            second = build_calibrated_graph_v4(**args, train_edges=a, eta=.2, seed=7)
+            changed = build_calibrated_graph_v4(**args, train_edges=b)
+            self.assertTrue(second.metadata["cache_hit"])
+            self.assertFalse(changed.metadata["cache_hit"])
+            self.assertNotEqual(first.metadata["train_fingerprint"], changed.metadata["train_fingerprint"])
+            # A different S0 must be blended freshly, even when CF cache is reused.
+            replacement = torch.tensor([[0.,1,0,0],[1,0,0,0],[0,0,1,0],[0,0,0,1]]).to_sparse_csr()
+            third = build_calibrated_graph_v4(**{**args,"baseline_normalized":replacement}, train_edges=a)
+            self.assertTrue(third.metadata["cache_hit"])
+            self.assertNotEqual(first.metadata["graph_fingerprint"], third.metadata["graph_fingerprint"])
+            self.assertEqual(len(list(Path(directory).glob("cf_*.pt"))), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

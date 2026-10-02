@@ -13,13 +13,7 @@ import subprocess
 import sys
 import time
 
-try:
-    import models.freerec_compat
-except Exception:
-    try:
-        import freerec_compat
-    except Exception:
-        pass
+import models.freerec_compat  # Fail visibly if required compatibility cannot load.
 
 import freerec
 import torch
@@ -29,6 +23,7 @@ from models.stair5_v4_utils import (
     atomic_torch_save,
     load_training_checkpoint,
     save_training_checkpoint,
+    restore_rng,
 )
 from optimizers.AdamW import AdamWSEvo
 
@@ -53,6 +48,9 @@ def build_config():
         ("nlgcl-G", int, 1),
         ("nlgcl-alpha", float, 0.5),
         ("cl-chunk-size", int, 1024),
+        ("knn-chunk-size", int, 1024),
+        ("cf-block-size", int, 64),
+        ("cf-memory-budget-mib", float, 128.0),
         ("graph-cache-dir", str, ""),
         ("artifact-dir", str, ""),
         ("resume-from", str, ""),
@@ -60,6 +58,7 @@ def build_config():
         cfg.add_argument("--" + flag, type=kind, default=default)
 
     cfg.add_argument("--v4-arm", choices=ARMS_V4, default="N-CSE")
+    cfg.add_argument("--knn-device", choices=("cpu", "cuda", "auto"), default="auto")
 
     cfg.set_defaults(
         description="STAIR5-v4-NLGCL-CSE",
@@ -80,6 +79,22 @@ def build_config():
         raise ValueError("STAIR5-v4 requires AdamWSEvo optimizer with BSC smoother.")
     if not cfg.eval_valid or cfg.eval_test or cfg.which4best.upper() != "NDCG@20":
         raise ValueError("Must select by validation NDCG@20; disable test evaluation during training.")
+    if cfg.ranking != "full":
+        raise ValueError("Reference experiments require full ranking; pool scorer remains available for testing.")
+    if not math.isfinite(cfg.eta) or not 0 <= cfg.eta <= 1 or cfg.k_cf < 0 or cfg.c_min < 1:
+        raise ValueError("Require eta in [0, 1], k_cf >= 0 and c_min >= 1.")
+    if not math.isfinite(cfg.t_shrinkage) or cfg.t_shrinkage <= 0:
+        raise ValueError("Require finite t_shrinkage > 0.")
+    if not math.isfinite(cfg.lambda_nlgcl) or cfg.lambda_nlgcl < 0 or not math.isfinite(cfg.nlgcl_tau) or cfg.nlgcl_tau <= 0:
+        raise ValueError("Require finite lambda_nlgcl >= 0 and nlgcl_tau > 0.")
+    if cfg.nlgcl_G < 1 or not math.isfinite(cfg.nlgcl_alpha) or not 0 <= cfg.nlgcl_alpha <= 1:
+        raise ValueError("Require nlgcl_G >= 1 and nlgcl_alpha in [0, 1].")
+    if cfg.knn_chunk_size < 1 or cfg.cf_block_size < 1 or cfg.cl_chunk_size < 0:
+        raise ValueError("Invalid preprocessing/loss chunk sizes.")
+    if not math.isfinite(cfg.cf_memory_budget_mib) or cfg.cf_memory_budget_mib <= 0:
+        raise ValueError("CF memory budget must be finite and positive.")
+    if cfg.eval_freq < 1 or cfg.CHECKPOINT_FREQ < 1:
+        raise ValueError("Evaluation and checkpoint frequencies must be positive.")
     if cfg.seed < 0:
         raise ValueError("Seed must be non-negative.")
     if cfg.embedding_dim <= 0 or cfg.num_layers < 0 or not math.isfinite(cfg.gamma) or cfg.gamma <= 0:
@@ -91,6 +106,8 @@ def build_config():
         if isinstance(cfg.num_neighbors, str)
         else cfg.num_neighbors
     )
+    if not cfg.mfiles or len(cfg.mfiles) != len(cfg.num_neighbors) or any(k <= 0 for k in cfg.num_neighbors):
+        raise ValueError("Each modality requires one positive neighbor count.")
     cfg.beta3 = (
         0.1 + 0.9 * (torch.arange(cfg.embedding_dim) / cfg.embedding_dim).pow(cfg.gamma)
     ).to(cfg.device)
@@ -119,7 +136,10 @@ class CoachForSTAIR5_v4(freerec.launcher.Coach):
     def save_last(self):
         super().save_last()
         atomic_torch_save(self.model.state_dict(), self._artifact("last_model.pt"))
-        self.save_checkpoint(self.model.current_epoch if hasattr(self.model, "current_epoch") else self.epochs)
+        # Native Coach calls save_last even after a failed batch. Never label a
+        # partially updated epoch as a reproducible completed checkpoint.
+        if not getattr(self, "_epoch_in_progress", False):
+            self.save_checkpoint(getattr(self, "_completed_epochs", 0))
 
     def save_checkpoint(self, epoch: int):
         extra = {
@@ -130,6 +150,8 @@ class CoachForSTAIR5_v4(freerec.launcher.Coach):
             "best_step": self._best_step,
             "stopping_steps": self._stopping_steps,
             "dataset_rng": self.dataset.rng.getstate() if hasattr(self.dataset, "rng") else None,
+            "loaders": {name: getattr(self, name).state_dict()
+                        for name in ("trainloader", "validloader", "testloader")},
         }
         best_path = Path(self.cfg.LOG_PATH) / self.cfg.BEST_FILENAME
         if best_path.exists():
@@ -139,7 +161,7 @@ class CoachForSTAIR5_v4(freerec.launcher.Coach):
 
     def load_checkpoint(self) -> int:
         target = self.cfg.resume_from or self._artifact("training_checkpoint.pt")
-        payload = load_training_checkpoint(target, self.model, self.optimizer)
+        payload = load_training_checkpoint(target, self.model, self.optimizer, restore_random=False)
         extra = payload["extra"]
         self.monitors.load_state_dict(extra["monitors"])
         self.lr_scheduler.load_state_dict(extra["lr_scheduler"])
@@ -149,6 +171,9 @@ class CoachForSTAIR5_v4(freerec.launcher.Coach):
             self.dataset.rng.setstate(extra["dataset_rng"])
         if "best_model" in extra:
             self.save(extra["best_model"], self.cfg.BEST_FILENAME)
+        for name, state in extra.get("loaders", {}).items():
+            getattr(self, name).load_state_dict(state)
+        restore_rng(payload["rng"])
         return payload["epoch"]
 
     def resume(self) -> int:
@@ -169,30 +194,35 @@ class CoachForSTAIR5_v4(freerec.launcher.Coach):
                 with telemetry_path.open("w", encoding="utf-8") as f:
                     for line in valid_lines:
                         f.write(line + "\n")
+            self._completed_epochs = epoch
             return epoch
         else:
             telemetry_path = self._artifact("training_telemetry.jsonl")
             if telemetry_path.is_file():
-                telemetry_path.unlink()
+                raise FileExistsError("Fresh-run artifact directory already contains telemetry; use a new attempt directory or --resume-from.")
+        self._completed_epochs = 0
         return 0
 
     def train_per_epoch(self, epoch: int):
         self.model.current_epoch = epoch
+        self._epoch_in_progress = True
         started = time.perf_counter()
-        total_loss, samples, batches = 0.0, 0, 0
+        totals = torch.zeros(3, device=self.device, dtype=torch.float64)
+        samples, batches = 0, 0
         if self.device.type == "cuda":
             torch.cuda.reset_peak_memory_stats(self.device)
 
         for batch_index, data in enumerate(self.dataloader):
             data = self.dict_to_device(data)
             self.optimizer.zero_grad(set_to_none=True)
-            loss = self.model.fit(data)
+            loss, bpr, cl = self.model.training_objective(data)
             loss.backward()
             self.optimizer.step()
 
             count = len(data[self.User])
-            self.monitor(loss.item(), n=count, reduction="mean", mode="train", pool=["LOSS"])
-            total_loss += loss.item() * count
+            # Accumulate detached scalars on-device; one host synchronization per
+            # epoch rather than duplicate loss.item() barriers in every batch.
+            totals += torch.stack((loss.detach(), bpr.detach(), cl.detach())).to(torch.float64) * count
             samples += count
             batches += 1
 
@@ -201,10 +231,17 @@ class CoachForSTAIR5_v4(freerec.launcher.Coach):
         if self.device.type == "cuda":
             torch.cuda.synchronize(self.device)
 
+        averages = (totals / samples).cpu().tolist()
+        self.monitor(averages[0], n=samples, reduction="mean", mode="train", pool=["LOSS"])
+        self._completed_epochs = epoch
+        self._epoch_in_progress = False
         elapsed = time.perf_counter() - started
         record = {
             "epoch": epoch,
-            "loss": total_loss / samples,
+            "loss": averages[0],
+            "bpr_loss": averages[1],
+            "nlgcl_loss": averages[2],
+            "weighted_nlgcl_loss": self.model.lambda_nlgcl * averages[2],
             "lambda_nlgcl": self.model.lambda_nlgcl,
             "samples": samples,
             "batches": batches,
@@ -226,8 +263,8 @@ class CoachForSTAIR5_v4(freerec.launcher.Coach):
             flush=True,
         )
 
-        if epoch % self.cfg.CHECKPOINT_FREQ == 0 or epoch == self.cfg.epochs:
-            self.save_checkpoint(epoch)
+        # Native Coach saves at completed-epoch boundaries before evaluation.
+        # Saving here would capture monitors before Coach.step() commits them.
 
 
 def load_dataset(cfg):
@@ -275,6 +312,9 @@ def main():
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
 
+    artifact = Path(cfg.artifact_dir)
+    if not (cfg.resume or cfg.resume_from) and any((artifact / name).exists() for name in ("manifest.json", "training_checkpoint.pt", "training_telemetry.jsonl")):
+        raise FileExistsError("Artifact directory belongs to an existing attempt; use a new directory or explicit resume.")
     started = time.perf_counter()
     dataset = load_dataset(cfg)
     model = STAIR5_v4_Model(dataset, cfg)
@@ -297,6 +337,10 @@ def main():
         "seed": cfg.seed,
         "graph": model.graph_metadata,
         "features": model.feature_manifest,
+        "knn": model.knn_metadata,
+        "checkpoint_contract": model.get_extra_state(),
+        "effective_lambda_nlgcl": model.lambda_nlgcl,
+        "precision": {"tf32": False, "amp": False},
         "preprocessing_seconds": time.perf_counter() - started,
         "ranking": cfg.ranking,
         "selection": "validation NDCG@20",
@@ -323,12 +367,15 @@ def main():
                 "k_cf",
                 "c_min",
                 "t_shrinkage",
+                "cl_chunk_size", "knn_chunk_size", "knn_device",
+                "cf_block_size", "cf_memory_budget_mib",
             )
         },
         "freerec_log_path": cfg.LOG_PATH,
         "test_records": "Native FreeRec final and selected; report selected only.",
     }
-    Path(cfg.artifact_dir, "manifest.json").write_text(
+    manifest_name = "resume_manifest.json" if cfg.resume or cfg.resume_from else "manifest.json"
+    Path(cfg.artifact_dir, manifest_name).write_text(
         json.dumps(manifest, indent=2), encoding="utf-8"
     )
     print("[STAIR5-v4 graph] " + json.dumps(model.graph_metadata), flush=True)

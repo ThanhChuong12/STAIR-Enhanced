@@ -11,10 +11,12 @@ Implements:
 2. Positive-Aware NLGCL loss (v4b conditional ablation):
    - Mitigates false-negative penalty by identifying in-batch collaborative positives from training interactions.
 """
-from typing import Dict, List, Optional, Tuple
+import math
+from typing import List, Optional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 
 class NLGCL_Module(nn.Module):
@@ -43,11 +45,17 @@ class NLGCL_Module(nn.Module):
             chunk_size: Optional chunk size for anchor batching (e.g. 1024) to reduce peak memory.
         """
         super().__init__()
+        if n_users <= 0 or n_items <= 0 or G < 1 or int(G) != G:
+            raise ValueError("Require positive entity counts and integer G >= 1.")
+        if not math.isfinite(tau) or tau <= 0 or not math.isfinite(alpha) or not 0 <= alpha <= 1:
+            raise ValueError("Require finite tau > 0 and alpha in [0, 1].")
         self.n_users = n_users
         self.n_items = n_items
         self.G = G
         self.tau = tau
         self.alpha = alpha
+        if chunk_size is not None and (chunk_size < 0 or int(chunk_size) != chunk_size):
+            raise ValueError("chunk_size must be None or a nonnegative integer (0 disables it).")
         self.chunk_size = chunk_size
 
     def info_nce_in_batch(
@@ -66,33 +74,30 @@ class NLGCL_Module(nn.Module):
         Returns:
             Scalar loss tensor.
         """
+        if anchor.ndim != 2 or anchor.shape != positive.shape or negatives.ndim != 2:
+            raise ValueError("Expected matching nonempty 2D query/positive tensors and 2D keys.")
+        if anchor.size(0) == 0 or negatives.size(0) == 0 or anchor.size(1) != negatives.size(1):
+            raise ValueError("InfoNCE requires nonempty compatible query/key dimensions.")
+        # Reuse normalized keys only when positive and negatives are the same object.
+        shared_keys = positive is negatives
         anchor = F.normalize(anchor, p=2, dim=-1)
-        positive = F.normalize(positive, p=2, dim=-1)
         negatives = F.normalize(negatives, p=2, dim=-1)
-
-        B = anchor.size(0)
-        chunk = self.chunk_size
-
-        if chunk is not None and chunk > 0 and B > chunk:
-            # Memory-bounded chunked computation
-            total_loss = 0.0
-            neg_t = negatives.t()  # (D, B)
-            for start in range(0, B, chunk):
-                end = min(start + chunk, B)
-                a_chunk = anchor[start:end]      # (c, D)
-                p_chunk = positive[start:end]    # (c, D)
-
-                pos_sim = (a_chunk * p_chunk).sum(dim=-1) / self.tau  # (c,)
-                neg_sim = torch.mm(a_chunk, neg_t) / self.tau         # (c, B)
-                loss_chunk = -pos_sim + torch.logsumexp(neg_sim, dim=-1)
-                total_loss = total_loss + loss_chunk.sum()
-            return total_loss / B
-        else:
-            # Exact unchunked 2D GEMM
-            pos_sim = (anchor * positive).sum(dim=-1) / self.tau  # (B,)
-            neg_sim = torch.mm(anchor, negatives.t()) / self.tau  # (B, B)
-            loss = -pos_sim + torch.logsumexp(neg_sim, dim=-1)
-            return loss.mean()
+        positive = negatives if shared_keys else F.normalize(positive, p=2, dim=-1)
+        batch = anchor.size(0)
+        chunk = self.chunk_size or batch
+        if batch <= chunk:
+            return _info_nce_sum(anchor, positive, negatives, self.tau) / batch
+        total = anchor.new_zeros(())
+        for start in range(0, batch, chunk):
+            inputs = (anchor[start:start + chunk], positive[start:start + chunk], negatives, self.tau)
+            if torch.is_grad_enabled() and any(x.requires_grad for x in inputs[:3]):
+                # Plain chunk loops retain every logits block until backward. Recompute
+                # each block instead, retaining both query and key gradient paths.
+                value = checkpoint(_info_nce_sum, *inputs, use_reentrant=False, preserve_rng_state=False)
+            else:
+                value = _info_nce_sum(*inputs)
+            total = total + value
+        return total / batch
 
     def forward(
         self,
@@ -112,8 +117,9 @@ class NLGCL_Module(nn.Module):
         """
         users = users.view(-1)
         pos_items = pos_items.view(-1)
-        device = layer_embeds[0].device
-        total_loss = torch.tensor(0.0, device=device)
+        if users.numel() == 0 or users.numel() != pos_items.numel():
+            raise ValueError("NLGCL requires equally sized, nonempty sampled pairs.")
+        total_loss = layer_embeds[0].new_zeros(())
 
         num_gaps = min(self.G, len(layer_embeds) - 1)
         if num_gaps <= 0:
@@ -127,134 +133,108 @@ class NLGCL_Module(nn.Module):
             # anchor: I_{g+1}[pos_items] (propagated item)
             # positive: U_g[users] (ego user)
             # negatives: U_g[users] (all batch users)
-            cl_u = self.info_nce_in_batch(
-                anchor=I_g1[pos_items],
-                positive=U_g[users],
-                negatives=U_g[users],
-            )
+            user_keys = U_g[users]
+            cl_u = self.info_nce_in_batch(I_g1[pos_items], user_keys, user_keys)
 
             # Item-side CL (L_i):
             # anchor: U_{g+1}[users] (propagated user)
             # positive: I_g[pos_items] (ego item)
             # negatives: I_g[pos_items] (all batch items)
-            cl_i = self.info_nce_in_batch(
-                anchor=U_g1[users],
-                positive=I_g[pos_items],
-                negatives=I_g[pos_items],
-            )
+            item_keys = I_g[pos_items]
+            cl_i = self.info_nce_in_batch(U_g1[users], item_keys, item_keys)
 
             total_loss = total_loss + self.alpha * cl_u + (1.0 - self.alpha) * cl_i
 
         return total_loss / num_gaps
 
 
-class NLGCL_PositiveAware_Module(nn.Module):
-    """Positive-Aware NLGCL Module (v4b conditional ablation).
-    
-    When an in-batch user has interacted with other in-batch items during training,
-    treating those items as strict negatives introduces false-negative penalties.
-    This module identifies known train interactions within the batch and averages
-    positive log-probabilities over all verified positives in the batch.
+def _info_nce_sum(anchor, positive, keys, tau):
+    positive_logits = (anchor * positive).sum(dim=-1) / tau
+    logits = anchor @ keys.t() / tau
+    return (torch.logsumexp(logits, dim=-1) - positive_logits).sum()
+
+
+def _membership(train_keys, pair_keys):
+    if train_keys.numel() == 0:
+        return torch.zeros_like(pair_keys, dtype=torch.bool)
+    positions = torch.searchsorted(train_keys, pair_keys.contiguous())
+    return (positions < train_keys.numel()) & (train_keys[positions.clamp_max(train_keys.numel() - 1)] == pair_keys)
+
+
+def _positive_sum(anchor, keys, mask, tau):
+    logits = anchor @ keys.t() / tau
+    count = mask.sum(-1).to(logits.dtype)
+    return (torch.logsumexp(logits, -1) - (logits * mask).sum(-1) / count).sum()
+
+
+class NLGCL_PositiveAware_Module(NLGCL_Module):
+    """Conditional v4b: uniform unique queries/keys and mean positive log probability.
+
+    Only deduplicated known train relations define positives. The sampled pair is
+    verified rather than silently forced positive. Membership/logits are generated
+    per anchor chunk and recomputed in backward; no full B-by-B int64 lookup table.
     """
 
-    def __init__(
-        self,
-        n_users: int,
-        n_items: int,
-        train_pair_keys: torch.Tensor,
-        G: int = 1,
-        tau: float = 0.2,
-        alpha: float = 0.5,
-    ):
-        super().__init__()
-        self.n_users = n_users
-        self.n_items = n_items
-        self.G = G
-        self.tau = tau
-        self.alpha = alpha
-        self.register_buffer("train_pair_keys", train_pair_keys.long(), persistent=False)
+    def __init__(self, n_users, n_items, train_pair_keys, G=1, tau=0.2, alpha=0.5, chunk_size=1024):
+        super().__init__(n_users, n_items, G, tau, alpha, chunk_size)
+        if train_pair_keys.dtype != torch.long or train_pair_keys.ndim != 1:
+            raise ValueError("train_pair_keys must be a 1D int64 tensor.")
+        keys = torch.unique(train_pair_keys.detach(), sorted=True)
+        if keys.numel() and (keys.min() < 0 or keys.max() >= n_users * n_items):
+            raise ValueError("Train pair keys contain out-of-range IDs.")
+        self.register_buffer("train_pair_keys", keys, persistent=False)
 
-    def _get_positive_mask(self, users: torch.Tensor, items: torch.Tensor) -> torch.Tensor:
-        """Determines binary membership of user-item pairs in the train interaction set.
-        
-        Returns:
-            (B_u, B_i) boolean tensor where mask[u, i] is True iff (users[u], items[i]) is a train pair.
-        """
-        device = users.device
-        keys = self.train_pair_keys.to(device)
-        queries = users[:, None] * self.n_items + items[None, :]
-        if keys.numel() == 0:
-            return torch.zeros_like(queries, dtype=torch.bool)
-        positions = torch.searchsorted(keys, queries)
-        valid = positions < len(keys)
-        return valid & (keys[positions.clamp_max(len(keys) - 1)] == queries)
+    def _get_positive_mask(self, users, items):
+        pairs = users[:, None] * self.n_items + items[None, :]
+        return _membership(self.train_pair_keys.to(users.device), pairs)
 
-    def positive_aware_info_nce(
-        self,
-        anchor: torch.Tensor,
-        keys: torch.Tensor,
-        pos_mask: torch.Tensor,
-    ) -> torch.Tensor:
-        """Positive-aware InfoNCE:
-        For query a, L_a = - 1/|P(a)| sum_{k in P(a)} log [ exp(sim(a,k)/tau) / sum_j exp(sim(a,j)/tau) ]
-        = logsumexp(sim(a, :)/tau) - 1/|P(a)| sum_{k in P(a)} (sim(a, k)/tau).
-        """
-        anchor = F.normalize(anchor, p=2, dim=-1)
-        keys = F.normalize(keys, p=2, dim=-1)
+    def positive_aware_info_nce(self, anchor, keys, pos_mask):
+        if pos_mask.shape != (len(anchor), len(keys)) or not len(anchor) or not len(keys):
+            raise ValueError("Positive mask must match nonempty query/key pools.")
+        if not pos_mask.any(-1).all():
+            raise ValueError("Every contrastive query must have a known positive.")
+        anchor, keys = F.normalize(anchor, dim=-1), F.normalize(keys, dim=-1)
+        total = anchor.new_zeros(())
+        chunk = self.chunk_size or len(anchor)
+        for start in range(0, len(anchor), chunk):
+            args = (anchor[start:start + chunk], keys, pos_mask[start:start + chunk], self.tau)
+            value = checkpoint(_positive_sum, *args, use_reentrant=False, preserve_rng_state=False) if torch.is_grad_enabled() else _positive_sum(*args)
+            total = total + value
+        return total / len(anchor)
 
-        sim_matrix = torch.mm(anchor, keys.t()) / self.tau  # (B, B)
-        log_denom = torch.logsumexp(sim_matrix, dim=-1)      # (B,)
+    def _direction(self, anchor, keys, query_ids, key_ids, query_is_item):
+        anchor, keys = F.normalize(anchor, dim=-1), F.normalize(keys, dim=-1)
+        train_keys = self.train_pair_keys.to(anchor.device)
 
-        # Compute positive sum
-        pos_sim_sum = (sim_matrix * pos_mask.float()).sum(dim=-1)  # (B,)
-        pos_count = pos_mask.sum(dim=-1).clamp_min(1.0)           # (B,)
+        def loss_block(a, k, ids):
+            if query_is_item:
+                pairs = key_ids[None, :] * self.n_items + ids[:, None]
+            else:
+                pairs = ids[:, None] * self.n_items + key_ids[None, :]
+            return _positive_sum(a, k, _membership(train_keys, pairs), self.tau)
 
-        loss = log_denom - (pos_sim_sum / pos_count)
-        return loss.mean()
+        total = anchor.new_zeros(())
+        chunk = self.chunk_size or len(anchor)
+        for start in range(0, len(anchor), chunk):
+            args = (anchor[start:start + chunk], keys, query_ids[start:start + chunk])
+            value = checkpoint(loss_block, *args, use_reentrant=False, preserve_rng_state=False) if torch.is_grad_enabled() else loss_block(*args)
+            total = total + value
+        return total / len(anchor)
 
-    def forward(
-        self,
-        layer_embeds: List[torch.Tensor],
-        users: torch.Tensor,
-        pos_items: torch.Tensor,
-    ) -> torch.Tensor:
-        users = users.view(-1)
-        pos_items = pos_items.view(-1)
-        device = layer_embeds[0].device
-        total_loss = torch.tensor(0.0, device=device)
-
-        num_gaps = min(self.G, len(layer_embeds) - 1)
-        if num_gaps <= 0:
-            return total_loss
-
-        # Mask: shape (B, B) — mask[b, r] = True if (users[r], pos_items[b]) is in train
-        # User-side: anchor is I_g1[pos_items], keys are U_g[users].
-        # anchor b is item pos_items[b], key r is user users[r].
-        u_pos_mask = self._get_positive_mask(users, pos_items).t()  # (B, B) where [b, r] is item b vs user r
-        # Ensure diagonal is always True (the sampled pair is always positive)
-        diag_idx = torch.arange(users.size(0), device=device)
-        u_pos_mask[diag_idx, diag_idx] = True
-
-        # Item-side: anchor is U_g1[users], keys are I_g[pos_items].
-        # anchor b is user users[b], key r is item pos_items[r].
-        i_pos_mask = self._get_positive_mask(users, pos_items)      # (B, B) where [b, r] is user b vs item r
-        i_pos_mask[diag_idx, diag_idx] = True
-
-        for g in range(num_gaps):
-            U_g, I_g = torch.split(layer_embeds[g], [self.n_users, self.n_items])
-            U_g1, I_g1 = torch.split(layer_embeds[g + 1], [self.n_users, self.n_items])
-
-            cl_u = self.positive_aware_info_nce(
-                anchor=I_g1[pos_items],
-                keys=U_g[users],
-                pos_mask=u_pos_mask,
-            )
-            cl_i = self.positive_aware_info_nce(
-                anchor=U_g1[users],
-                keys=I_g[pos_items],
-                pos_mask=i_pos_mask,
-            )
-
-            total_loss = total_loss + self.alpha * cl_u + (1.0 - self.alpha) * cl_i
-
-        return total_loss / num_gaps
+    def forward(self, layer_embeds, users, pos_items):
+        users, pos_items = users.reshape(-1), pos_items.reshape(-1)
+        if users.numel() == 0 or users.numel() != pos_items.numel():
+            raise ValueError("Expected nonempty sampled user/item pairs of equal length.")
+        pairs = users * self.n_items + pos_items
+        if not _membership(self.train_pair_keys.to(users.device), pairs).all():
+            raise ValueError("Sampled positives must belong to the train split.")
+        users, items = torch.unique(users, sorted=True), torch.unique(pos_items, sorted=True)
+        total = layer_embeds[0].new_zeros(())
+        gaps = min(self.G, len(layer_embeds) - 1)
+        for g in range(gaps):
+            u0, i0 = torch.split(layer_embeds[g], (self.n_users, self.n_items))
+            u1, i1 = torch.split(layer_embeds[g + 1], (self.n_users, self.n_items))
+            lu = self._direction(i1[items], u0[users], items, users, True)
+            li = self._direction(u1[users], i0[items], users, items, False)
+            total = total + self.alpha * lu + (1 - self.alpha) * li
+        return total / gaps if gaps else total

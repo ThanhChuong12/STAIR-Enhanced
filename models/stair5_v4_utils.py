@@ -12,6 +12,15 @@ import numpy as np
 import torch
 
 
+def file_sha256(path: Union[str, Path]) -> str:
+    """Stream a complete file digest without loading large feature files twice."""
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 def atomic_torch_save(payload: Any, path: Union[str, Path]) -> None:
     """Saves a torch object atomically via a temporary file."""
     path = Path(path)
@@ -40,6 +49,9 @@ def load_optimizer_state(optimizer: torch.optim.Optimizer, state: dict) -> None:
     """Restores optimizer state while preserving the model's active smoother callbacks."""
     if len(state["param_groups"]) != len(optimizer.param_groups):
         raise ValueError("Checkpoint optimizer group count differs from current model.")
+    if any(len(saved["params"]) != len(live["params"])
+           for saved, live in zip(state["param_groups"], optimizer.param_groups)):
+        raise ValueError("Checkpoint optimizer parameter layout differs from current model.")
     runtime_smoothers = [g.get("smoother") for g in optimizer.param_groups]
     optimizer.load_state_dict(state)
     for group, smoother in zip(optimizer.param_groups, runtime_smoothers):
@@ -93,10 +105,14 @@ def load_training_checkpoint(
     optimizer: torch.optim.Optimizer,
     restore_random: bool = True,
 ) -> dict:
-    payload = torch.load(path, map_location="cpu", weights_only=False)
+    payload = torch.load(path, map_location="cpu", weights_only=True)
     if payload.get("version") != 4:
-        # Support fallback or version 4
-        pass
+        raise ValueError("Unsupported STAIR5-v4 training checkpoint version.")
+    # Reject mismatched graphs/configs before copying any embedding or optimizer state.
+    if payload["model"].get("_extra_state") != model.get_extra_state():
+        raise ValueError("Checkpoint model/configuration/data provenance mismatch.")
+    if payload.get("epoch", -1) < 0:
+        raise ValueError("Checkpoint epoch must be nonnegative.")
     model.load_state_dict(payload["model"])
     load_optimizer_state(optimizer, payload["optimizer"])
     if restore_random and "rng" in payload:
