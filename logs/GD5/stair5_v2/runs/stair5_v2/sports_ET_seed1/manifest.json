@@ -1,0 +1,119 @@
+{
+  "argv": [
+    "/kaggle/working/STAIR-Enhanced/main_stair5_v2.py",
+    "--config",
+    "/kaggle/working/STAIR-Enhanced/configs/Amazon2014Sports_STAIR5_v2.yaml",
+    "--root",
+    "/kaggle/data",
+    "--v2-arm",
+    "ET",
+    "--seed",
+    "1",
+    "--device",
+    "0",
+    "--ranking",
+    "full",
+    "--eval-freq",
+    "5",
+    "--knn-device",
+    "auto",
+    "--knn-chunk-size",
+    "1024",
+    "--lhc-chunk-size",
+    "256",
+    "--edge-strength",
+    "0.25",
+    "--edge-mix",
+    "0.25",
+    "--evidence-shrinkage",
+    "5.0",
+    "--graph-cache-dir",
+    "/kaggle/working/runs/stair5_v2/graph_cache",
+    "--artifact-dir",
+    "/kaggle/working/runs/stair5_v2/sports_ET_seed1"
+  ],
+  "commit": "1931080727c4fab43c68707375d6e4493024f7d4",
+  "python": "3.12.13",
+  "torch": "2.10.0+cu128",
+  "freerec": "0.9.7",
+  "device": "cuda:0",
+  "cuda_available": true,
+  "gpu": "Tesla T4",
+  "arm": "ET",
+  "seed": 1,
+  "graph": {
+    "version": 2,
+    "strength": 0.25,
+    "mix": 0.25,
+    "shrinkage": 5.0,
+    "placebo": false,
+    "seed": 1,
+    "num_users": 35598,
+    "num_items": 18357,
+    "torch": "2.10.0+cu128",
+    "active": true,
+    "fingerprint": "5a2ff71a69e9fa5681372d40216d5b89c8c461bdeb4b852c7ad01fb894ae7f8f",
+    "cache_hit": true,
+    "nnz": 157752,
+    "nonzero_score_fraction": 0.10046148300170898,
+    "score_mean": 0.0027278929483145475,
+    "score_max": 0.5336298942565918,
+    "placebo_permuted": 0,
+    "relative_operator_probe_delta": 0.000753412488847971,
+    "data_fingerprint": "2f1e76f63cf7e6c873528ec3fc909a764b7d220aad6ea1c91c264263ed2c1040"
+  },
+  "features": [
+    {
+      "file": "textual_modality.pkl",
+      "sha256": "ca99972f3a2c7a9ead14e9a0d649351411722bbd98e920b4c5fe9f8ffa1564a2"
+    },
+    {
+      "file": "visual_modality.pkl",
+      "sha256": "5d2ea8187bbc52f806616404815930061acefe6cb22f353e3f02f286c95b9959"
+    }
+  ],
+  "preprocessing_seconds": 28.169387640999958,
+  "knn_preprocessing": [
+    {
+      "device": "cuda:0",
+      "chunk": 1024,
+      "k": 5,
+      "cache_hit": true,
+      "fingerprint": "fe16707fc6547daf00e01a5e611692e61a4fc80e536a70d1ef8431d2f6eb2327"
+    },
+    {
+      "device": "cuda:0",
+      "chunk": 1024,
+      "k": 1,
+      "cache_hit": true,
+      "fingerprint": "5f4ac659eb68b8767cbef49320299dae32570af2ca077c8dca0a740ddd25fe65"
+    }
+  ],
+  "ranking": "full",
+  "selection": "validation NDCG@20",
+  "knn_device": "auto",
+  "knn_chunk_size": 1024,
+  "lhc_chunk_size": 256,
+  "baseline_config": {
+    "embedding_dim": 64,
+    "num_layers": 3,
+    "gamma": 0.2,
+    "lr": 0.001,
+    "weight_decay": 0.1,
+    "batch_size": 1024,
+    "epochs": 500,
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "mfiles": [
+      "textual_modality.pkl",
+      "visual_modality.pkl"
+    ],
+    "num_neighbors": [
+      5,
+      1
+    ],
+    "eval_freq": 5
+  },
+  "freerec_log_path": "./logs/STAIR5-v2-C-HET/Amazon2014Sports_550_MMRec/1002065105",
+  "test_records": "Native FreeRec final and selected; report selected only."
+}

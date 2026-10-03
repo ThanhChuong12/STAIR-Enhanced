@@ -1,0 +1,231 @@
+{
+  "argv": [
+    "/kaggle/working/STAIR-Enhanced/main_stair5_v4.py",
+    "--config",
+    "/kaggle/working/STAIR-Enhanced/configs/Amazon2014Sports_STAIR5_v4.yaml",
+    "--root",
+    "/kaggle/data",
+    "--device",
+    "0",
+    "--ranking",
+    "full",
+    "--artifact-dir",
+    "/kaggle/working/runs/stair5_v4/20261002_171043_1e0eba/sports_N-CSE_seed1_eta0.1",
+    "--v4-arm",
+    "N-CSE",
+    "--seed",
+    "1",
+    "--eval-freq",
+    "5",
+    "--eta",
+    "0.1",
+    "--k-cf",
+    "5",
+    "--c-min",
+    "2",
+    "--t-shrinkage",
+    "5.0",
+    "--cf-block-size",
+    "64",
+    "--cf-memory-budget-mib",
+    "128",
+    "--lambda-nlgcl",
+    "0.01",
+    "--nlgcl-tau",
+    "0.2",
+    "--nlgcl-G",
+    "1",
+    "--nlgcl-alpha",
+    "0.5",
+    "--cl-chunk-size",
+    "1024",
+    "--knn-chunk-size",
+    "1024",
+    "--knn-device",
+    "auto",
+    "--graph-cache-dir",
+    "/kaggle/working/runs/stair5_v4/graph_cache"
+  ],
+  "commit": "77bfb92d5772cf303d9cb58db388b8ea0bcc40d6",
+  "python": "3.12.13",
+  "torch": "2.10.0+cu128",
+  "freerec": "0.9.7",
+  "device": "cuda:0",
+  "cuda_available": true,
+  "gpu": "Tesla T4",
+  "arm": "N-CSE",
+  "seed": 1,
+  "graph": {
+    "version": 4,
+    "arm": "N-CSE",
+    "eta": 0.1,
+    "k_cf": 5,
+    "c_min": 2,
+    "t_shrinkage": 5.0,
+    "num_users": 35598,
+    "num_items": 18357,
+    "cache_hit": false,
+    "train_fingerprint": "b764a0df2c6080ef0b3f1cefdbcf313a8ce012f570903d95ffa31425e1f9c14e",
+    "cf_cache_key": "20b7e1854aac1bf2b3cafa9d06a1b7265da6d19c326e037a617d1c14ef919195",
+    "cf_preprocessing_seconds": 0.5808713699999544,
+    "cf_block_size_requested": 64,
+    "cf_memory_budget_mib": 128.0,
+    "active": true,
+    "effective_eta": 0.1,
+    "s0_nnz": 157752,
+    "cf_nnz": 43334,
+    "s4_nnz": 206300,
+    "cf_isolated_nodes": 8262,
+    "cf_isolated_fraction": 0.45007354142833794,
+    "jaccard_semantic_cf": 0.015390985568426262,
+    "new_cf_edges_count": 40286,
+    "new_cf_fraction": 0.9296626205750681,
+    "relative_operator_delta": 0.2407867822493734,
+    "relative_operator_delta_kind": "frobenius_ratio",
+    "graph_fingerprint": "49e04ce876fe11de0611836d1822f79ad91ee298f5a619193b26dc6a5e91cae6",
+    "is_placebo": false
+  },
+  "features": [
+    {
+      "file": "textual_modality.pkl",
+      "sha256": "ca99972f3a2c7a9ead14e9a0d649351411722bbd98e920b4c5fe9f8ffa1564a2"
+    },
+    {
+      "file": "visual_modality.pkl",
+      "sha256": "5d2ea8187bbc52f806616404815930061acefe6cb22f353e3f02f286c95b9959"
+    }
+  ],
+  "knn": [
+    {
+      "features": "ca99972f3a2c7a9ead14e9a0d649351411722bbd98e920b4c5fe9f8ffa1564a2",
+      "k": 5,
+      "chunk": 1024,
+      "algorithm": "cosine_fp32_diagonal_minus10_torch_topk_v1",
+      "torch": "2.10.0+cu128",
+      "device": "cuda:0",
+      "tf32": false,
+      "source": "640f26b80b5b5eabf9bdcd44bac7a9c0544571168b31eefb7cbf96e59c166038",
+      "fingerprint": "053bfbd908a70204d0ca2147e7c181e927be56635bf1d69a914d7079e113e913",
+      "cache_hit": false
+    },
+    {
+      "features": "5d2ea8187bbc52f806616404815930061acefe6cb22f353e3f02f286c95b9959",
+      "k": 1,
+      "chunk": 1024,
+      "algorithm": "cosine_fp32_diagonal_minus10_torch_topk_v1",
+      "torch": "2.10.0+cu128",
+      "device": "cuda:0",
+      "tf32": false,
+      "source": "640f26b80b5b5eabf9bdcd44bac7a9c0544571168b31eefb7cbf96e59c166038",
+      "fingerprint": "b4c9366e8e66be970ccbcbd75a93b39ddd874a82175a954a4ce784c1928abe88",
+      "cache_hit": false
+    }
+  ],
+  "checkpoint_contract": {
+    "version": 4,
+    "arm": "N-CSE",
+    "lambda_nlgcl": 0.01,
+    "config": {
+      "embedding_dim": 64,
+      "num_layers": 3,
+      "gamma": 0.2,
+      "num_neighbors": [
+        5,
+        1
+      ],
+      "mfiles": [
+        "textual_modality.pkl",
+        "visual_modality.pkl"
+      ],
+      "lr": 0.001,
+      "weight_decay": 0.1,
+      "beta1": 0.9,
+      "beta2": 0.999,
+      "batch_size": 1024,
+      "seed": 1,
+      "eval_freq": 5,
+      "ranking": "full",
+      "which4best": "NDCG@20",
+      "num_workers": 4,
+      "nlgcl_G": 1,
+      "nlgcl_tau": 0.2,
+      "nlgcl_alpha": 0.5,
+      "eta": 0.1,
+      "k_cf": 5,
+      "c_min": 2,
+      "t_shrinkage": 5.0,
+      "placebo_seed": 1
+    },
+    "data_fingerprint": "383929cee0a814ae8211bde6c15ef0abb6ecd4499822bdf5f3579cb87fa04643",
+    "graph_fingerprint": "49e04ce876fe11de0611836d1822f79ad91ee298f5a619193b26dc6a5e91cae6",
+    "features": [
+      {
+        "file": "textual_modality.pkl",
+        "sha256": "ca99972f3a2c7a9ead14e9a0d649351411722bbd98e920b4c5fe9f8ffa1564a2"
+      },
+      {
+        "file": "visual_modality.pkl",
+        "sha256": "5d2ea8187bbc52f806616404815930061acefe6cb22f353e3f02f286c95b9959"
+      }
+    ],
+    "splits": {
+      "test.txt": "218501613d897422d24d2035e268af027f4ca77688a3f836080b197621f5610a",
+      "train.txt": "2491704e8543dbdeb9046cec0928c6734aa80521b1026afd53e0d296f4f7427c",
+      "valid.txt": "6dabc7efcc14de50909c6b1995f7bf9862d6233a3440d593d389e1bf91fef56e"
+    },
+    "sources": {
+      "stair5_v4.py": "640f26b80b5b5eabf9bdcd44bac7a9c0544571168b31eefb7cbf96e59c166038",
+      "stair5_v4_objectives.py": "1afd078a22aad8635778cfa61f05628beaecd180cd2c6c17ed56f72a6a94182e",
+      "stair5_v4_graph.py": "eb5d2b2355871711931d597bbe2d01f520b174852430e922be268826c7252241",
+      "stair5_v4_utils.py": "39930cb54af3f5cdb65983f05b3b03cabe502673b9d70889b0ac7c1d22274b1a",
+      "stair5_v4_smoother.py": "7e61af67416c4ce974de30e65dbebeaa6e1f105f345b4ea54a126660d033ca68",
+      "AdamW.py": "478910fc96ac19beb9e1c63c28b32101b9f1f1bc1a173e46dcf376055afc9931",
+      "main_stair5_v4.py": "b8904b92a72347bac8f9a7e57ade270b3b25512bff6a9c2ac335514cee1a1a77"
+    },
+    "torch": "2.10.0+cu128",
+    "freerec": "0.9.7"
+  },
+  "effective_lambda_nlgcl": 0.01,
+  "precision": {
+    "tf32": false,
+    "amp": false
+  },
+  "preprocessing_seconds": 32.133532288000026,
+  "ranking": "full",
+  "selection": "validation NDCG@20",
+  "baseline_config": {
+    "embedding_dim": 64,
+    "num_layers": 3,
+    "gamma": 0.2,
+    "lr": 0.001,
+    "weight_decay": 0.1,
+    "batch_size": 1024,
+    "epochs": 500,
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "mfiles": [
+      "textual_modality.pkl",
+      "visual_modality.pkl"
+    ],
+    "num_neighbors": [
+      5,
+      1
+    ],
+    "eval_freq": 5,
+    "lambda_nlgcl": 0.01,
+    "nlgcl_tau": 0.2,
+    "nlgcl_G": 1,
+    "nlgcl_alpha": 0.5,
+    "eta": 0.1,
+    "k_cf": 5,
+    "c_min": 2,
+    "t_shrinkage": 5.0,
+    "cl_chunk_size": 1024,
+    "knn_chunk_size": 1024,
+    "knn_device": "auto",
+    "cf_block_size": 64,
+    "cf_memory_budget_mib": 128.0
+  },
+  "freerec_log_path": "./logs/STAIR5-v4-NLGCL-CSE/Amazon2014Sports_550_MMRec/1002171055",
+  "test_records": "Native FreeRec final and selected; report selected only."
+}

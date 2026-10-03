@@ -1,0 +1,129 @@
+{
+  "argv": [
+    "/kaggle/working/STAIR-Enhanced/main_stair5_v3.py",
+    "--config",
+    "/kaggle/working/STAIR-Enhanced/configs/Amazon2014Baby_STAIR5_v3.yaml",
+    "--root",
+    "/kaggle/data",
+    "--v3-arm",
+    "DP-ref",
+    "--seed",
+    "1",
+    "--device",
+    "0",
+    "--ranking",
+    "full",
+    "--eval-freq",
+    "5",
+    "--knn-device",
+    "auto",
+    "--knn-chunk-size",
+    "1024",
+    "--lhc-chunk-size",
+    "256",
+    "--edge-strength",
+    "0.25",
+    "--edge-mix",
+    "0.25",
+    "--evidence-shrinkage",
+    "5.0",
+    "--graph-cache-dir",
+    "/kaggle/working/runs/stair5_v3/graph_cache",
+    "--artifact-dir",
+    "/kaggle/working/runs/stair5_v3/baby_DP-ref_seed1"
+  ],
+  "commit": "f53c5e595debb65f7794a90beb790e2b49bc74b8",
+  "python": "3.12.13",
+  "torch": "2.10.0+cu128",
+  "freerec": "0.9.7",
+  "device": "cuda:0",
+  "cuda_available": true,
+  "gpu": "Tesla T4",
+  "arm": "DP-ref",
+  "seed": 1,
+  "graph": {
+    "version": 3,
+    "arm": "DP-ref",
+    "strength": 0.25,
+    "mix": 0.25,
+    "shrinkage": 5.0,
+    "placebo_seed": 1,
+    "seed": 1,
+    "num_users": 19445,
+    "num_items": 7050,
+    "torch": "2.10.0+cu128",
+    "active": true,
+    "fingerprint": "ea3b30d830347a5e02faadf0a4f9e0082b0ac7f407df70176da243c46e68b96f",
+    "cache_hit": false,
+    "nnz": 59848,
+    "nonzero_score_fraction": 0.10456489771604538,
+    "score_mean": 0.002225205535069108,
+    "score_max": 0.3387550711631775,
+    "placebo_permuted": 0,
+    "relative_operator_probe_delta": 0.0005938360118307173,
+    "solver": {
+      "converged": true,
+      "iterations": 14,
+      "max_relative_residual_fp64": 4.159706239163323e-06,
+      "max_relative_residual_fp32": 4.132588856009534e-06,
+      "status": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+      "max_weight_change": 0.05879187451811463,
+      "mean_weight_change": 0.0010138439312890868
+    },
+    "data_fingerprint": "9408991868728d3410116d8369c006eb69bd5cfb5beba7572abae04d9e8a2863"
+  },
+  "features": [
+    {
+      "file": "textual_modality.pkl",
+      "sha256": "ceda3582c04f4e276e8d4bdcc2146f2634f6ca171e1f9dfafeb219dc5cfe96eb"
+    },
+    {
+      "file": "visual_modality.pkl",
+      "sha256": "763bf9510c74fd5c6a45ee8164ca9f1ababc5c355c1757fc3acbdcc5d46af0a5"
+    }
+  ],
+  "preprocessing_seconds": 21.648739726000258,
+  "knn_preprocessing": [
+    {
+      "device": "cuda:0",
+      "chunk": 1024,
+      "k": 5,
+      "cache_hit": false,
+      "fingerprint": "8d6ed3277d4db9186e547805e4274f17e7f2ab358e72d3f5e3ad4c9e54e972c1"
+    },
+    {
+      "device": "cuda:0",
+      "chunk": 1024,
+      "k": 1,
+      "cache_hit": false,
+      "fingerprint": "6923f58ac2723e05dbaa053dc6718d0ceefb63dfa232156bec6f59dbcdc10e59"
+    }
+  ],
+  "ranking": "full",
+  "selection": "validation NDCG@20",
+  "knn_device": "auto",
+  "knn_chunk_size": 1024,
+  "lhc_chunk_size": 256,
+  "baseline_config": {
+    "embedding_dim": 64,
+    "num_layers": 3,
+    "gamma": 0.1,
+    "lr": 0.001,
+    "weight_decay": 0.3,
+    "batch_size": 1024,
+    "epochs": 500,
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "mfiles": [
+      "textual_modality.pkl",
+      "visual_modality.pkl"
+    ],
+    "num_neighbors": [
+      5,
+      1
+    ],
+    "eval_freq": 5
+  },
+  "freerec_log_path": "./logs/STAIR5-v3-DP-PC-BSC/Amazon2014Baby_550_MMRec/1002144427",
+  "test_records": "Native FreeRec final and selected; report selected only."
+}

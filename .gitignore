@@ -27,3 +27,10 @@ scratch/
 v4_install.log
 scratch_v4_*.txt
 report/*.log
+
+# Model checkpoints & weights
+*.pt
+*.pth
+*.tar
+*.ckpt
+

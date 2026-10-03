@@ -1,0 +1,31 @@
+{
+  "project": "STAIR5-v4 / NLGCL-CSE",
+  "timestamp": "2026-10-02 18:14:24",
+  "datasets": {
+    "sports": {
+      "test_metrics": {
+        "Recall@10": 0.0765,
+        "Recall@20": 0.1143,
+        "NDCG@10": 0.0419,
+        "NDCG@20": 0.0517
+      },
+      "best_epoch": 485,
+      "train_time_min": 43.038706652323405
+    },
+    "baby": {
+      "test_metrics": {
+        "Recall@10": 0.0678,
+        "Recall@20": 0.1056,
+        "NDCG@10": 0.0364,
+        "NDCG@20": 0.0461
+      },
+      "best_epoch": 480,
+      "train_time_min": 20.53613121509552
+    },
+    "electronics": {
+      "test_metrics": {},
+      "best_epoch": null,
+      "train_time_min": null
+    }
+  }
+}
