@@ -23,9 +23,15 @@
       "train_time_min": 20.53613121509552
     },
     "electronics": {
-      "test_metrics": {},
-      "best_epoch": null,
-      "train_time_min": null
+      "test_metrics": {
+        "Recall@1": 0.0102,
+        "Recall@10": 0.0458,
+        "Recall@20": 0.0678,
+        "NDCG@10": 0.0260,
+        "NDCG@20": 0.0316
+      },
+      "best_epoch": 495,
+      "train_time_min": 349.71
     }
   }
 }
