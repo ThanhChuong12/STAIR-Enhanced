@@ -1,0 +1,48 @@
+# STAIR5-v5.2 Configuration: Amazon Sports
+description: STAIR5-v5.2-NLGCL-BPE
+root: data
+dataset: Amazon2014Sports_550_MMRec
+
+embedding_dim: 64
+num_layers: 3
+mfiles: textual_modality.pkl,visual_modality.pkl
+num_neighbors: 5-1
+gamma: 0.2
+
+optimizer: adamwsevo
+lr: 0.001
+weight_decay: 0.1
+batch_size: 1024
+epochs: 500
+eval_freq: 5
+seed: 1
+
+which4best: NDCG@20
+monitors: ['LOSS', 'Recall@1', 'Recall@10', 'Recall@20', 'NDCG@10', 'NDCG@20']
+
+# STAIR5-v5.2 / NLGCL-BPE parameters
+v52_arm: P-BPE
+lambda_nlgcl: 0.01
+nlgcl_tau: 0.2
+nlgcl_G: 1
+nlgcl_alpha: 0.5
+
+eta: 0.1
+k_cf: 5
+c_min: 2
+t_shrinkage: 5.0
+k_seed: 10
+t_path: 1.0
+k_add: 3
+beta_edges: 0.25
+nu: 0.5
+cl_chunk_size: 1024
+
+# Memory and execution budgets
+knn_device: auto
+knn_chunk_size: 1024
+cf_block_size: 64
+cf_memory_budget_mib: 128.0
+eval_valid: true
+eval_test: false
+ranking: full
