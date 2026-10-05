@@ -321,12 +321,20 @@ def enumerate_path_candidates(
             # Row item
             m_l, m_r = M_block.indptr[local:local + 2]
             p_l, p_r = P_block.indptr[local:local + 2]
-            if m_l == m_r:
+            if m_l == m_r or p_l == p_r:
                 continue
 
             j_indices = M_block.indices[m_l:m_r]
             m_vals = M_block.data[m_l:m_r]
             p_vals = P_block.data[p_l:p_r]
+
+            if len(m_vals) != len(p_vals) or not np.array_equal(j_indices, P_block.indices[p_l:p_r]):
+                common_j, idx_m, idx_p = np.intersect1d(j_indices, P_block.indices[p_l:p_r], return_indices=True)
+                if len(common_j) == 0:
+                    continue
+                j_indices = common_j
+                m_vals = m_vals[idx_m]
+                p_vals = p_vals[idx_p]
 
             # 1. Exclude self-loops
             valid = (j_indices != item)
