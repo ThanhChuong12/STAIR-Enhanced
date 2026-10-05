@@ -81,3 +81,24 @@ def test_kpe_diagnostics_calculation():
     assert diag["unique_items"] == 2
     assert "item_side_additional_positives" in diag
     assert "user_side_additional_positives" in diag
+
+
+def test_coach_and_pipeline_contract():
+    """Verify CoachForSTAIR5_v51 and model pipeline contracts."""
+    import inspect
+    import models.freerec_compat
+    import freerec
+    from models.stair5_v51 import STAIR5_v51_Model
+    from main_stair5_v51 import CoachForSTAIR5_v51
+
+    # Verify model provides all required FreeRec pipeline hooks
+    assert hasattr(STAIR5_v51_Model, "sure_trainpipe")
+    assert hasattr(STAIR5_v51_Model, "sure_validpipe")
+    assert hasattr(STAIR5_v51_Model, "sure_testpipe")
+
+    # Verify Coach initialization signature requires dataset, trainpipe, validpipe, testpipe, model, cfg
+    sig = inspect.signature(CoachForSTAIR5_v51.__init__)
+    params = sig.parameters
+    for req in ("dataset", "trainpipe", "validpipe", "testpipe", "model", "cfg"):
+        assert req in params, f"Missing required parameter '{req}' in Coach signature"
+

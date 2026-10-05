@@ -299,6 +299,8 @@ class CoachForSTAIR5_v51(freerec.launcher.Coach):
 
 
 def load_dataset(cfg):
+    from freerec.data.datasets.base import MatchingRecDataSet
+
     processed = Path(cfg.root) / "Processed" / cfg.dataset
     if not processed.is_dir():
         direct = Path(cfg.root) / cfg.dataset
@@ -327,22 +329,110 @@ def load_dataset(cfg):
             processed.symlink_to(direct.resolve(), target_is_directory=True)
         except Exception:
             import shutil
+
             shutil.copytree(str(direct.resolve()), str(processed), dirs_exist_ok=True)
 
-    dataset = freerec.data.datasets.RecDataSet(cfg.root, cfg.dataset)
-    return dataset
+    return MatchingRecDataSet(cfg.root, cfg.dataset, tasktag=freerec.data.tags.MATCHING)
 
 
 def main():
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     cfg = build_config()
+
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+
+    artifact = Path(cfg.artifact_dir)
+    if not (cfg.resume or cfg.resume_from) and any(
+        (artifact / name).exists()
+        for name in ("manifest.json", "training_checkpoint.pt", "training_telemetry.jsonl")
+    ):
+        raise FileExistsError(
+            "Artifact directory belongs to an existing attempt; use a new directory or explicit resume."
+        )
+    started = time.perf_counter()
     dataset = load_dataset(cfg)
+    model = STAIR5_v51_Model(dataset, cfg)
+
+    try:
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    except (OSError, subprocess.CalledProcessError):
+        commit = "unavailable"
+
+    manifest = {
+        "argv": sys.argv,
+        "commit": commit,
+        "python": platform.python_version(),
+        "torch": str(torch.__version__),
+        "freerec": freerec.__version__,
+        "device": str(cfg.device),
+        "cuda_available": torch.cuda.is_available(),
+        "gpu": torch.cuda.get_device_name() if torch.cuda.is_available() else None,
+        "arm": cfg.v51_arm,
+        "seed": cfg.seed,
+        "graph": model.graph_metadata,
+        "features": model.feature_manifest,
+        "knn": model.knn_metadata,
+        "checkpoint_contract": model.get_extra_state(),
+        "effective_lambda_nlgcl": model.lambda_nlgcl,
+        "precision": {"tf32": False, "amp": False},
+        "preprocessing_seconds": time.perf_counter() - started,
+        "ranking": cfg.ranking,
+        "selection": "validation NDCG@20",
+        "baseline_config": {
+            key: getattr(cfg, key)
+            for key in (
+                "embedding_dim",
+                "num_layers",
+                "gamma",
+                "lr",
+                "weight_decay",
+                "batch_size",
+                "epochs",
+                "beta1",
+                "beta2",
+                "mfiles",
+                "num_neighbors",
+                "eval_freq",
+                "lambda_nlgcl",
+                "nlgcl_tau",
+                "nlgcl_G",
+                "nlgcl_alpha",
+                "nlgcl_rho",
+                "eta",
+                "k_cf",
+                "c_min",
+                "t_shrinkage",
+                "cam_delta",
+                "cl_chunk_size",
+                "knn_chunk_size",
+                "knn_device",
+                "cf_block_size",
+                "cf_memory_budget_mib",
+            )
+        },
+        "freerec_log_path": cfg.LOG_PATH,
+        "test_records": "Native FreeRec final and selected; report selected only.",
+    }
+    manifest_name = "resume_manifest.json" if cfg.resume or cfg.resume_from else "manifest.json"
+    Path(cfg.artifact_dir, manifest_name).write_text(
+        json.dumps(manifest, indent=2), encoding="utf-8"
+    )
+    print("[STAIR5-v5.1 graph] " + json.dumps(model.graph_metadata), flush=True)
+
     coach = CoachForSTAIR5_v51(
         dataset=dataset,
-        model=STAIR5_v51_Model(dataset, cfg),
+        model=model,
         cfg=cfg,
+        trainpipe=model.sure_trainpipe(cfg.batch_size),
+        validpipe=model.sure_validpipe(cfg.ranking),
+        testpipe=model.sure_testpipe(cfg.ranking),
     )
     coach.fit()
 
 
 if __name__ == "__main__":
     main()
+
