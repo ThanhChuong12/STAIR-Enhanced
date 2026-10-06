@@ -50,15 +50,19 @@ def optimizer_state_for_checkpoint(optimizer: torch.optim.Optimizer) -> dict:
 
 def load_optimizer_state(optimizer: torch.optim.Optimizer, state: dict) -> None:
     """Restores optimizer state while preserving the model's active smoother callbacks."""
+    _validate_optimizer_layout(optimizer, state)
+    runtime_smoothers = [g.get("smoother") for g in optimizer.param_groups]
+    optimizer.load_state_dict(state)
+    for group, smoother in zip(optimizer.param_groups, runtime_smoothers):
+        group["smoother"] = smoother
+
+
+def _validate_optimizer_layout(optimizer: torch.optim.Optimizer, state: dict) -> None:
     if len(state["param_groups"]) != len(optimizer.param_groups):
         raise ValueError("Checkpoint optimizer group count differs from current model.")
     if any(len(saved["params"]) != len(live["params"])
            for saved, live in zip(state["param_groups"], optimizer.param_groups)):
         raise ValueError("Checkpoint optimizer parameter layout differs from current model.")
-    runtime_smoothers = [g.get("smoother") for g in optimizer.param_groups]
-    optimizer.load_state_dict(state)
-    for group, smoother in zip(optimizer.param_groups, runtime_smoothers):
-        group["smoother"] = smoother
 
 
 def rng_state() -> dict:
@@ -116,6 +120,7 @@ def load_training_checkpoint(
         raise ValueError("Checkpoint model/configuration/data provenance mismatch.")
     if payload.get("epoch", -1) < 0:
         raise ValueError("Checkpoint epoch must be nonnegative.")
+    _validate_optimizer_layout(optimizer, payload["optimizer"])
     model.load_state_dict(payload["model"])
     load_optimizer_state(optimizer, payload["optimizer"])
     if restore_random and "rng" in payload:

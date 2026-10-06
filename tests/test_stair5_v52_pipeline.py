@@ -37,7 +37,7 @@ from freerec.data.tags import USER, ITEM, ID, LABEL
 
 from models.stair5_v4 import STAIR5_v4_Model
 from models.stair5_v52 import ARMS_V52, STAIR5_v52_Model
-from models.stair5_v52_utils import save_training_checkpoint, load_training_checkpoint
+from models.stair5_v52_utils import save_training_checkpoint, load_training_checkpoint, atomic_torch_save
 from optimizers.AdamW import AdamWSEvo
 from optimizers.stair5_v52_smoother import STAIR5V52Smoother
 
@@ -201,6 +201,19 @@ class TestSTAIR5V52Pipeline(unittest.TestCase):
             self.assertEqual(n4, n52)
             self.assertTrue(torch.allclose(p4.grad, p52.grad, atol=1e-5))
 
+        # Exact delegation must survive Adam moments and item smoothing over multiple updates.
+        opt4 = AdamWSEvo(model_v4.marked_params(), lr=self.cfg.lr, weight_decay=self.cfg.weight_decay)
+        opt52 = AdamWSEvo(model_v52.marked_params(), lr=self.cfg.lr, weight_decay=self.cfg.weight_decay)
+        for _ in range(3):
+            for model, optimizer in ((model_v4, opt4), (model_v52, opt52)):
+                optimizer.zero_grad(set_to_none=True)
+                model.fit(batch).backward()
+                optimizer.step()
+            for p4, p52 in zip(model_v4.parameters(), model_v52.parameters()):
+                self.assertTrue(torch.equal(p4, p52))
+                for key in ("exp_avg", "exp_avg_sq"):
+                    self.assertTrue(torch.equal(opt4.state[p4][key], opt52.state[p52][key]))
+
     def test_checkpoint_roundtrip_restoration(self):
         """Save and resume checkpoint; verify graph fingerprints and parameters match."""
         model = STAIR5_v52_Model(self.dataset, self.cfg)
@@ -235,6 +248,31 @@ class TestSTAIR5V52Pipeline(unittest.TestCase):
 
         # Verify graph fingerprints match
         self.assertEqual(model.graph_fingerprint, model_restored.graph_fingerprint)
+
+        # A resumed next step must match uninterrupted training, not just loaded weights.
+        for live, resumed in zip(model.parameters(), model_restored.parameters()):
+            self.assertTrue(torch.equal(optimizer.state[live]["exp_avg"], opt_restored.state[resumed]["exp_avg"]))
+        for instance, opt in ((model, optimizer), (model_restored, opt_restored)):
+            opt.zero_grad(set_to_none=True)
+            instance.fit(batch).backward()
+            opt.step()
+        for live, resumed in zip(model.parameters(), model_restored.parameters()):
+            self.assertTrue(torch.equal(live, resumed))
+
+    def test_checkpoint_invalid_optimizer_rejected_before_model_mutation(self):
+        model = STAIR5_v52_Model(self.dataset, self.cfg)
+        optimizer = AdamWSEvo(model.marked_params(), lr=1e-3)
+        path = Path(self.temp_dir.name) / "bad.pt"
+        save_training_checkpoint(path, model, optimizer, epoch=1)
+        payload = torch.load(path, weights_only=True)
+        payload["optimizer"]["param_groups"].pop()
+        payload["model"]["User.embeddings.weight"] = torch.zeros_like(model.User.embeddings.weight)
+        atomic_torch_save(payload, path)
+        before = [p.detach().clone() for p in model.parameters()]
+        with self.assertRaisesRegex(ValueError, "group count"):
+            load_training_checkpoint(path, model, optimizer)
+        for snapshot, parameter in zip(before, model.parameters()):
+            self.assertTrue(torch.equal(snapshot, parameter))
 
     def test_all_ablation_arms_construction(self):
         """Verify successful construction across all 8 defined factorial arms."""

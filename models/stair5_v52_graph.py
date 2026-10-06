@@ -35,6 +35,7 @@ import scipy.sparse as sp
 import torch
 
 from models.stair5_v52_utils import atomic_torch_save, validate_csr_operator
+from models import stair5_v4_graph as reference_graph
 
 ARMS_V52 = (
     "P-BPE",
@@ -46,7 +47,37 @@ ARMS_V52 = (
     "C-M2",
     "C-Overlap",
 )
-CACHE_VERSION_V52 = 52
+CACHE_VERSION_V52 = 53
+
+
+def _integer(name, value, minimum=0):
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)) or value < minimum:
+        raise ValueError(f"{name} must be an integer >= {minimum}.")
+
+
+def _finite(name, value, minimum=0.0, positive=False):
+    if not math.isfinite(value) or (value <= minimum if positive else value < minimum):
+        raise ValueError(f"{name} must be finite and {'>' if positive else '>='} {minimum}.")
+
+
+def validate_bpe_options(k_seed=10, t_path=1.0, k_add=3, beta_edges=0.25, nu=0.5):
+    """Validate before any disabled branch, cache lookup or expensive preprocessing."""
+    _integer("k_seed", k_seed, 1)
+    _integer("k_add", k_add)
+    _finite("t_path", t_path, positive=True)
+    _finite("beta_edges", beta_edges)
+    _finite("nu", nu)
+
+
+def _canonical_graph(matrix, n_items, zero_diagonal=False):
+    result = matrix.astype(np.float64).tocsr(copy=True)
+    result.sum_duplicates()
+    result.eliminate_zeros()
+    result.sort_indices()
+    validate_csr_operator(result, n_items)
+    if zero_diagonal and np.any(result.diagonal() != 0):
+        raise ValueError("Raw CF/seed/candidate graph must not contain self-loops.")
+    return result
 
 
 @dataclass
@@ -155,6 +186,12 @@ def build_candidate_support_graph(
 
     If return_reserve=True, also returns reserve candidate items outside top-k_cf for C-Direct.
     """
+    if not return_reserve:
+        return reference_graph.build_candidate_support_graph(
+            train_edges, n_items, n_users, k_cf, c_min, t_shrinkage,
+            block_size, memory_budget_mib,
+        )
+    _integer("reserve_k", reserve_k)
     if k_cf < 0 or int(k_cf) != k_cf or c_min < 1 or int(c_min) != c_min:
         raise ValueError("Require integer k_cf >= 0 and c_min >= 1.")
     if block_size < 1 or int(block_size) != block_size or not math.isfinite(memory_budget_mib) or memory_budget_mib <= 0:
@@ -192,18 +229,19 @@ def build_candidate_support_graph(
             if not len(ids):
                 continue
             scores = common / (common + t_shrinkage) * common / np.sqrt(counts[item] * counts[ids])
-            # Full sort for selection
-            order = np.lexsort((ids, -scores))
-            top_ids = ids[order[:k_cf]]
-            top_scores = scores[order[:k_cf]]
+            # Partition first: avoid sorting a full co-occurrence row on large catalogs.
+            chosen_ids, chosen_scores = reference_graph._deterministic_topk(
+                ids, scores, min(len(ids), k_cf + reserve_k)
+            )
+            top_ids = chosen_ids[:k_cf]
+            top_scores = chosen_scores[:k_cf]
             rows.append(np.full(len(top_ids), item, dtype=np.int64))
             cols.append(top_ids.copy())
             data.append(top_scores.astype(np.float32))
 
-            if return_reserve and len(order) > k_cf:
-                res_sel = order[k_cf:k_cf + reserve_k]
-                r_ids = ids[res_sel]
-                r_scores = scores[res_sel]
+            if len(chosen_ids) > k_cf:
+                r_ids = chosen_ids[k_cf:]
+                r_scores = chosen_scores[k_cf:]
                 res_rows.append(np.full(len(r_ids), item, dtype=np.int64))
                 res_cols.append(r_ids.copy())
                 res_data.append(r_scores.astype(np.float32))
@@ -229,17 +267,7 @@ def build_candidate_support_graph(
 
 def normalize_cf_graph_with_fallback(W_cf: sp.csr_matrix) -> sp.csr_matrix:
     """SymNormIso: Symmetric degree normalization with exact identity diagonal on isolated nodes."""
-    if W_cf.shape[0] != W_cf.shape[1] or not np.isfinite(W_cf.data).all() or (W_cf.data < 0).any():
-        raise ValueError("CF graph must be square, finite and nonnegative.")
-    diff = W_cf - W_cf.T
-    if diff.nnz and np.max(np.abs(diff.data)) > 1e-6:
-        raise ValueError("CF graph must be symmetric before normalization.")
-    degrees = np.asarray(W_cf.sum(1)).ravel().astype(np.float64)
-    inv = np.zeros(len(degrees), dtype=np.float64)
-    inv[degrees > 0] = 1.0 / np.sqrt(degrees[degrees > 0])
-    scale = sp.diags(inv)
-    normalized = (scale @ W_cf @ scale).astype(np.float32)
-    return (normalized + sp.diags((degrees == 0).astype(np.float32))).tocsr()
+    return reference_graph.normalize_cf_graph_with_fallback(W_cf)
 
 
 def build_mutual_seed_graph(W_1: sp.csr_matrix, k_seed: int = 10) -> sp.csr_matrix:
@@ -248,7 +276,9 @@ def build_mutual_seed_graph(W_1: sp.csr_matrix, k_seed: int = 10) -> sp.csr_matr
     T_ij = W_{1, ij} * 1[j in Top_{k_seed}(i)] * 1[i in Top_{k_seed}(j)]
     T is symmetric, non-negative, zero diagonal, with degree count d_k^T <= k_seed.
     """
+    _integer("k_seed", k_seed, 1)
     n_items = W_1.shape[0]
+    W_1 = _canonical_graph(W_1, n_items, zero_diagonal=True)
     rows, cols, data = [], [], []
     for i in range(n_items):
         start, end = W_1.indptr[i], W_1.indptr[i + 1]
@@ -291,14 +321,20 @@ def enumerate_path_candidates(
 
     Candidate Set: C = {(i, j) : i != j, m_ij >= m_min, W_1,ij == 0, (and S_0,ij == 0 if exclude_s0)}.
     """
+    _integer("m_min", m_min, 1)
+    _integer("block_size", block_size, 1)
+    _finite("t_path", t_path, positive=True)
     n_items = T.shape[0]
+    T = _canonical_graph(T, n_items, zero_diagonal=True)
+    W_1 = _canonical_graph(W_1, n_items, zero_diagonal=True)
+    S_0 = _canonical_graph(S_0, n_items)
     degrees_T = np.diff(T.indptr).astype(np.float64)
     inv_d = np.zeros_like(degrees_T)
     np.divide(1.0, degrees_T, out=inv_d, where=degrees_T > 0)
     D_inv = sp.diags(inv_d)
 
     # Binary seed for path counting
-    T_bin = T.copy().astype(np.float64)
+    T_bin = T.copy().astype(np.int64)
     T_bin.data = np.ones_like(T_bin.data)
 
     # Scaled seed for path score
@@ -422,7 +458,10 @@ def apply_edge_and_mass_budgets(
     3. Median scale calibration: kappa = median(W_1 > 0) / median(Q > 0), Q_hat = kappa * Q
     4. Endpoint mass limiter: (W_add)_ij = Q_hat_ij * min(u_i, u_j), u_i = min(1, nu * d_i / r_i)
     """
+    validate_bpe_options(k_add=k_add, beta_edges=beta_edges, nu=nu)
     n_items = W_1.shape[0]
+    W_1 = _canonical_graph(W_1, n_items, zero_diagonal=True)
+    candidates = _canonical_graph(candidates, n_items, zero_diagonal=True)
     w1_nnz = int(W_1.nnz)
 
     if candidates.nnz == 0 or w1_nnz == 0 or beta_edges <= 0 or nu <= 0 or k_add <= 0:
@@ -497,17 +536,20 @@ def apply_edge_and_mass_budgets(
     if scale_calibration:
         w1_pos = W_1.data[W_1.data > 0]
         q_pos = Q.data[Q.data > 0]
-        if len(w1_pos) and len(q_pos) and np.median(q_pos) > 0:
-            kappa = float(np.median(w1_pos) / np.median(q_pos))
-        else:
-            kappa = 1.0
+        median_w1, median_q = float(np.median(w1_pos)), float(np.median(q_pos))
+        if not math.isfinite(median_w1) or not math.isfinite(median_q) or median_w1 <= 0 or median_q <= 0:
+            raise ValueError("Scale calibration requires finite positive medians.")
+        kappa = median_w1 / median_q
     else:
         kappa = 1.0
+        median_w1, median_q = float(np.median(W_1.data)), float(np.median(Q.data))
 
     if not math.isfinite(kappa) or kappa <= 0:
         raise ValueError(f"Invalid scale calibration factor kappa: {kappa}")
 
     Q_hat = (Q * kappa).tocsr()
+    if not np.isfinite(Q_hat.data).all():
+        raise ValueError("Calibrated candidate weights overflowed.")
 
     # 4. Endpoint Mass Limiter
     d1 = np.asarray(W_1.sum(1)).ravel().astype(np.float64)
@@ -542,6 +584,8 @@ def apply_edge_and_mass_budgets(
 
     telemetry = {
         "scale_kappa": kappa,
+        "median_w1": median_w1,
+        "median_candidate": median_q,
         "mutual_k_add_nnz": mutual_nnz,
         "budgeted_pairs": int(upper.nnz),
         "added_edges_nnz": int(W_add.nnz),
@@ -549,6 +593,9 @@ def apply_edge_and_mass_budgets(
         "base_mass_total": float(np.sum(d1)),
         "added_mass_ratio_median": float(np.median(ratio[active])) if np.any(active) else 0.0,
         "added_mass_ratio_max": float(np.max(ratio[active])) if np.any(active) else 0.0,
+        "added_mass_ratio_quantiles": np.quantile(ratio[active], [0, .5, .9, 1]).tolist() if np.any(active) else [0.] * 4,
+        "added_endpoint_nodes": int(np.count_nonzero(active)),
+        "added_max_degree": int(np.diff(W_add.indptr).max(initial=0)),
         "cap_active_fraction": float(np.mean(cap_active[active])) if np.any(active) else 0.0,
     }
     return W_add, telemetry
@@ -583,6 +630,14 @@ def build_calibrated_graph_v52(
     """
     if arm not in ARMS_V52:
         raise ValueError(f"Unknown arm: {arm}. Must be one of {ARMS_V52}")
+    validate_bpe_options(k_seed, t_path, k_add, beta_edges, nu)
+    _integer("k_cf", k_cf)
+    _integer("c_min", c_min, 1)
+    _integer("block_size", block_size, 1)
+    _finite("t_shrinkage", t_shrinkage, positive=True)
+    _finite("memory_budget_mib", memory_budget_mib, positive=True)
+    if not isinstance(expansion_enabled, (bool, np.bool_)):
+        raise ValueError("expansion_enabled must be a boolean.")
     if not math.isfinite(eta) or not 0 <= eta <= 1:
         raise ValueError("eta must be finite in [0, 1].")
     if tuple(baseline_normalized.shape) != (n_items, n_items):
@@ -601,6 +656,10 @@ def build_calibrated_graph_v52(
 
     started = time.perf_counter()
     S0 = tensor_to_scipy(baseline_normalized).astype(np.float32)
+    S0.sum_duplicates()
+    S0.eliminate_zeros()
+    S0.sort_indices()
+    validate_csr_operator(S0, n_items)
 
     metadata: Dict[str, Any] = {
         "version": "5.2",
@@ -625,30 +684,35 @@ def build_calibrated_graph_v52(
 
     # Off-path delegation function
     def off_path_v4(W_1_mat: sp.csr_matrix, reason: str) -> GraphStateV52:
-        if W_1_mat.nnz == 0:
-            # Fallback to pure S0
-            metadata.update(active=False, effective_eta=0.0, s0_nnz=int(S0.nnz), s52_nnz=int(S0.nnz), note=reason)
-            return GraphStateV52(baseline_normalized, metadata)
-        cf_norm = normalize_cf_graph_with_fallback(W_1_mat)
-        mixed = ((1.0 - eta) * S0 + eta * cf_norm).tocsr()
-        mixed.eliminate_zeros()
-        mixed.sort_indices()
+        # Call the actual reference; do not claim bitwise recovery from a reimplementation.
+        state = reference_graph.build_calibrated_graph_v4(
+            raw_semantic, baseline_normalized, train_edges, n_users, n_items,
+            arm="N-CSE", eta=eta, k_cf=k_cf, c_min=c_min,
+            t_shrinkage=t_shrinkage, cache_dir=cache_dir,
+            block_size=block_size, memory_budget_mib=memory_budget_mib,
+        )
         metadata.update(
             active=False,
-            effective_eta=float(eta),
+            effective_eta=state.metadata["effective_eta"],
             s0_nnz=int(S0.nnz),
-            w1_nnz=int(W_1_mat.nnz),
-            s52_nnz=int(mixed.nnz),
-            graph_fingerprint=sparse_fingerprint(mixed),
+            w1_nnz=int(W_1_mat.nnz) if W_1_mat is not None else state.metadata.get("cf_nnz", 0),
+            s52_nnz=int(state.operator._nnz()),
+            graph_fingerprint=sparse_fingerprint(tensor_to_scipy(state.operator)),
+            reference_metadata=state.metadata,
+            preprocessing_seconds=time.perf_counter() - started,
             note=reason,
         )
-        return GraphStateV52(scipy_to_tensor(mixed).to(baseline_normalized.device), metadata)
+        return GraphStateV52(state.operator, metadata)
 
     # 1. Binary train keys and signature
     pairs = binary_train_keys(train_edges, n_users, n_items)
     pair_hash = hashlib.sha256()
     _digest_array(pair_hash, pairs)
     train_fingerprint = pair_hash.hexdigest()
+    metadata["train_fingerprint"] = train_fingerprint
+    metadata["s0_fingerprint"] = sparse_fingerprint(S0)
+    if not expansion_enabled or nu == 0 or beta_edges == 0 or k_add == 0 or eta == 0 or k_cf == 0:
+        return off_path_v4(None, "Exact v4 fallback path; BPE expansion disabled or zero budget.")
 
     signature = {
         "cache_version": CACHE_VERSION_V52,
@@ -656,6 +720,14 @@ def build_calibrated_graph_v52(
         "users": n_users,
         "items": n_items,
         "arm": arm,
+        "expansion_enabled": bool(expansion_enabled),
+        "s0": metadata["s0_fingerprint"],
+        "reference_source": hashlib.sha256(Path(reference_graph.__file__).read_bytes()).hexdigest(),
+        "utilities_source": hashlib.sha256(Path(__file__).with_name("stair5_v52_utils.py").read_bytes()).hexdigest(),
+        "score_formula": "weighted_seed_count_degree_ra_m_shrink_v1",
+        "normalization": "reference_sym_degree_isolated_identity",
+        "tie_policy": "score_desc_id_asc_mutual_then_global_pair",
+        "dtype": "float64_preprocessing_float32_operator",
         "k": k_cf,
         "cmin": c_min,
         "t": t_shrinkage,
@@ -717,7 +789,7 @@ def build_calibrated_graph_v52(
     # 4. Generate candidate additions
     if arm == "C-Direct":
         # Candidate pairs come from reserve direct co-occurrence outside W_1 and S_0
-        cand_mat = reserve_direct.copy()
+        cand_mat = reserve_direct.maximum(reserve_direct.T).tocsr()
         cand_mat = cand_mat - cand_mat.multiply(W_1.sign())
         if exclude_s0:
             cand_mat = cand_mat - cand_mat.multiply(S0.sign())

@@ -325,6 +325,7 @@ class STAIR5_v52_Model(freerec.models.GenRecArch):
             Path(__file__).with_name("stair5_v52_graph.py"),
             Path(__file__).with_name("stair5_v52_utils.py"),
             Path(__file__).with_name("stair5_v4_objectives.py"),
+            Path(__file__).with_name("stair5_v4_graph.py"),
             Path(__file__).resolve().parents[1] / "optimizers/stair5_v52_smoother.py",
             Path(__file__).resolve().parents[1] / "optimizers/AdamW.py",
             Path(__file__).resolve().parents[1] / "main_stair5_v52.py",
@@ -408,7 +409,8 @@ class STAIR5_v52_Model(freerec.models.GenRecArch):
             "lr", "weight_decay", "beta1", "beta2", "batch_size", "seed",
             "eval_freq", "ranking", "which4best", "num_workers",
             "nlgcl_G", "nlgcl_tau", "nlgcl_alpha", "eta", "k_cf", "c_min",
-            "t_shrinkage", "k_seed", "t_path", "k_add", "beta_edges", "nu",
+            "t_shrinkage", "k_seed", "t_path", "k_add", "beta_edges", "nu", "expansion_enabled",
+            "cl_chunk_size",
         )
         return {
             "version": "5.2",

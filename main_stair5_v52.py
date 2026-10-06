@@ -6,6 +6,7 @@ Example:
     python main_stair5_v52.py --config configs/Amazon2014Sports_STAIR5_v52.yaml --v52-arm P-BPE
 """
 import json
+import argparse
 import math
 from pathlib import Path
 import platform
@@ -19,11 +20,13 @@ import freerec
 import torch
 
 from models.stair5_v52 import ARMS_V52, STAIR5_v52_Model
+from models.stair5_v52_graph import validate_bpe_options
 from models.stair5_v52_utils import (
     atomic_torch_save,
     load_training_checkpoint,
     save_training_checkpoint,
     restore_rng,
+    file_sha256,
 )
 from optimizers.AdamW import AdamWSEvo
 
@@ -63,6 +66,7 @@ def build_config():
 
     cfg.add_argument("--v52-arm", choices=ARMS_V52, default="P-BPE")
     cfg.add_argument("--knn-device", choices=("cpu", "cuda", "auto"), default="auto")
+    cfg.add_argument("--expansion-enabled", action=argparse.BooleanOptionalAction, default=True)
 
     cfg.set_defaults(
         description="STAIR5-v5.2-NLGCL-BPE",
@@ -78,6 +82,7 @@ def build_config():
         which4best="NDCG@20",
     )
     cfg.compile()
+    validate_bpe_options(cfg.k_seed, cfg.t_path, cfg.k_add, cfg.beta_edges, cfg.nu)
 
     if cfg.optimizer.lower() != "adamwsevo":
         raise ValueError("STAIR5-v5.2 requires AdamWSEvo optimizer with BSC smoother.")
@@ -122,6 +127,40 @@ def build_config():
 
 
 class CoachForSTAIR5_v52(freerec.launcher.Coach):
+    def load_best(self):
+        super().load_best()
+        self._selected_checkpoint_loaded = True
+
+    def eval_at_best(self):
+        """Use native evaluation unchanged, exporting only the selected checkpoint."""
+        self._selected_checkpoint_loaded = False
+        try:
+            return super().eval_at_best()
+        finally:
+            self._selected_checkpoint_loaded = False
+
+    def test(self, epoch: int, step: int = -1):
+        result = super().test(epoch, step)
+        if getattr(self, "_selected_checkpoint_loaded", False):
+            metrics = {
+                meter.name: float(meter.history[-1])
+                for meters in self.monitors["test"].values()
+                for meter in meters if meter.history
+            }
+            best_path = Path(self.cfg.LOG_PATH) / self.cfg.BEST_FILENAME
+            payload = {
+                "split": "test", "epoch": int(epoch), "step": int(step),
+                "ranking": self.cfg.ranking, "arm": self.model.v52_arm,
+                "seed": self.cfg.seed, "metrics": metrics,
+                "checkpoint_sha256": file_sha256(best_path),
+                "graph_fingerprint": self.model.graph_fingerprint,
+                "selection": "validation NDCG@20",
+            }
+            self._artifact("selected_test_metrics.json").write_text(
+                json.dumps(payload, indent=2, allow_nan=False), encoding="utf-8"
+            )
+        return result
+
     def set_optimizer(self):
         self.optimizer = AdamWSEvo(
             self.model.marked_params(),

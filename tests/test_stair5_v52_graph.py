@@ -16,6 +16,8 @@ Verification requirements:
 """
 import math
 import unittest
+import tempfile
+from pathlib import Path
 import numpy as np
 import scipy.sparse as sp
 import torch
@@ -26,10 +28,86 @@ from models.stair5_v52_graph import (
     apply_edge_and_mass_budgets,
     normalize_cf_graph_with_fallback,
     build_calibrated_graph_v52,
+    build_candidate_support_graph,
 )
+from models import stair5_v4_graph as reference_graph
 
 
 class TestSTAIR5V52Graph(unittest.TestCase):
+
+    def test_cache_is_bound_to_semantic_graph_and_disabled_expansion(self):
+        edges = torch.tensor([[0, 0, 1, 1, 2, 2, 3, 3], [0, 1, 1, 2, 2, 3, 3, 0]])
+        s0 = torch.eye(4).to_sparse_csr()
+        changed = (torch.eye(4) * .5).to_sparse_csr()
+        with tempfile.TemporaryDirectory() as cache:
+            kwargs = dict(train_edges=edges, n_users=4, n_items=4, k_cf=1,
+                          c_min=1, beta_edges=1., cache_dir=cache)
+            first = build_calibrated_graph_v52(s0, s0, **kwargs)
+            self.assertTrue(first.metadata["active"])
+            warm = build_calibrated_graph_v52(s0, s0, **kwargs)
+            self.assertTrue(warm.metadata["cache_hit"])
+            self.assertTrue(torch.equal(first.operator.values(), warm.operator.values()))
+            different = build_calibrated_graph_v52(changed, changed, **kwargs)
+            self.assertFalse(different.metadata["cache_hit"])
+            self.assertNotEqual(first.metadata["graph_fingerprint"], different.metadata["graph_fingerprint"])
+            disabled = build_calibrated_graph_v52(s0, s0, expansion_enabled=False, **kwargs)
+            ref = reference_graph.build_calibrated_graph_v4(
+                s0, s0, edges, 4, 4, k_cf=1, c_min=1)
+            self.assertFalse(disabled.metadata["active"])
+            self.assertTrue(torch.equal(disabled.operator.values(), ref.operator.values()))
+            # A valid signature is not sufficient when the cache content is corrupt.
+            cache_file = next(Path(cache).glob("s52_*.pt"))
+            cache_file.write_bytes(b"not a torch checkpoint")
+            with self.assertWarns(RuntimeWarning):
+                rebuilt = build_calibrated_graph_v52(s0, s0, **kwargs)
+            self.assertTrue(torch.equal(rebuilt.operator.values(), first.operator.values()))
+
+    def test_invalid_options_rejected_before_disabled_branch(self):
+        s0 = torch.eye(4).to_sparse_csr()
+        edges = torch.tensor([[0, 0], [0, 1]])
+        invalid = [dict(k_seed=0), dict(k_seed=1.5), dict(k_add=-1),
+                   dict(t_path=0.), dict(t_path=float("nan")),
+                   dict(beta_edges=-.1), dict(nu=float("inf")), dict(nu=-.1)]
+        for options in invalid:
+            with self.subTest(options=options), self.assertRaises(ValueError):
+                build_calibrated_graph_v52(s0, s0, edges, 1, 4,
+                                           expansion_enabled=False, **options)
+
+    def test_unsorted_support_and_block_size_do_not_change_paths(self):
+        w = sp.csr_matrix(np.array([[0, 1, 0, 2], [1, 0, 3, 0],
+                                   [0, 3, 0, 4], [2, 0, 4, 0]], float))
+        s0 = sp.csr_matrix((4, 4))
+        expected, _ = enumerate_path_candidates(w, w, s0, block_size=1)
+        unsorted = w.copy()
+        for i in range(4):
+            a, b = unsorted.indptr[i:i+2]
+            unsorted.indices[a:b] = unsorted.indices[a:b][::-1]
+            unsorted.data[a:b] = unsorted.data[a:b][::-1]
+        unsorted.has_sorted_indices = False
+        actual, _ = enumerate_path_candidates(unsorted, unsorted, s0, block_size=3)
+        np.testing.assert_allclose(actual.toarray(), expected.toarray(), atol=1e-14)
+        binary = (w.toarray() > 0).astype(np.int64)
+        count = binary @ binary
+        degree = binary.sum(1)
+        score = w.toarray() @ np.diag(1/degree) @ w.toarray()
+        dense = count / (count + 1) * score
+        dense[w.toarray() > 0] = 0
+        np.fill_diagonal(dense, 0)
+        np.testing.assert_allclose(actual.toarray(), dense, atol=1e-14)
+
+    def test_reference_builder_duplicate_pairs_and_reserve(self):
+        generator = torch.Generator().manual_seed(91)
+        edges = torch.stack((torch.randint(0, 10, (200,), generator=generator),
+                             torch.randint(0, 12, (200,), generator=generator)))
+        edges = torch.cat((edges, edges[:, :30]), dim=1)
+        ref = reference_graph.build_candidate_support_graph(edges, 12, 10, k_cf=2, c_min=1)
+        regular = build_candidate_support_graph(edges, 12, 10, k_cf=2, c_min=1)
+        reserved, _ = build_candidate_support_graph(edges, 12, 10, k_cf=2, c_min=1,
+                                                    return_reserve=True, reserve_k=5)
+        for result in (regular, reserved):
+            np.testing.assert_array_equal(result.indptr, ref.indptr)
+            np.testing.assert_array_equal(result.indices, ref.indices)
+            np.testing.assert_array_equal(result.data, ref.data)
 
     def test_toy_wedge_accumulation_chain_and_diamond(self):
         """Chain (0-1-2) should have m_{0,2} = 1.
