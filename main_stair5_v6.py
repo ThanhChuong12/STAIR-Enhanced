@@ -260,6 +260,7 @@ class CoachForSTAIR5_v6(freerec.launcher.Coach):
         if self.device.type == "cuda":
             torch.cuda.reset_peak_memory_stats(self.device)
 
+        user_field = getattr(self, "User", getattr(self.model, "User", None))
         for batch_index, data in enumerate(self.dataloader):
             data = self.dict_to_device(data)
             self.optimizer.zero_grad(set_to_none=True)
@@ -267,100 +268,165 @@ class CoachForSTAIR5_v6(freerec.launcher.Coach):
             loss.backward()
             self.optimizer.step()
 
-            batch_samples = len(data[self.model.User])
-            samples += batch_samples
+            count = len(data[user_field])
+            totals += torch.stack((loss.detach(), bpr.detach(), cl.detach())).to(torch.float64) * count
+            samples += count
             batches += 1
-            totals[0] += loss.detach().to(torch.float64) * batch_samples
-            totals[1] += bpr.detach().to(torch.float64) * batch_samples
-            totals[2] += cl.detach().to(torch.float64) * batch_samples
-            self.monitor(loss.item(), n=batch_samples, mode="mean", pool="train")
 
-        seconds = time.perf_counter() - started
-        means = (totals / max(1, samples)).tolist()
+        if not batches:
+            raise RuntimeError("Training dataloader produced no batches.")
+        if self.device.type == "cuda":
+            torch.cuda.synchronize(self.device)
+
+        averages = (totals / samples).cpu().tolist()
+        self.monitor(averages[0], n=samples, reduction="mean", mode="train", pool=["LOSS"])
+        self._completed_epochs = epoch
+        self._epoch_in_progress = False
+        elapsed = time.perf_counter() - started
         vram_alloc = torch.cuda.max_memory_allocated(self.device) if self.device.type == "cuda" else 0
         vram_res = torch.cuda.max_memory_reserved(self.device) if self.device.type == "cuda" else 0
 
         record = {
-            "epoch": int(epoch),
-            "seconds": float(seconds),
-            "samples": int(samples),
-            "batches": int(batches),
-            "total_loss": float(means[0]),
-            "bpr_loss": float(means[1]),
-            "cl_loss": float(means[2]),
+            "epoch": epoch,
+            "loss": averages[0],
+            "total_loss": averages[0],
+            "bpr_loss": averages[1],
+            "nlgcl_loss": averages[2],
+            "cl_loss": averages[2],
+            "weighted_nlgcl_loss": self.model.lambda_nlgcl * averages[2],
+            "lambda_nlgcl": self.model.lambda_nlgcl,
+            "samples": samples,
+            "batches": batches,
+            "seconds": elapsed,
+            "samples_per_second": samples / elapsed,
             "max_memory_allocated_bytes": int(vram_alloc),
             "max_memory_reserved_bytes": int(vram_res),
+            "peak_allocated_gib": (
+                float(vram_alloc) / (2**30)
+                if self.device.type == "cuda"
+                else 0.0
+            ),
             "lr": float(self.optimizer.param_groups[0]["lr"]),
         }
-        with self._artifact("training_telemetry.jsonl").open("a", encoding="utf-8") as f:
-            f.write(json.dumps(record, allow_nan=False) + "\n")
-        self._epoch_in_progress = False
-        self._completed_epochs = epoch
-        return means[0]
+        with self._artifact("training_telemetry.jsonl").open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, allow_nan=False) + "\n")
 
-    def fit(self):
-        start_epoch = self.resume()
+        print(
+            f"[Epoch {epoch:03d} Telemetry] Loss: {record['loss']:.6f} | "
+            f"BPR: {record['bpr_loss']:.6f} | "
+            f"NLGCL: {record['cl_loss']:.6f} | "
+            f"lambda_nlgcl={self.model.lambda_nlgcl:.4f} | "
+            f"{record['samples_per_second']:.1f} samples/s | {elapsed:.2f}s",
+            flush=True,
+        )
+
+
+def load_dataset(cfg):
+    from freerec.data.datasets.base import MatchingRecDataSet
+
+    processed = Path(cfg.root) / "Processed" / cfg.dataset
+    if not processed.is_dir():
+        direct = Path(cfg.root) / cfg.dataset
+        if not direct.is_dir():
+            for cand_root in [
+                "/kaggle/data",
+                "/kaggle/working/STAIR-Enhanced/data",
+                "data",
+                "../data",
+                str(Path(cfg.root).parent),
+            ]:
+                p_cand = Path(cand_root) / "Processed" / cfg.dataset
+                d_cand = Path(cand_root) / cfg.dataset
+                if p_cand.is_dir():
+                    direct = p_cand
+                    break
+                elif d_cand.is_dir():
+                    direct = d_cand
+                    break
+            else:
+                raise FileNotFoundError(
+                    f"Expected dataset at {processed} or {direct}; prepare data before training."
+                )
+        processed.parent.mkdir(parents=True, exist_ok=True)
         try:
-            for epoch in range(start_epoch + 1, self.cfg.epochs + 1):
-                self.epoch = epoch
-                self.train_per_epoch(epoch)
-                if epoch % self.cfg.eval_freq == 0:
-                    self.evaluate(epoch)
-                if epoch % self.cfg.CHECKPOINT_FREQ == 0:
-                    self.save_checkpoint(epoch)
-                self.lr_scheduler.step()
-        finally:
-            self.save_last()
-            self.eval_at_best()
+            processed.symlink_to(direct.resolve(), target_is_directory=True)
+        except Exception:
+            import shutil
+
+            shutil.copytree(direct.resolve(), processed, dirs_exist_ok=True)
+    return MatchingRecDataSet(cfg.root, cfg.dataset, tasktag=freerec.data.tags.MATCHING)
 
 
 def main():
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     cfg = build_config()
-    dataset = freerec.data.datasets.RecDataSet(cfg.root, cfg.dataset)
-    model = STAIR5_v6_Model(dataset, cfg)
-    coach = CoachForSTAIR5_v6(trainpipe=model.sure_trainpipe(cfg.batch_size),
-                              device=cfg.device, dataset=dataset, model=model, cfg=cfg)
 
-    # Export execution manifest
-    commit = "unknown"
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+
+    artifact = Path(cfg.artifact_dir)
+    if not (cfg.resume or cfg.resume_from) and any((artifact / name).exists() for name in ("manifest.json", "training_checkpoint.pt", "training_telemetry.jsonl")):
+        raise FileExistsError("Artifact directory belongs to an existing attempt; use a new directory or explicit resume.")
+    started = time.perf_counter()
+    dataset = load_dataset(cfg)
+    model = STAIR5_v6_Model(dataset, cfg)
+
     try:
-        commit = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL, cwd=Path(__file__).parent
-        ).decode().strip()
-    except Exception:
-        pass
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    except (OSError, subprocess.CalledProcessError):
+        commit = "unavailable"
 
     manifest = {
-        "architecture": "STAIR5-v6 (NLGCL-BCSR)",
-        "version": 6,
-        "arm": model.v6_arm,
-        "git_commit": commit,
-        "platform": platform.platform(),
-        "python": sys.version,
+        "argv": sys.argv,
+        "commit": commit,
+        "python": platform.python_version(),
         "torch": str(torch.__version__),
         "freerec": freerec.__version__,
-        "dataset": cfg.dataset,
-        "users": model.User.count,
-        "items": model.Item.count,
-        "data_fingerprint": model.data_fingerprint,
-        "graph_fingerprint": model.graph_fingerprint,
-        "graph_metadata": model.graph_metadata,
-        "config": {
-            k: getattr(cfg, k)
-            for k in (
+        "device": str(cfg.device),
+        "cuda_available": torch.cuda.is_available(),
+        "gpu": torch.cuda.get_device_name() if torch.cuda.is_available() else None,
+        "arm": cfg.v6_arm,
+        "seed": cfg.seed,
+        "graph": model.graph_metadata,
+        "features": model.feature_manifest,
+        "knn": model.knn_metadata,
+        "checkpoint_contract": model.get_extra_state(),
+        "effective_lambda_nlgcl": model.lambda_nlgcl,
+        "precision": {"tf32": False, "amp": False},
+        "preprocessing_seconds": time.perf_counter() - started,
+        "ranking": cfg.ranking,
+        "selection": "validation NDCG@20",
+        "baseline_config": {
+            key: getattr(cfg, key)
+            for key in (
                 "embedding_dim", "num_layers", "gamma", "lr", "weight_decay",
-                "beta1", "beta2", "batch_size", "epochs", "seed", "eval_freq",
-                "ranking", "which4best", "eta", "k_cf", "c_min", "t_shrinkage",
-                "v6_arm", "v6_theta", "v6_t_rel", "lambda_nlgcl", "nlgcl_tau",
-                "nlgcl_G", "nlgcl_alpha"
+                "batch_size", "epochs", "beta1", "beta2", "mfiles",
+                "num_neighbors", "eval_freq", "lambda_nlgcl", "nlgcl_tau",
+                "nlgcl_G", "nlgcl_alpha", "eta", "k_cf", "c_min",
+                "t_shrinkage", "v6_arm", "v6_theta", "v6_t_rel",
+                "v6_candidate_chunk_size", "cl_chunk_size", "knn_chunk_size",
+                "knn_device", "cf_block_size", "cf_memory_budget_mib",
             )
         },
+        "freerec_log_path": cfg.LOG_PATH,
+        "test_records": "Native FreeRec final and selected; report selected only.",
     }
-    (Path(cfg.artifact_dir) / "manifest.json").write_text(
-        json.dumps(manifest, indent=2, allow_nan=False), encoding="utf-8"
+    manifest_name = "resume_manifest.json" if cfg.resume or cfg.resume_from else "manifest.json"
+    Path(cfg.artifact_dir, manifest_name).write_text(
+        json.dumps(manifest, indent=2), encoding="utf-8"
     )
+    print("[STAIR5-v6 graph] " + json.dumps(model.graph_metadata), flush=True)
 
-    coach.compile()
+    coach = CoachForSTAIR5_v6(
+        dataset=dataset,
+        model=model,
+        cfg=cfg,
+        trainpipe=model.sure_trainpipe(cfg.batch_size),
+        validpipe=model.sure_validpipe(cfg.ranking),
+        testpipe=model.sure_testpipe(cfg.ranking),
+    )
     coach.fit()
 
 
