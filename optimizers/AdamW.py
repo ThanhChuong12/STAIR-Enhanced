@@ -111,7 +111,9 @@ class AdamWSEvo(Optimizer):
             closure (callable, optional): A closure that reevaluates the model
                 and returns the loss.
         """
-        self._cuda_graph_capture_health_check()
+        health_check = getattr(self, "_accelerator_graph_capture_health_check", getattr(self, "_cuda_graph_capture_health_check", None))
+        if health_check is not None:
+            health_check()
 
         loss = None
         if closure is not None:

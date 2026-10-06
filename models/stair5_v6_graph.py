@@ -284,6 +284,7 @@ def build_retained_semantic_graph(
     cand_j: np.ndarray,
     a_ij: np.ndarray,
     n_items: int,
+    cand_w0: Optional[np.ndarray] = None,
     arm: str = "P-BCSR",
     seed: int = 1,
 ) -> Tuple[sp.csr_matrix, sp.csr_matrix, np.ndarray, Dict[str, Any]]:
@@ -296,10 +297,14 @@ def build_retained_semantic_graph(
     total_candidates = len(cand_i)
     diagnostics = {}
 
+    if cand_w0 is None:
+        cand_w0 = np.asarray(W_0[cand_i, cand_j]).ravel().astype(np.float64)
+    else:
+        cand_w0 = cand_w0.astype(np.float64, copy=False)
+
     if arm_canonical == "C-Uniform":
         # Uniform retention with matched total removed mass
         # Total removed mass if primary a_ij were used
-        cand_w0 = np.asarray(W_0[cand_i, cand_j]).ravel()
         primary_removed_mass = np.sum(cand_w0 * a_ij) * 2.0
         total_semantic_offdiag_mass = float(W_0.sum())  # W_0 has zero diagonal
         a_bar = primary_removed_mass / max(1e-12, total_semantic_offdiag_mass)
@@ -315,8 +320,6 @@ def build_retained_semantic_graph(
     else:
         effective_a = a_ij
 
-    # Extract W_0 values for candidate pairs
-    cand_w0 = np.asarray(W_0[cand_i, cand_j]).ravel().astype(np.float64)
     cand_A = cand_w0 * effective_a
 
     # Build symmetric weight reduction matrix A
@@ -541,6 +544,7 @@ def build_calibrated_graph_v6(
     coo = sp.triu(W_0, k=1).tocoo()
     cand_i = coo.row.astype(np.int64)
     cand_j = coo.col.astype(np.int64)
+    cand_w0 = coo.data.astype(np.float64)
     num_candidates = len(cand_i)
 
     # 3. Compute common-user intersection counts c_ij
@@ -567,6 +571,7 @@ def build_calibrated_graph_v6(
         cand_j=cand_j,
         a_ij=a_ij,
         n_items=n_items,
+        cand_w0=cand_w0,
         arm=arm_canonical,
         seed=seed,
     )
