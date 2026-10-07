@@ -1,0 +1,49 @@
+# STAIR5-v7 Configuration: Amazon Sports
+description: STAIR5-v7-UCR-D
+root: data
+dataset: Amazon2014Sports_550_MMRec
+
+embedding_dim: 64
+num_layers: 3
+mfiles: textual_modality.pkl,visual_modality.pkl
+num_neighbors: 5-1
+gamma: 0.2
+
+optimizer: adamwsevo
+lr: 0.001
+weight_decay: 0.1
+batch_size: 1024
+epochs: 500
+eval_freq: 5
+seed: 1
+
+which4best: NDCG@20
+monitors: ['LOSS', 'Recall@1', 'Recall@10', 'Recall@20', 'NDCG@10', 'NDCG@20']
+
+# STAIR5-v7 / UCR-D parameters
+v7_arm: UCR-D
+v7_rho: 0.01
+v7_theta_max: 0.25
+v7_zeta: 0.01
+v7_pair_chunk_size: 4096
+v7_warmup_epochs: 10.0
+
+lambda_nlgcl: 0.01
+nlgcl_tau: 0.2
+nlgcl_G: 1
+nlgcl_alpha: 0.5
+
+eta: 0.1
+k_cf: 5
+c_min: 2
+t_shrinkage: 5.0
+cl_chunk_size: 1024
+
+# Memory and execution budgets
+knn_device: auto
+knn_chunk_size: 1024
+cf_block_size: 64
+cf_memory_budget_mib: 128.0
+eval_valid: true
+eval_test: false
+ranking: full
