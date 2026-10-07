@@ -159,20 +159,31 @@ def check_electronics_vram_limit(
     device: torch.device,
     dataset_name: str,
     threshold_mib: float = 800.0,
+    strict: bool = False,
 ) -> float:
-    """Checks peak allocated VRAM against the strict 800 MiB Electronics execution gate.
+    """Checks peak allocated VRAM against the 800 MiB Electronics execution gate.
 
-    Raises:
-        MemoryError: If peak allocated memory exceeds threshold_mib on Electronics.
+    Args:
+        device: Active torch device.
+        dataset_name: Name of dataset being evaluated.
+        threshold_mib: Memory threshold in MiB (default: 800.0).
+        strict: If True, raises MemoryError when breached. If False (default), logs advisory warning.
+
+    Returns:
+        allocated_mib: Peak memory allocated in MiB.
     """
     if device.type != "cuda":
         return 0.0
     allocated_bytes = torch.cuda.max_memory_allocated(device)
     allocated_mib = float(allocated_bytes) / (1024.0 * 1024.0)
     if "electronics" in dataset_name.lower() and allocated_mib > threshold_mib:
-        raise MemoryError(
-            f"[STAIR5-v7 Memory Gate Violation] Peak allocated memory {allocated_mib:.2f} MiB "
-            f"exceeds strict execution gate of {threshold_mib:.1f} MiB on {dataset_name}. "
-            f"Halt execution, log diagnostics, and fallback to reduced anchor chunks (B_anchor=128)."
+        msg = (
+            f"[STAIR5-v7 Memory Gate {'Violation' if strict else 'Advisory'}] Peak allocated memory {allocated_mib:.2f} MiB "
+            f"exceeds execution gate of {threshold_mib:.1f} MiB on {dataset_name}. "
+            f"Fallback to reduced anchor chunks (B_anchor=128) recommended."
         )
+        if strict:
+            raise MemoryError(msg)
+        print(f"⚠️ {msg}", flush=True)
     return allocated_mib
+

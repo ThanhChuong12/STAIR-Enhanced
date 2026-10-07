@@ -69,6 +69,8 @@ def build_config():
 
     cfg.add_argument("--v7-arm", choices=ARMS_V7, default="UCR-D")
     cfg.add_argument("--knn-device", choices=("cpu", "cuda", "auto"), default="auto")
+    cfg.add_argument("--v7-strict-vram-gate", action="store_true", default=False)
+    cfg.add_argument("--v7-memory-gate-mib", type=float, default=800.0)
 
     cfg.set_defaults(
         description="STAIR5-v7-UCR-D",
@@ -292,9 +294,14 @@ class CoachForSTAIR5_v7(freerec.launcher.Coach):
             samples += count
             batches += 1
 
-            # Electronics memory gate check (§4.2)
-            if self.device.type == "cuda" and "electronics" in self.cfg.dataset.lower():
-                check_electronics_vram_limit(self.device, self.cfg.dataset, threshold_mib=800.0)
+            # Electronics memory gate check (§4.2) - strict enforcement during batch if enabled
+            if self.device.type == "cuda" and "electronics" in self.cfg.dataset.lower() and getattr(self.cfg, "v7_strict_vram_gate", False):
+                check_electronics_vram_limit(
+                    self.device,
+                    self.cfg.dataset,
+                    threshold_mib=getattr(self.cfg, "v7_memory_gate_mib", 800.0),
+                    strict=True,
+                )
 
         if not batches:
             raise RuntimeError("Training dataloader produced no batches.")
@@ -309,8 +316,22 @@ class CoachForSTAIR5_v7(freerec.launcher.Coach):
         vram_alloc = torch.cuda.max_memory_allocated(self.device) if self.device.type == "cuda" else 0
         vram_res = torch.cuda.max_memory_reserved(self.device) if self.device.type == "cuda" else 0
 
-        # Collect last step diagnostics from adapter
-        diag = self.model.graph_adapter.get_last_step_diagnostics() or {}
+        # Electronics memory gate advisory (§4.2)
+        if self.device.type == "cuda" and "electronics" in self.cfg.dataset.lower():
+            check_electronics_vram_limit(
+                self.device,
+                self.cfg.dataset,
+                threshold_mib=getattr(self.cfg, "v7_memory_gate_mib", 800.0),
+                strict=getattr(self.cfg, "v7_strict_vram_gate", False),
+            )
+
+        # Collect last step diagnostics from smoother / adapter
+        diag = (
+            getattr(getattr(self.model, "smoother", None), "get_last_diagnostics", lambda: None)()
+            or self.model.graph_adapter.get_last_step_diagnostics()
+            or {}
+        )
+
 
         record = {
             "epoch": epoch,

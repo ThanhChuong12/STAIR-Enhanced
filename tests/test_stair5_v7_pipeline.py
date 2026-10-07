@@ -42,7 +42,12 @@ from freerec.data.tags import USER, ITEM, ID, LABEL
 
 from models.stair5_v4 import STAIR5_v4_Model
 from models.stair5_v7 import ARMS_V7, STAIR5_v7_Model
-from models.stair5_v7_utils import save_training_checkpoint, load_training_checkpoint, atomic_torch_save
+from models.stair5_v7_utils import (
+    save_training_checkpoint,
+    load_training_checkpoint,
+    atomic_torch_save,
+    check_electronics_vram_limit,
+)
 from optimizers.AdamW import AdamWSEvo
 from optimizers.stair5_v7_smoother import STAIR5V7Smoother
 
@@ -300,6 +305,56 @@ class TestSTAIR5V7Pipeline(unittest.TestCase):
             opt.step()
             self.assertTrue(math.isfinite(loss.item()))
 
+    def test_check_electronics_vram_limit_modes(self):
+        """Test that check_electronics_vram_limit emits advisory warning by default and raises when strict."""
+        from unittest.mock import patch
+
+        fake_device = torch.device("cuda:0")
+        # 850 MiB in bytes
+        fake_bytes = int(850.0 * 1024 * 1024)
+
+        with patch("torch.cuda.max_memory_allocated", return_value=fake_bytes):
+            # Advisory mode (default): returns memory in MiB without raising
+            alloc_mib = check_electronics_vram_limit(
+                fake_device, "Amazon2014Electronics_550_MMRec", threshold_mib=800.0, strict=False
+            )
+            self.assertAlmostEqual(alloc_mib, 850.0, places=1)
+
+            # Strict mode: raises MemoryError
+            with self.assertRaises(MemoryError) as ctx:
+                check_electronics_vram_limit(
+                    fake_device, "Amazon2014Electronics_550_MMRec", threshold_mib=800.0, strict=True
+                )
+            self.assertIn("STAIR5-v7 Memory Gate Violation", str(ctx.exception))
+
+    def test_smoother_cached_diagnostics(self):
+        """Test that smoother caches last step diagnostics while adapter snapshot is cleared."""
+        cfg = copy.copy(self.cfg)
+        cfg.v7_arm = "UCR-D"
+        cfg.v7_rho = 0.05
+        model = STAIR5_v7_Model(self.dataset, cfg)
+        opt = AdamWSEvo(model.marked_params(), lr=1e-3, betas=(0.9, 0.999), weight_decay=0.01)
+
+        batch_data = {
+            model.User: torch.tensor([0, 1]),
+            model.Item: torch.tensor([2, 3]),
+            model.INeg: torch.tensor([4, 5]),
+        }
+        opt.zero_grad(set_to_none=True)
+        loss, _, _ = model.training_objective(batch_data)
+        loss.backward()
+        opt.step()
+
+        # Adapter snapshot should be cleared (no leak)
+        self.assertIsNone(model.graph_adapter.get_last_step_diagnostics())
+
+        # Smoother should retain cached diagnostics for logging
+        cached_diag = model.smoother.get_last_diagnostics()
+        self.assertIsNotNone(cached_diag)
+        self.assertIn("rho_eff", cached_diag)
+        self.assertIn("Z_t", cached_diag)
+
 
 if __name__ == "__main__":
     unittest.main()
+

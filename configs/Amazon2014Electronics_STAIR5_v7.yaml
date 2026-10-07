@@ -25,7 +25,7 @@ v7_arm: UCR-D
 v7_rho: 0.01
 v7_theta_max: 0.25
 v7_zeta: 0.01
-v7_pair_chunk_size: 4096
+v7_pair_chunk_size: 1024
 v7_warmup_epochs: 10.0
 
 lambda_nlgcl: 0.01
@@ -37,7 +37,7 @@ eta: 0.1
 k_cf: 5
 c_min: 2
 t_shrinkage: 5.0
-cl_chunk_size: 1024
+cl_chunk_size: 128
 
 # Memory and execution budgets
 knn_device: auto

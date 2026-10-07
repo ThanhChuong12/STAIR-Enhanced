@@ -32,6 +32,7 @@ class STAIR5V7Smoother:
         self.beta = beta
         self.L = int(L)
         self.current_progress = 10.0  # Default to full target dose warmup
+        self._last_diagnostics: Optional[Dict[str, Any]] = None
 
     def set_progress(self, progress: float) -> None:
         """Sets the current training progress (completed epochs + batch fraction)."""
@@ -41,6 +42,10 @@ class STAIR5V7Smoother:
         """Explicitly releases any transient GPU snapshot buffers."""
         if hasattr(self.graph_adapter, "clear_step_snapshot"):
             self.graph_adapter.clear_step_snapshot()
+
+    def get_last_diagnostics(self) -> Optional[Dict[str, Any]]:
+        """Returns the most recent step diagnostics captured prior to snapshot clearing."""
+        return self._last_diagnostics
 
     @torch.no_grad()
     def _smooth(self, operator: torch.Tensor, features: torch.Tensor) -> torch.Tensor:
@@ -71,6 +76,10 @@ class STAIR5V7Smoother:
             active_op = self.graph_adapter.update_step_snapshot(
                 D, epoch_progress=self.current_progress
             )
+            step_diag = self.graph_adapter.get_last_step_diagnostics()
+            if step_diag is not None:
+                self._last_diagnostics = dict(step_diag)
             return self._smooth(active_op, D)
         finally:
             self.clear_step_snapshot()
+
