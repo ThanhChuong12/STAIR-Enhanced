@@ -7,6 +7,7 @@ from .stair_ne_nlgcl_plus import (
 from .stair5_v1_geometry import LorentzGeometryModule
 from .stair5_v1_objectives import MultiPositiveInfoNCELoss
 from .stair5_v1 import STAIR5_v1_Model
+from .stair5_v8 import STAIR5_v8_Model
 
 __all__ = [
     'STAIR_NE_NLGCL_v5_Plus',
@@ -16,4 +17,5 @@ __all__ = [
     'LorentzGeometryModule',
     'MultiPositiveInfoNCELoss',
     'STAIR5_v1_Model',
+    'STAIR5_v8_Model',
 ]

@@ -1,0 +1,57 @@
+# STAIR5-v8 Configuration: Amazon Baby
+description: STAIR5-v8-WMSG-CSE
+root: data
+dataset: Amazon2014Baby_550_MMRec
+
+embedding_dim: 64
+num_layers: 3
+mfiles: textual_modality.pkl,visual_modality.pkl
+num_neighbors: 5-1
+gamma: 0.1
+
+optimizer: adamwsevo
+lr: 0.001
+weight_decay: 0.3
+batch_size: 1024
+epochs: 500
+eval_freq: 5
+seed: 1
+
+which4best: NDCG@20
+monitors: ['LOSS', 'Recall@1', 'Recall@10', 'Recall@20', 'NDCG@10', 'NDCG@20']
+
+# Inherited V4 CSE and NLGCL parameters
+lambda_nlgcl: 0.01
+nlgcl_tau: 0.2
+nlgcl_G: 1
+nlgcl_alpha: 0.5
+eta: 0.1
+k_cf: 5
+c_min: 2
+t_shrinkage: 5.0
+cl_chunk_size: 1024
+
+# STAIR5-v8 (WMSG-CSE) parameters
+v8_arm: WMSG-core
+semantic_mode: weighted
+edge_power: 2.0
+edge_floor: 0.05
+semantic_mix: 1.0
+alignment: "off"
+anchor_seed: 2718
+anchor_per_stratum: 1024
+relation_gate: "off"
+relation_strength: 0.0
+relation_threshold: 0.7
+relation_temperature: 0.1
+bsc_residual: 0.0
+lambda_dirichlet: 0.0
+
+# Exact preprocessing and backward memory budgets
+knn_device: cpu
+knn_chunk_size: 1024
+cf_block_size: 64
+cf_memory_budget_mib: 128.0
+eval_valid: true
+eval_test: false
+ranking: full
