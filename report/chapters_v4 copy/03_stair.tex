@@ -1,0 +1,1836 @@
+\section{STAIR: Manipulating Collaborative and Multimodal Information}
+
+\subsection{Kết quả thực nghiệm cải tiến 1: Lorentz Hidden Contrastive Regularization (STAIR-LHC v1)}
+
+\subsubsection{Động lực kỹ thuật và kiến trúc đề xuất}
+
+Trong giai đoạn này, nhóm thử nghiệm bổ sung thành phần điều chuẩn tương phản trong không gian Lorentz vào mô hình STAIR. Mục tiêu là khảo sát khả năng khai thác cấu trúc phân cấp của đồ thị tương tác người dùng--sản phẩm, vốn có thể khó biểu diễn đầy đủ bằng khoảng cách Euclidean. Phiên bản STAIR-LHC v1 ánh xạ các biểu diễn ẩn lên siêu mặt Lorentz có độ cong âm $-\kappa$ ($\kappa>0$). Nhánh BPR và phép tính điểm dự đoán vẫn sử dụng biểu diễn Euclidean; nhánh Lorentz chỉ được dùng để tính mất mát tương phản InfoNCE bổ trợ.
+
+Các điều chỉnh kỹ thuật được triển khai gồm bốn thành phần sau:
+
+\noindent\textcolor{lightblue}{\textbf{1. Loại bỏ thành phần tự quay lại trên cặp tương tác dương}}
+
+Khi so sánh biểu diễn người dùng ở tầng 0 ($H_u^{(0)}$) với biểu diễn sản phẩm ở tầng 1 ($H_i^{(1)}$), thông tin của chính người dùng có thể đã được tổng hợp vào $H_i^{(1)}$ qua phép lan truyền. Thành phần này có thể tạo ra tín hiệu tương phản không phản ánh đầy đủ thông tin từ các nút lân cận khác. Vì vậy, nhóm trừ đóng góp trực tiếp của người dùng trên từng cặp tương tác dương:
+
+\begin{equation}
+\widetilde{H}_{i\mid u}^{(1)}
+=
+H_i^{(1)}
+-
+\mathbb{1}\left[
+(u,i)\in\mathcal{E}_{\mathrm{train}}
+\right]
+\cdot
+\frac{E_u}
+{\sqrt{\widetilde{d}_i\cdot\widetilde{d}_u}}
+\odot\beta
+\end{equation}
+
+Đối với sản phẩm bậc 1, phép trừ có thể làm chuẩn biểu diễn tiến gần 0. Nhóm sử dụng ngưỡng chuẩn tối thiểu $\epsilon_{\mathrm{floor}}=10^{-2}$, đồng thời giữ hướng của vector khi thực hiện hiệu chỉnh.
+
+\noindent\textcolor{lightblue}{\textbf{2. Bù suy giảm phổ thích ứng}}
+
+Trong bước Forward Stepwise Convolution, hệ số $\beta_j$ làm giảm biên độ của một số thành phần biểu diễn. Để hạn chế ảnh hưởng của sự suy giảm này lên nhánh Lorentz, nhóm thực hiện phép hiệu chỉnh theo từng chiều trước khi ánh xạ:
+
+\begin{equation}
+\widehat{H}_j^{(1)}
+=
+\frac{\widetilde{H}_j^{(1)}}
+{\max(\beta_j,0.05)}
+\end{equation}
+
+Mẫu số được chặn dưới tại 0.05 để tránh khuếch đại quá mức ở các chiều có hệ số nhỏ. Sau đó, chuẩn biểu diễn được giới hạn theo phân vị thứ 95 của phân phối khởi tạo.
+
+\noindent\textcolor{lightblue}{\textbf{3. Ánh xạ Lorentz và giới hạn bán kính}}
+
+Trước khi áp dụng ánh xạ mũ Lorentz, nhóm giới hạn chuẩn vector Euclidean $a$ với bán kính $R=2.0$ bằng hàm $\tanh$. Bước này nhằm hạn chế giá trị đầu vào của $\cosh$ và $\sinh$, từ đó giảm rủi ro mất ổn định số:
+
+\begin{equation}
+v
+=
+R\cdot
+\tanh\left(
+\frac{\lVert a\rVert_2}{R}
+\right)
+\cdot
+\frac{a}
+{\lVert a\rVert_2+10^{-8}}
+\end{equation}
+
+Vector tiếp xúc $v$ được ánh xạ lên siêu mặt Lorentz $\mathbb{H}_{\kappa}^{D}$ theo công thức:
+
+\begin{equation}
+\phi_{\kappa}(v)
+=
+\left[
+\frac{\cosh(\sqrt{\kappa}r)}
+{\sqrt{\kappa}},
+\;
+\operatorname{sinhc}(\sqrt{\kappa}r)\cdot v
+\right]^{\top}
+\end{equation}
+
+với $r=\lVert v\rVert_2$ và hàm $\operatorname{sinhc}(z)=\sinh(z)/z$, được mở rộng liên tục tại $z=0$ bằng $\operatorname{sinhc}(0)=1$.
+
+\noindent\textcolor{lightblue}{\textbf{4. Hàm khoảng cách hỗn hợp}}
+
+Nhóm sử dụng đại lượng bình phương khoảng cách Lorentz để tính độ khác biệt giữa các biểu diễn. Nhằm điều chỉnh ảnh hưởng của các cặp có khoảng cách lớn, hàm đầu vào cho nhánh tương phản được kết hợp với thành phần logarit:
+
+\begin{equation}
+D_{\mathrm{hybrid}}(x,y)
+=
+(1-w)\cdot D_{\kappa}(x,y)
++
+w\cdot\log\left(
+1+D_{\kappa}(x,y)
+\right)
+\end{equation}
+
+trong đó $D_{\kappa}(x,y)$ là bình phương khoảng cách Lorentz và $w$ là hệ số phối hợp. Thành phần $\log(1+D_{\kappa})$ tăng chậm hơn thành phần tuyến tính khi khoảng cách lớn. Các bước tính khoảng cách gần 0 sử dụng xử lý số ổn định dựa trên khai triển Taylor.
+
+% ============================================================
+% SƠ ĐỒ KIẾN TRÚC STAIR-LHC v1
+% Bố cục gọn, không sử dụng scale/resizebox.
+% Các khối được định vị độc lập, tránh chồng lấn.
+% ============================================================
+
+% Yêu cầu trong preamble:
+% \usepackage{tikz}
+% \usetikzlibrary{arrows.meta,positioning,calc}
+
+\begin{figure}[!htbp]
+    \centering
+
+    \begin{tikzpicture}[
+        font=\scriptsize,
+        >=Stealth,
+        eu/.style={
+            rectangle,
+            draw=blue!65!black,
+            fill=blue!5,
+            rounded corners=2pt,
+            text width=3.4cm,
+            minimum height=7mm,
+            align=center,
+            inner sep=3pt
+        },
+        lh/.style={
+            rectangle,
+            draw=orange!80!black,
+            fill=orange!5,
+            dashed,
+            rounded corners=2pt,
+            text width=4.2cm,
+            align=left,
+            inner sep=4pt
+        },
+        loss/.style={
+            rectangle,
+            draw=blue!75!black,
+            fill=blue!10,
+            rounded corners=2pt,
+            text width=8.0cm,
+            minimum height=8mm,
+            align=center,
+            inner sep=4pt
+        },
+        arr/.style={
+            ->,
+            line width=0.65pt,
+            draw=gray!75!black
+        },
+        transfer/.style={
+            ->,
+            dashed,
+            line width=0.65pt,
+            draw=purple!75!black
+        }
+    ]
+
+    % ========================================================
+    % TIÊU ĐỀ HAI NHÁNH
+    % ========================================================
+
+    \node[
+        font=\scriptsize\bfseries,
+        text=blue!65!black
+    ] at (-2.7,0)
+    {Nhánh Euclidean (BPR)};
+
+    \node[
+        font=\scriptsize\bfseries,
+        text=orange!80!black
+    ] at (2.7,0)
+    {Nhánh Lorentz (LHC)};
+
+    % ========================================================
+    % NHÁNH EUCLIDEAN
+    % ========================================================
+
+    \node[eu,anchor=north] (h0)
+        at (-2.7,-0.5)
+        {Biểu diễn tầng 0: $H^{(0)}$};
+
+    \node[eu,anchor=north] (h1)
+        at (-2.7,-2.0)
+        {Biểu diễn tầng 1: $H^{(1)}$};
+
+    \node[eu,anchor=north] (bpr)
+        at (-2.7,-4.0)
+        {
+            \textbf{BPR Loss}\\[2pt]
+            Tối ưu trên không gian Euclidean
+        };
+
+    % ========================================================
+    % NHÁNH LORENTZ
+    % ========================================================
+
+    \node[lh,anchor=north] (pre)
+        at (2.7,-0.5)
+        {
+            \textbf{Hiệu chỉnh biểu diễn}\\[3pt]
+            1. Loại thành phần tự quay lại\\
+            2. Bù suy giảm phổ\\
+            3. Giới hạn chuẩn vector
+        };
+
+    \node[lh,anchor=north] (exp)
+        at (2.7,-2.8)
+        {
+            \textbf{Lorentz Exponential Map}\\[3pt]
+            $\displaystyle
+            \phi_{\kappa}(v),\qquad
+            \lVert v\rVert_2\leq R
+            $
+        };
+
+    \node[lh,anchor=north] (kernel)
+        at (2.7,-4.4)
+        {
+            \textbf{Hybrid Distance và InfoNCE}\\[3pt]
+            Khoảng cách Lorentz và xử lý số ổn định\\
+            Hàm mất mát tương phản hai chiều
+        };
+
+    % ========================================================
+    % HÀM MỤC TIÊU TỔNG
+    % ========================================================
+
+    \node[loss,anchor=north] (total)
+        at (0,-6.7)
+        {
+            \textbf{Hàm mục tiêu đa nhiệm}\\[3pt]
+            $\displaystyle
+            \mathcal{L}_{\mathrm{total}}
+            =
+            \mathcal{L}_{\mathrm{BPR}}
+            +
+            \lambda(t)\mathcal{L}_{\mathrm{LHC}}
+            $
+        };
+
+    % ========================================================
+    % LUỒNG XỬ LÝ EUCLIDEAN
+    % ========================================================
+
+    \draw[arr]
+        (h0.south) -- (h1.north);
+
+    \draw[arr]
+        (h1.south) -- (bpr.north);
+
+    % ========================================================
+    % LUỒNG XỬ LÝ LORENTZ
+    % ========================================================
+
+    \draw[arr]
+        (pre.south) -- (exp.north);
+
+    \draw[arr]
+        (exp.south) -- (kernel.north);
+
+    % ========================================================
+    % TRUYỀN BIỂU DIỄN SANG NHÁNH LORENTZ
+    % ========================================================
+
+    \draw[transfer]
+        (h0.east)
+        -- ++(0.25,0)
+        |- ([yshift=7pt]pre.west);
+
+    \draw[transfer]
+        (h1.east)
+        -- ++(0.4,0)
+        |- ([yshift=-7pt]pre.west);
+
+    % ========================================================
+    % KẾT HỢP HAI HÀM MẤT MÁT
+    % ========================================================
+
+    \draw[arr]
+        (bpr.south)
+        -- ++(0,-0.5)
+        -| ([xshift=-2.3cm]total.north);
+
+    \draw[arr]
+        (kernel.south)
+        -- ++(0,-0.3)
+        -| ([xshift=2.3cm]total.north);
+
+    \end{tikzpicture}
+
+    \caption{
+        Sơ đồ kiến trúc STAIR-LHC v1.
+        Nhánh Lorentz bổ sung hàm mất mát tương phản
+        trên biểu diễn ẩn, trong khi nhánh BPR
+        và quá trình dự đoán vẫn sử dụng
+        không gian Euclidean.
+    }
+
+    \label{fig:stair_lhc_architecture}
+
+\end{figure}
+
+
+% ============================================================
+% KẾT QUẢ THỰC NGHIỆM
+% ============================================================
+
+\subsubsection{Kết quả thực nghiệm và đối chuẩn với baseline}
+
+Nhóm huấn luyện STAIR-LHC v1 tối đa 500 epoch trên GPU Tesla T4. Bảng~\ref{tab:stair_lhc_results} trình bày các chỉ số trên tập kiểm tra tại checkpoint được chọn theo NDCG@20 của tập validation và đối chiếu với STAIR Baseline.
+
+\begin{table}[htbp]
+    \centering
+
+    \caption{
+        Kết quả thực nghiệm STAIR-LHC v1
+        so với STAIR Baseline trên ba tập dữ liệu.
+    }
+    \label{tab:stair_lhc_results}
+
+    \footnotesize
+    \renewcommand{\arraystretch}{1.16}
+    \setlength{\tabcolsep}{3pt}
+
+    \resizebox{\linewidth}{!}{%
+    \begin{tabular}{llccc}
+        \toprule
+
+        \rowcolor{gray!15}
+        \textbf{Tập dữ liệu}
+        & \textbf{Chỉ số}
+        & \textbf{STAIR Baseline}
+        & \textbf{STAIR-LHC v1}
+        & \textbf{Chênh lệch} \\
+
+        \midrule
+
+        \multirow{4}{*}{
+            \shortstack[l]{
+                Baby\\
+                (best epoch 500)
+            }
+        }
+        & Recall@10
+        & \textbf{0.0674}
+        & 0.0668
+        & $-0.89\%$ \\
+
+        & Recall@20
+        & \textbf{0.1042}
+        & 0.1039
+        & $-0.29\%$ \\
+
+        & NDCG@10
+        & 0.0359
+        & 0.0359
+        & $0.00\%$ \\
+
+        & NDCG@20
+        & 0.0454
+        & 0.0454
+        & $0.00\%$ \\
+
+        \midrule
+
+        \multirow{4}{*}{
+            \shortstack[l]{
+                Sports\\
+                (best epoch 500)
+            }
+        }
+        & Recall@10
+        & 0.0743
+        & \textbf{0.0747}
+        & $+0.54\%$ \\
+
+        & Recall@20
+        & 0.1111
+        & \textbf{0.1133}
+        & $+1.98\%$ \\
+
+        & NDCG@10
+        & 0.0405
+        & \textbf{0.0407}
+        & $+0.49\%$ \\
+
+        & NDCG@20
+        & 0.0500
+        & \textbf{0.0506}
+        & $+1.20\%$ \\
+
+        \midrule
+
+        \multirow{4}{*}{
+            \shortstack[l]{
+                Electronics\\
+                (best epoch 485)
+            }
+        }
+        & Recall@10
+        & 0.0442
+        & 0.0435
+        & $-1.58\%$ \\
+
+        & Recall@20
+        & 0.0665
+        & \textbf{0.0666}
+        & $+0.15\%$ \\
+
+        & NDCG@10
+        & \textbf{0.0246}
+        & 0.0241
+        & $-2.03\%$ \\
+
+        & NDCG@20
+        & \textbf{0.0303}
+        & 0.0301
+        & $-0.66\%$ \\
+
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+Kết quả cho thấy ảnh hưởng của nhánh Lorentz khác nhau giữa các tập dữ liệu; chưa có cải thiện nhất quán trên cả ba tập.
+
+Trên Amazon Sports (độ thưa 99.95\%), STAIR-LHC v1 tăng nhẹ cả bốn chỉ số so với baseline. Recall@20 đạt 0.1133 ($+1.98\%$) và NDCG@20 đạt 0.0506 ($+1.20\%$). Kết quả này là tín hiệu tích cực đối với tập Sports, nhưng chưa đủ để xác định nguyên nhân cải thiện là cấu trúc phân cấp của đồ thị hay khả năng mô hình hóa các sản phẩm ít tương tác.
+
+Trên Amazon Electronics (gần 1.7 triệu tương tác), Recall@20 đạt 0.0666 ($+0.15\%$), trong khi NDCG@20 giảm còn 0.0301 ($-0.66\%$). Các chỉ số vì vậy nhìn chung gần với baseline, nhưng chưa cho thấy lợi ích rõ ràng. Trong lần chạy được ghi nhận, mô hình không phát sinh lỗi tràn số ở các phép tính $\cosh$ và $\sinh$; đây là kết quả kiểm tra tính ổn định trong phạm vi cấu hình thử nghiệm hiện tại.
+
+Trên Amazon Baby, NDCG@20 giữ ở mức 0.0454, trong khi Recall@20 giảm từ 0.1042 xuống 0.1039 ($-0.29\%$). Mật độ tương tác của Baby cao hơn Sports khoảng 2.6 lần, nhưng chỉ riêng yếu tố này chưa đủ để kết luận về cấu trúc phân cấp. Ảnh hưởng của độ cong cố định $\kappa=1.0$ và khả năng thiếu khớp ở một số giai đoạn huấn luyện cần được kiểm tra thêm bằng các thí nghiệm thay đổi độ cong và phân tích đường học.
+
+
+% ============================================================
+% CHI PHÍ TÍNH TOÁN VÀ BỘ NHỚ
+% ============================================================
+
+\subsubsection{Đánh giá chi phí tính toán và tiêu thụ bộ nhớ}
+
+Để kiểm soát chi phí của nhánh tương phản, phiên bản hiện tại sử dụng CPU-Chunked Vectorization: các cặp được xử lý theo từng khối và một số kết quả tính khoảng cách được tái sử dụng. Bảng~\ref{tab:stair_lhc_hardware} tổng hợp thời gian và VRAM đỉnh ghi nhận trong quá trình huấn luyện.
+
+\begin{table}[htbp]
+    \centering
+
+    \caption{
+        Mức tiêu thụ VRAM đỉnh và thời gian
+        huấn luyện thực tế của STAIR-LHC v1.
+    }
+    \label{tab:stair_lhc_hardware}
+
+    \small
+    \renewcommand{\arraystretch}{1.15}
+    \setlength{\tabcolsep}{5pt}
+
+    \resizebox{\linewidth}{!}{%
+    \begin{tabular}{lccc}
+        \toprule
+
+        \rowcolor{gray!15}
+        \textbf{Tập dữ liệu}
+        & \textbf{VRAM đỉnh hệ thống}
+        & \textbf{Thời gian (500 epoch)}
+        & \textbf{Thời gian trung bình/epoch (BPR + LHC)} \\
+
+        \midrule
+
+        \textbf{Amazon Baby}
+        & $\sim 3.5$ GB
+        & 2.40 giờ
+        & $\sim 17.8$ giây \\
+
+        \textbf{Amazon Sports}
+        & $\sim 5.5$ GB
+        & 4.25 giờ
+        & $\sim 31.3$ giây \\
+
+        \textbf{Amazon Electronics}
+        & $\sim 7.2$ GB
+        & 11.39 giờ
+        & $\sim 79.4$ giây \\
+
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+Đối với Electronics, thời gian trung bình của một epoch (bao gồm BPR và LHC) là khoảng 79.4 giây, so với mức 430 giây/epoch của cấu hình đối chiếu được ghi nhận trước đó; mức giảm tương ứng khoảng 81.5\%. Tổng thời gian huấn luyện 500 epoch là 11.39 giờ và VRAM đỉnh đạt khoảng 7.2 GB. Kết quả cho thấy cấu hình này vận hành trong giới hạn bộ nhớ của Tesla T4 (16 GB) ở lần thử nghiệm hiện tại. Cần tiếp tục đối chiếu thời gian của từng pha trên cùng thiết lập đo để tách riêng đóng góp của kỹ thuật xử lý theo khối.
+
+\subsection{Kết quả thực nghiệm cải tiến 2:
+Confidence-Calibrated Edge Trust (STAIR5-v2 / C-HET)}
+
+\subsubsection{Động lực kỹ thuật và kiến trúc đề xuất}
+
+Kết quả thử nghiệm STAIR-LHC v1 cho thấy nhánh tương phản Lorentz
+có thể cải thiện chất lượng xếp hạng trên tập Amazon Sports,
+nhưng làm tăng đáng kể chi phí huấn luyện.
+Cụ thể, trên tập Amazon Electronics, thời gian trung bình
+mỗi epoch tăng từ khoảng 37.6 giây lên 79.4 giây.
+
+Trong giai đoạn này, nhóm thử nghiệm phương án
+Confidence-Calibrated Edge Trust (C-HET), ký hiệu STAIR5-v2.
+Thay vì bổ sung hàm mất mát tương phản,
+phương án tập trung điều chỉnh trọng số cạnh
+trên đồ thị kNN đa phương thức dựa vào
+thông tin đồng tương tác giữa các sản phẩm.
+Mục tiêu là cải thiện chất lượng biểu diễn
+trong khi giữ chi phí huấn luyện gần với baseline.
+
+Các điều chỉnh chính gồm ba thành phần:
+
+\noindent\textcolor{lightblue}{\textbf{1. Loại bỏ nhánh mất mát phụ trợ}}
+
+STAIR5-v2 không sử dụng nhánh Lorentz Contrastive Learning,
+tương ứng với $\lambda_{\mathrm{LHC}}=0$.
+Quá trình huấn luyện giữ nguyên hàm mất mát BPR
+và cơ chế làm mịn BSC trong bộ tối ưu AdamWSEvo.
+Việc loại bỏ nhánh tương phản giúp giảm số phép tính
+phát sinh trong mỗi epoch.
+
+\noindent\textcolor{lightblue}{\textbf{2. Hiệu chỉnh trọng số cạnh bằng bằng chứng đồng tương tác}}
+
+Đối với mỗi cạnh $(i,j)$ trong đồ thị kNN,
+nhóm sử dụng số lần đồng tương tác $n_{ij}$
+để ước lượng mức độ liên quan giữa hai sản phẩm.
+Tín hiệu đồng tương tác được chuẩn hóa theo hệ số Ochiai:
+
+\begin{equation}
+b_{ij}
+=
+\frac{n_{ij}}{\sqrt{d_i d_j}},
+\end{equation}
+
+trong đó $d_i$ và $d_j$ lần lượt là số người dùng
+đã tương tác với sản phẩm $i$ và $j$.
+
+Do các cạnh có ít đồng tương tác
+có thể tạo ra ước lượng kém tin cậy,
+nhóm bổ sung hệ số hiệu chỉnh:
+
+\begin{equation}
+\rho_{ij}
+=
+\frac{n_{ij}}{n_{ij}+t},
+\end{equation}
+
+với $t=5.0$.
+
+Điểm tin cậy của cạnh được tính bằng:
+
+\begin{equation}
+q_{ij}
+=
+\rho_{ij}b_{ij}
+=
+\frac{n_{ij}^{2}}
+{(n_{ij}+t)\sqrt{d_i d_j}}.
+\end{equation}
+
+Cách tính này làm giảm ảnh hưởng của các cạnh
+có ít bằng chứng đồng tương tác,
+đồng thời hạn chế thiên lệch do độ phổ biến sản phẩm.
+
+\noindent\textcolor{lightblue}{\textbf{3. Điều chỉnh và pha trộn toán tử đồ thị}}
+
+Trọng số cạnh ban đầu $W^0$ được điều chỉnh
+theo điểm tin cậy $q_{ij}$:
+
+\begin{equation}
+W_{ij}^{+}
+=
+W_{ij}^{0}(1+a q_{ij}),
+\end{equation}
+
+trong đó $a=0.25$ là hệ số điều chỉnh.
+
+Sau khi chuẩn hóa ma trận trọng số,
+toán tử đồ thị mới $S^{+}$ được kết hợp
+với toán tử ban đầu $S_0$:
+
+\begin{equation}
+S_{\eta}
+=
+(1-\eta)S_0+\eta S^{+},
+\qquad \eta=0.25.
+\end{equation}
+
+Phép pha trộn lồi giúp giới hạn mức thay đổi
+so với cấu trúc đồ thị ban đầu.
+Với giả thiết hai toán tử thành phần
+có chuẩn phổ không vượt quá 1,
+toán tử kết hợp cũng thỏa mãn:
+
+\begin{equation}
+\lVert S_{\eta}\rVert_2
+\leq
+(1-\eta)\lVert S_0\rVert_2
++
+\eta\lVert S^{+}\rVert_2
+\leq 1.
+\end{equation}
+
+Toàn bộ bước tính điểm tin cậy và cập nhật toán tử
+được thực hiện trước quá trình huấn luyện.
+Toán tử $S_{\eta}$ sau đó được sử dụng
+trong các bước lan truyền biểu diễn và làm mịn BSC.
+
+% ============================================================
+% SƠ ĐỒ QUY TRÌNH STAIR5-v2
+% Chỉ minh họa các thành phần xử lý chính.
+% ============================================================
+
+\begin{figure}[!htbp]
+    \centering
+
+    \begin{tikzpicture}[
+        font=\scriptsize,
+        >=Stealth,
+        node distance=0.65cm,
+        input/.style={
+            rectangle,
+            draw=blue!65!black,
+            fill=blue!5,
+            rounded corners=2pt,
+            text width=2.7cm,
+            minimum height=0.8cm,
+            align=center,
+            inner sep=3pt
+        },
+        process/.style={
+            rectangle,
+            draw=orange!75!black,
+            fill=orange!6,
+            rounded corners=2pt,
+            text width=6.1cm,
+            minimum height=0.8cm,
+            align=center,
+            inner sep=4pt
+        },
+        training/.style={
+            rectangle,
+            draw=teal!65!black,
+            fill=teal!6,
+            rounded corners=2pt,
+            text width=6.1cm,
+            minimum height=0.8cm,
+            align=center,
+            inner sep=4pt
+        },
+        arr/.style={
+            -{Stealth[length=2mm]},
+            line width=0.7pt,
+            draw=gray!80!black
+        }
+    ]
+
+    % --------------------------------------------------------
+    % Dữ liệu đầu vào
+    % --------------------------------------------------------
+
+    \node[input] (knn) at (-1.7,0)
+        {Đồ thị kNN đa phương thức $W^0$};
+
+    \node[input] (interaction) at (1.7,0)
+        {Dữ liệu tương tác huấn luyện $R$};
+
+    % --------------------------------------------------------
+    % Hiệu chỉnh đồ thị
+    % --------------------------------------------------------
+
+    \node[process,below=1.0cm of knn.south east,
+          anchor=north west,
+          xshift=-0.1cm] (trust)
+        {
+            \textbf{Ước lượng độ tin cậy cạnh}\\[2pt]
+            Ochiai và hiệu chỉnh bằng chứng
+            ($q_{ij}$)
+        };
+
+    \node[process,below=of trust] (blend)
+        {
+            \textbf{Điều chỉnh toán tử đồ thị}\\[2pt]
+            $S_{\eta}=(1-\eta)S_0+\eta S^{+}$
+        };
+
+    % --------------------------------------------------------
+    % Huấn luyện
+    % --------------------------------------------------------
+
+    \node[training,below=of blend] (train)
+        {
+            \textbf{Huấn luyện STAIR5-v2}\\[2pt]
+            Forward Stepwise Convolution,
+            BPR Loss và BSC
+        };
+
+    % --------------------------------------------------------
+    % Liên kết
+    % --------------------------------------------------------
+
+    \draw[arr]
+        (knn.south)
+        |- ([xshift=-1.1cm]trust.north);
+
+    \draw[arr]
+        (interaction.south)
+        |- ([xshift=1.1cm]trust.north);
+
+    \draw[arr]
+        (trust.south) -- (blend.north);
+
+    \draw[arr]
+        (blend.south) -- (train.north);
+
+    \end{tikzpicture}
+
+    \caption{
+        Quy trình xử lý của STAIR5-v2 (C-HET).
+        Trọng số cạnh được hiệu chỉnh trước huấn luyện;
+        toán tử đồ thị sau cập nhật được sử dụng
+        trong mô hình STAIR với hàm mất mát BPR.
+    }
+
+    \label{fig:stair5_v2_architecture}
+\end{figure}
+
+
+% ============================================================
+% KẾT QUẢ THỰC NGHIỆM
+% ============================================================
+
+\subsubsection{Kết quả thực nghiệm trên hai tập dữ liệu}
+
+STAIR5-v2 được thử nghiệm trên hai tập dữ liệu
+Amazon Baby và Amazon Sports với tối đa 500 epoch,
+sử dụng GPU Tesla T4 (16 GB).
+Kết quả được đối chiếu với STAIR Baseline
+và phiên bản STAIR5-v1 trong
+Bảng~\ref{tab:stair5_v2_results}.
+
+\begin{table}[!htbp]
+    \centering
+
+    \caption{
+        So sánh kết quả thực nghiệm STAIR5-v2
+        với Baseline và STAIR5-v1.
+    }
+    \label{tab:stair5_v2_results}
+
+    \scriptsize
+    \renewcommand{\arraystretch}{1.15}
+    \setlength{\tabcolsep}{3pt}
+
+    \resizebox{\linewidth}{!}{%
+    \begin{tabular}{llccccc}
+        \toprule
+
+        \rowcolor{gray!15}
+        \textbf{Tập dữ liệu}
+        & \textbf{Chỉ số}
+        & \textbf{Baseline}
+        & \textbf{v1}
+        & \textbf{v2}
+        & \textbf{$\Delta$ vs BL}
+        & \textbf{$\Delta$ vs v1} \\
+
+        \midrule
+
+        \multirow{4}{*}{
+            \shortstack[l]{
+                Baby\\
+                (epoch 215)
+            }
+        }
+        & Recall@10
+        & \textbf{0.0674}
+        & 0.0660
+        & 0.0659
+        & $-2.23\%$
+        & $-0.15\%$ \\
+
+        & Recall@20
+        & \textbf{0.1042}
+        & 0.1030
+        & 0.1029
+        & $-1.25\%$
+        & $-0.10\%$ \\
+
+        & NDCG@10
+        & \textbf{0.0359}
+        & 0.0352
+        & 0.0352
+        & $-1.95\%$
+        & $0.00\%$ \\
+
+        & NDCG@20
+        & \textbf{0.0454}
+        & 0.0447
+        & 0.0447
+        & $-1.54\%$
+        & $0.00\%$ \\
+
+        \midrule
+
+        \multirow{4}{*}{
+            \shortstack[l]{
+                Sports\\
+                (epoch 500)
+            }
+        }
+        & Recall@10
+        & 0.0743
+        & \textbf{0.0747}
+        & 0.0744
+        & $+0.13\%$
+        & $-0.40\%$ \\
+
+        & Recall@20
+        & 0.1111
+        & \textbf{0.1133}
+        & 0.1129
+        & $+1.62\%$
+        & $-0.35\%$ \\
+
+        & NDCG@10
+        & 0.0405
+        & \textbf{0.0407}
+        & 0.0406
+        & $+0.25\%$
+        & $-0.25\%$ \\
+
+        & NDCG@20
+        & 0.0500
+        & \textbf{0.0506}
+        & 0.0505
+        & $+1.00\%$
+        & $-0.20\%$ \\
+
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+\noindent\textcolor{lightblue}{\textbf{Kết quả trên Amazon Sports.}}
+STAIR5-v2 cải thiện cả bốn chỉ số so với baseline.
+Recall@20 đạt 0.1129 ($+1.62\%$)
+và NDCG@20 đạt 0.0505 ($+1.00\%$).
+Tuy nhiên, kết quả vẫn thấp hơn STAIR5-v1,
+với mức chênh lệch lần lượt là $-0.35\%$
+và $-0.20\%$.
+Như vậy, phương án hiệu chỉnh trọng số cạnh
+cho kết quả tích cực trên Sports
+mà không cần sử dụng nhánh tương phản Lorentz.
+
+\noindent\textcolor{lightblue}{\textbf{Kết quả trên Amazon Baby.}}
+Checkpoint tốt nhất theo validation được ghi nhận
+tại epoch 215.
+Tại checkpoint này,
+Recall@20 đạt 0.1029 ($-1.25\%$ so với baseline)
+và NDCG@20 đạt 0.0447 ($-1.54\%$).
+Hai chỉ số NDCG của v2 tương đương v1
+ở độ chính xác bốn chữ số thập phân.
+Kết quả cho thấy việc điều chỉnh trọng số cạnh
+chưa mang lại cải thiện trên Baby.
+Mặc dù NDCG@20 tại epoch 500 đạt 0.0454,
+giá trị này không thay thế kết quả tại checkpoint
+được chọn theo tiêu chí validation.
+
+Nhìn chung, STAIR5-v2 đạt kết quả tốt hơn baseline
+trên Sports nhưng giảm nhẹ trên Baby.
+Xu hướng này cho thấy hiệu quả của cơ chế Edge Trust
+có thể phụ thuộc vào đặc điểm đồ thị;
+cần thêm các thử nghiệm loại bỏ từng thành phần
+để xác định đóng góp riêng của phương pháp.
+
+
+% ============================================================
+% CHI PHÍ TÍNH TOÁN VÀ BỘ NHỚ
+% ============================================================
+
+\subsubsection{Đánh giá chi phí tính toán và tiêu thụ bộ nhớ}
+
+Do không sử dụng nhánh mất mát tương phản,
+STAIR5-v2 giảm đáng kể thời gian huấn luyện
+so với STAIR5-v1.
+Bảng~\ref{tab:stair5_v2_hardware}
+tổng hợp thời gian thực thi
+và bộ nhớ tensor GPU được ghi nhận.
+
+\begin{table}[!htbp]
+    \centering
+
+    \caption{
+        Chi phí tính toán của STAIR5-v2
+        trên Amazon Baby và Amazon Sports.
+    }
+    \label{tab:stair5_v2_hardware}
+
+    \footnotesize
+    \renewcommand{\arraystretch}{1.15}
+    \setlength{\tabcolsep}{4pt}
+
+    \resizebox{\linewidth}{!}{%
+    \begin{tabular}{lcccc}
+        \toprule
+
+        \rowcolor{gray!15}
+        \textbf{Tập dữ liệu}
+        & \textbf{VRAM tensor}
+        & \textbf{Giây/epoch}
+        & \textbf{Tổng thời gian}
+        & \textbf{Tăng tốc so với v1} \\
+
+        \midrule
+
+        \textbf{Amazon Baby}
+        & 141.0 MB
+        & 2.18
+        & 19.13 phút
+        & $7.53\times$ \\
+
+        \textbf{Amazon Sports}
+        & 221.6 MB
+        & 5.09
+        & 45.48 phút
+        & $5.61\times$ \\
+
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+Thời gian huấn luyện trung bình của STAIR5-v2
+đạt 2.18 giây/epoch trên Baby
+và 5.09 giây/epoch trên Sports.
+Mức tăng tốc được báo cáo so với v1
+lần lượt là $7.53\times$ và $5.61\times$.
+Tổng thời gian huấn luyện 500 epoch
+là 19.13 phút trên Baby
+và 45.48 phút trên Sports.
+
+Bộ nhớ tensor GPU được ghi nhận ở mức
+141.0 MB trên Baby và 221.6 MB trên Sports.
+Theo số liệu đối chiếu, mức sử dụng bộ nhớ
+giảm khoảng 94.7\%--95.0\% so với v1.
+Cần lưu ý đây là bộ nhớ tensor được ghi nhận
+trong quá trình thực thi, không nhất thiết
+tương đương tổng VRAM mà hệ thống sử dụng.
+
+\noindent\textcolor{lightblue}{\textbf{Nhận xét chung.}}
+STAIR5-v2 cho thấy khả năng giảm chi phí huấn luyện
+trong khi duy trì chất lượng xếp hạng gần với v1.
+Tuy nhiên, kết quả trên Baby chưa vượt baseline,
+còn mức cải thiện trên Sports tương đối nhỏ.
+Giai đoạn tiếp theo cần tập trung đánh giá
+các hệ số $t$, $a$, $\eta$,
+phân tích ảnh hưởng của độ thưa đồ thị
+và kiểm tra tính ổn định qua nhiều lần chạy.
+
+\subsection{Kết quả thực nghiệm cải tiến 3: Degree-Preserving Preference-Compatible Backward Stepwise Convolution (STAIR5-v3)}
+
+\subsubsection{Động lực kỹ thuật và kiến trúc đề xuất}
+
+Trong phiên bản STAIR5-v2, nhóm đã điều chỉnh trọng số cạnh của đồ thị kNN đa phương thức dựa trên bằng chứng đồng tương tác giữa các sản phẩm. Phương pháp này cải thiện kết quả trên Amazon Sports và giảm đáng kể chi phí huấn luyện so với STAIR5-v1. Tuy nhiên, phép cập nhật $W_{ij}^{+}=W_{ij}^{0}(1+a q_{ij})$ làm thay đổi tổng trọng số cạnh tại mỗi nút ($d_i^{+}\neq d_i^{0}$), dẫn đến thay đổi ma trận bậc và toán tử chuẩn hóa đồ thị.
+
+Để kiểm soát ảnh hưởng này, nhóm phát triển STAIR5-v3 (Degree-Preserving Preference-Compatible Backward Stepwise Convolution), bổ sung phép chiếu Kullback--Leibler (KL) nhằm điều chỉnh trọng số cạnh trong khi bảo toàn bậc nút ban đầu. Phương pháp giữ nguyên tập cạnh kNN và thực hiện toàn bộ quá trình hiệu chỉnh ở giai đoạn tiền xử lý, trước khi huấn luyện mô hình.
+
+Các điều chỉnh chính gồm ba thành phần:
+
+\noindent\textcolor{lightblue}{\textbf{1. Điều chỉnh trọng số cạnh theo tín hiệu hành vi}}
+
+Tương tự STAIR5-v2, trọng số mục tiêu được xác định bằng cách kết hợp trọng số kNN ban đầu với điểm tin cậy đồng tương tác $q_{ij}$:
+
+\begin{equation}
+W_{ij}^{\mathrm{target}}=W_{ij}^{0}(1+a q_{ij}), \qquad a=0.25.
+\end{equation}
+
+Trong đó, $q_{ij}$ được tính từ hệ số Ochiai kết hợp cơ chế hiệu chỉnh bằng chứng. Phép cập nhật chỉ áp dụng trên tập cạnh kNN ban đầu $\mathcal{E}_0$ và sử dụng thông tin tương tác thuộc tập huấn luyện để tránh rò rỉ dữ liệu.
+
+\noindent\textcolor{lightblue}{\textbf{2. Phép chiếu KL bảo toàn bậc nút}}
+
+Để duy trì tổng trọng số cạnh của từng nút, nhóm xây dựng bài toán tối ưu nhằm tìm ma trận $W^{*}$ gần với $W^{\mathrm{target}}$ nhưng thỏa mãn ràng buộc bậc nút gốc:
+
+\begin{equation}
+\begin{aligned}
+\min_{W^{*}\geq 0}\quad &
+\sum_{(i,j)\in\mathcal{E}_0}
+W_{ij}^{*}
+\ln\left(
+\frac{W_{ij}^{*}}
+{\mathrm{e}\,W_{ij}^{\mathrm{target}}}
+\right),\\
+\text{s.t.}\quad &
+\sum_{j\in\mathcal{N}_0(i)}W_{ij}^{*}=d_i^{0},
+\qquad \forall i.
+\end{aligned}
+\end{equation}
+
+Với quy ước các cạnh vô hướng được biểu diễn đối xứng, nghiệm tối ưu có dạng tham số hóa theo biến đối ngẫu:
+
+\begin{equation}
+W_{ij}^{*}(\mu)
+=
+W_{ij}^{\mathrm{target}}
+\exp\left(\frac{\mu_i+\mu_j}{2}\right),
+\end{equation}
+
+trong đó $\mu\in\mathbb{R}^{|\mathcal{I}|}$ là vector biến đối ngẫu và $\mathcal{I}$ là tập sản phẩm. Nhóm sử dụng thuật toán L-BFGS-B để tìm $\mu$, với ngưỡng sai số tương đối của ràng buộc bậc nút là $10^{-5}$.
+
+\noindent\textcolor{lightblue}{\textbf{3. Xây dựng toán tử chuẩn hóa bảo toàn bậc}}
+
+Từ ma trận trọng số sau hiệu chỉnh, toán tử chuẩn hóa đối xứng được xác định:
+
+\begin{equation}
+S^{*}=D_0^{-1/2}W^{*}D_0^{-1/2},
+\end{equation}
+
+trong đó $D_0$ là ma trận bậc của đồ thị ban đầu. Đối với ma trận trọng số đối xứng, không âm và có bậc được bảo toàn, toán tử $S^{*}$ là ma trận đối xứng và có chuẩn phổ không vượt quá 1:
+
+\begin{equation}
+\lVert S^{*}\rVert_2\leq 1.
+\end{equation}
+
+Điều kiện này giúp kiểm soát chuẩn của toán tử trong quá trình làm mịn gradient bằng Backward Stepwise Convolution (BSC). Tuy nhiên, tính đối xứng và giới hạn chuẩn phổ không đồng nghĩa với việc $S^{*}$ luôn nửa xác định dương (SPSD). Toán tử $S^{*}$ được tính một lần ở giai đoạn tiền xử lý và được sử dụng trong bộ tối ưu AdamWSEvo mà không cần cập nhật lại trong từng epoch.
+
+% ============================================================
+% SƠ ĐỒ QUY TRÌNH STAIR5-v3
+% ============================================================
+
+\begin{figure}[!htbp]
+    \centering
+    \begin{tikzpicture}[
+        font=\scriptsize,
+        >=Stealth,
+        node distance=0.55cm,
+        inputbox/.style={
+            rectangle,
+            draw=blue!65!black,
+            fill=blue!5,
+            rounded corners=2pt,
+            text width=2.7cm,
+            minimum height=0.75cm,
+            align=center,
+            inner sep=3pt
+        },
+        processbox/.style={
+            rectangle,
+            draw=orange!75!black,
+            fill=orange!6,
+            rounded corners=2pt,
+            text width=6.0cm,
+            minimum height=0.75cm,
+            align=center,
+            inner sep=4pt
+        },
+        trainbox/.style={
+            rectangle,
+            draw=teal!65!black,
+            fill=teal!6,
+            rounded corners=2pt,
+            text width=6.0cm,
+            minimum height=0.75cm,
+            align=center,
+            inner sep=4pt
+        },
+        arr/.style={
+            -{Stealth[length=2mm]},
+            line width=0.7pt,
+            draw=gray!80!black
+        }
+    ]
+
+    % Dữ liệu đầu vào
+    \node[inputbox] (knn) at (-1.65,0) {Đồ thị kNN ban đầu $W^0$};
+    \node[inputbox] (interaction) at (1.65,0) {Dữ liệu tương tác huấn luyện $R$};
+
+    % Các bước tiền xử lý
+    \node[processbox,anchor=north] (target) at (0,-1.15) {\textbf{Điều chỉnh trọng số cạnh}\\[2pt]$W_{ij}^{\mathrm{target}}=W_{ij}^{0}(1+a q_{ij})$};
+
+    \node[processbox,below=of target] (projection) {\textbf{Phép chiếu KL bảo toàn bậc}\\[2pt]L-BFGS-B: $\sum_j W_{ij}^{*}=d_i^{0}$};
+
+    \node[processbox,below=of projection] (operator) {\textbf{Toán tử chuẩn hóa đối xứng}\\[2pt]$S^{*}=D_0^{-1/2}W^{*}D_0^{-1/2}$};
+
+    % Huấn luyện
+    \node[trainbox,below=of operator] (training) {\textbf{Huấn luyện STAIR5-v3}\\[2pt]BPR Loss và BSC với toán tử $S^{*}$};
+
+    % Các luồng xử lý
+    \draw[arr] (knn.south) |- ([xshift=-1.1cm]target.north);
+    \draw[arr] (interaction.south) |- ([xshift=1.1cm]target.north);
+    \draw[arr] (target.south) -- (projection.north);
+    \draw[arr] (projection.south) -- (operator.north);
+    \draw[arr] (operator.south) -- (training.north);
+
+    \end{tikzpicture}
+
+    \caption{Quy trình xử lý của STAIR5-v3. Phép chiếu KL được thực hiện ngoại tuyến nhằm bảo toàn bậc nút khi điều chỉnh trọng số cạnh; toán tử chuẩn hóa sau hiệu chỉnh được sử dụng trong quá trình huấn luyện STAIR.}
+    \label{fig:stair_csgc_v3_architecture}
+\end{figure}
+
+
+% ============================================================
+% KẾT QUẢ THỰC NGHIỆM
+% ============================================================
+
+\subsubsection{Kết quả thực nghiệm trên hai tập dữ liệu}
+
+STAIR5-v3 được thử nghiệm trên Amazon Baby và Amazon Sports với tối đa 500 epoch, sử dụng GPU Tesla T4 (16 GB). Thuật toán L-BFGS-B hoàn tất sau 14 bước lặp trên Baby và 20 bước trên Sports, với sai số tương đối của ràng buộc bậc nút không vượt quá $10^{-5}$. Kết quả cho thấy phép chiếu đạt độ chính xác theo ngưỡng thiết lập mà không cần nhiều bước tối ưu.
+
+Bảng~\ref{tab:stair_dp_results} so sánh kết quả của STAIR5-v3 với STAIR Baseline và hai phiên bản STAIR5-v1, STAIR5-v2.
+
+\begin{table}[!htbp]
+    \centering
+    \caption{So sánh kết quả thực nghiệm STAIR5-v3 với Baseline, STAIR5-v1 và STAIR5-v2.}
+    \label{tab:stair_dp_results}
+    \scriptsize
+    \renewcommand{\arraystretch}{1.15}
+    \setlength{\tabcolsep}{3pt}
+
+    \resizebox{\linewidth}{!}{%
+    \begin{tabular}{llccccc}
+        \toprule
+        \rowcolor{gray!15}
+        \textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{Baseline} & \textbf{v1} & \textbf{v2} & \textbf{v3} & \textbf{$\Delta$ v3 vs BL} \\
+        \midrule
+
+        \multirow{4}{*}{\shortstack[l]{Baby\\(epoch 215)}}
+        & Recall@10 & \textbf{0.0674} & 0.0660 & 0.0659 & 0.0659 & $-2.23\%$ \\
+        & Recall@20 & \textbf{0.1042} & 0.1030 & 0.1029 & 0.1029 & $-1.25\%$ \\
+        & NDCG@10 & \textbf{0.0359} & 0.0352 & 0.0352 & 0.0352 & $-1.95\%$ \\
+        & NDCG@20 & \textbf{0.0454} & 0.0447 & 0.0447 & 0.0447 & $-1.54\%$ \\
+        \midrule
+
+        \multirow{4}{*}{\shortstack[l]{Sports\\(epoch 500)}}
+        & Recall@10 & 0.0743 & \textbf{0.0747} & 0.0744 & 0.0744 & $+0.13\%$ \\
+        & Recall@20 & 0.1111 & \textbf{0.1133} & 0.1129 & 0.1129 & $+1.62\%$ \\
+        & NDCG@10 & 0.0405 & \textbf{0.0407} & 0.0406 & 0.0406 & $+0.25\%$ \\
+        & NDCG@20 & 0.0500 & \textbf{0.0506} & 0.0505 & 0.0505 & $+1.00\%$ \\
+
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+\noindent\textcolor{lightblue}{\textbf{Kết quả trên Amazon Sports.}} STAIR5-v3 đạt Recall@20 bằng 0.1129 ($+1.62\%$ so với baseline) và NDCG@20 bằng 0.0505 ($+1.00\%$). Cả bốn chỉ số tương đương STAIR5-v2 ở độ chính xác bốn chữ số thập phân, nhưng vẫn thấp hơn STAIR5-v1.
+
+\noindent\textcolor{lightblue}{\textbf{Kết quả trên Amazon Baby.}} Checkpoint tốt nhất theo validation được ghi nhận tại epoch 215, với Recall@20 đạt 0.1029 ($-1.25\%$ so với baseline) và NDCG@20 đạt 0.0447 ($-1.54\%$). Các chỉ số của v3 trùng với v2 ở độ chính xác được báo cáo. Tại epoch 500, NDCG@20 đạt 0.0454, ngang mức baseline, nhưng đây không phải checkpoint được chọn theo tiêu chí validation.
+
+\noindent\textcolor{lightblue}{\textbf{Đánh giá ảnh hưởng của phép chiếu bảo toàn bậc.}} Kết quả cho thấy việc bổ sung ràng buộc bảo toàn bậc chưa tạo ra thay đổi đáng kể về chất lượng xếp hạng so với v2. Theo số liệu phân tích, chỉ khoảng $10\%$ số cạnh kNN có bằng chứng đồng tương tác, đồng thời mức sai khác tương đối giữa toán tử sau hiệu chỉnh và toán tử ban đầu rất nhỏ:
+
+\begin{equation}
+\frac{\lVert S^{*}-S_0\rVert_F}{\lVert S_0\rVert_F}\approx 0.0006.
+\end{equation}
+
+Điều này cho thấy phép hiệu chỉnh hiện tại chỉ tác động ở mức nhỏ lên toán tử đồ thị. Do tập cạnh ứng viên vẫn được giữ cố định, nhóm dự kiến khảo sát việc bổ sung các cạnh dựa trên đồng tương tác trực tiếp trong giai đoạn tiếp theo. Tuy nhiên, cần thực hiện thêm thí nghiệm ablation để xác định liệu giới hạn về hiệu năng chủ yếu đến từ tập cạnh ứng viên hay từ mức điều chỉnh trọng số.
+
+
+% ============================================================
+% CHI PHÍ TÍNH TOÁN VÀ BỘ NHỚ
+% ============================================================
+
+\subsubsection{Đánh giá chi phí tính toán và tiêu thụ bộ nhớ}
+
+STAIR5-v3 tiếp tục sử dụng cơ chế tiền xử lý ngoại tuyến để xây dựng toán tử đồ thị. Phép chiếu KL chỉ được thực hiện một lần trước huấn luyện, với thời gian xử lý 1.2 giây trên Baby và 3.8 giây trên Sports. Bảng~\ref{tab:stair_dp_hardware} tổng hợp mức sử dụng bộ nhớ tensor GPU và thời gian huấn luyện của mô hình.
+
+\begin{table}[!htbp]
+    \centering
+    \caption{Chi phí tính toán và bộ nhớ tensor GPU của STAIR5-v3.}
+    \label{tab:stair_dp_hardware}
+    \footnotesize
+    \renewcommand{\arraystretch}{1.15}
+    \setlength{\tabcolsep}{4pt}
+
+    \resizebox{\linewidth}{!}{%
+    \begin{tabular}{lcccc}
+        \toprule
+        \rowcolor{gray!15}
+        \textbf{Tập dữ liệu} & \textbf{VRAM tensor} & \textbf{Giây/epoch} & \textbf{Tổng thời gian} & \textbf{Tăng tốc so với v1} \\
+        \midrule
+        \textbf{Amazon Baby} & 141.0 MB & 2.05 & 17.94 phút & $8.03\times$ \\
+        \textbf{Amazon Sports} & 221.6 MB & 4.98 & 44.50 phút & $5.73\times$ \\
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+Thời gian trung bình mỗi epoch của STAIR5-v3 đạt 2.05 giây trên Baby và 4.98 giây trên Sports, tương ứng mức tăng tốc được báo cáo là $8.03\times$ và $5.73\times$ so với STAIR5-v1. Tổng thời gian huấn luyện 500 epoch lần lượt là 17.94 phút và 44.50 phút. Bộ nhớ tensor GPU được ghi nhận ở mức 141.0 MB trên Baby và 221.6 MB trên Sports, tương đương với STAIR5-v2. Các giá trị này phản ánh bộ nhớ tensor được phân bổ, không phải tổng mức sử dụng VRAM của hệ thống.
+
+\noindent\textcolor{lightblue}{\textbf{Nhận xét chung.}} STAIR5-v3 đáp ứng ràng buộc bảo toàn bậc nút với sai số tương đối không vượt quá $10^{-5}$, đồng thời duy trì chi phí huấn luyện gần với v2. Tuy nhiên, chất lượng xếp hạng chưa có cải thiện đáng kể so với phiên bản trước. Kết quả hiện tại cho thấy việc điều chỉnh trọng số trên tập cạnh kNN cố định có ảnh hưởng hạn chế đến biểu diễn cuối cùng. Trong giai đoạn tiếp theo, nhóm sẽ tập trung khảo sát mở rộng tập cạnh ứng viên bằng tín hiệu tương tác người dùng, đồng thời kiểm tra mức thay đổi toán tử và ảnh hưởng của từng thành phần đến chất lượng xếp hạng.
+
+\subsection{Kết quả thực nghiệm cải tiến 4: Neighborhood-enriched Contrastive Learning with Candidate Support Expansion (STAIR5-v4)}
+
+\subsubsection{Động lực kỹ thuật và kiến trúc đề xuất}
+
+Các phiên bản STAIR5-v2 và STAIR5-v3 tập trung điều chỉnh trọng số cạnh trên đồ thị kNN đa phương thức ban đầu. Tuy nhiên, kết quả thực nghiệm cho thấy mức cải thiện còn hạn chế do các phương pháp này không bổ sung liên kết mới vào đồ thị. Những cặp sản phẩm có quan hệ đồng tương tác nhưng không thuộc tập láng giềng kNN sẽ không được khai thác trong quá trình hiệu chỉnh.
+
+Để giải quyết hạn chế trên, nhóm phát triển STAIR5-v4 (Neighborhood-enriched Contrastive Learning with Candidate Support Expansion -- NLGCL-CSE). Phương pháp mở rộng tập cạnh ứng viên dựa trên hành vi đồng tương tác, kết hợp toán tử đồ thị mới với cơ chế học tương phản trên các biểu diễn trung gian. Mục tiêu là đánh giá khả năng cải thiện chất lượng xếp hạng khi bổ sung thông tin cộng tác ngoài đồ thị kNN ngữ nghĩa ban đầu.
+
+Các điều chỉnh chính gồm ba thành phần:
+
+\noindent\textcolor{lightblue}{\textbf{1. Mở rộng tập cạnh ứng viên dựa trên đồng tương tác}}
+
+Từ ma trận tương tác người dùng--sản phẩm $R$, nhóm xây dựng đồ thị cộng tác giữa các sản phẩm dựa trên số lần đồng tương tác:
+
+\begin{equation}
+c_{ij}=\sum_{u}R_{ui}R_{uj}.
+\end{equation}
+
+Để hạn chế các liên kết có ít bằng chứng, chỉ những cặp sản phẩm thỏa mãn $c_{ij}\geq c_{\min}=2$ mới được xem xét. Điểm tin cậy cạnh được tính bằng hệ số Ochiai kết hợp cơ chế hiệu chỉnh:
+
+\begin{equation}
+q_{ij}=\frac{c_{ij}}{c_{ij}+t}\cdot\frac{c_{ij}}{\sqrt{n_i n_j}},
+\qquad t=5.0,
+\end{equation}
+
+trong đó $n_i$ và $n_j$ lần lượt là số người dùng tương tác với sản phẩm $i$ và $j$. Sau bước tính điểm tin cậy, nhóm giữ lại tối đa $k_{\mathrm{CF}}=5$ láng giềng có điểm cao nhất cho mỗi sản phẩm để xây dựng đồ thị cộng tác thưa $W_{\mathrm{CF}}$. Toàn bộ quá trình sử dụng dữ liệu tương tác thuộc tập huấn luyện.
+
+\noindent\textcolor{lightblue}{\textbf{2. Kết hợp toán tử đồ thị cộng tác và đồ thị ngữ nghĩa}}
+
+Đồ thị cộng tác được chuẩn hóa đối xứng để tạo toán tử $S_{\mathrm{CF}}$. Đối với các sản phẩm không có cạnh cộng tác, nhóm bổ sung phần tử đường chéo nhằm duy trì thông tin tại nút:
+
+\begin{equation}
+\bar{S}_{\mathrm{CF}}
+=
+S_{\mathrm{CF}}
++
+\operatorname{diag}
+\left(
+\mathbb{1}[d_i^{\mathrm{CF}}=0]
+\right).
+\end{equation}
+
+Toán tử cuối cùng được xác định bằng phép pha trộn lồi giữa toán tử kNN ban đầu $S_0$ và toán tử cộng tác:
+
+\begin{equation}
+S_4=(1-\eta)S_0+\eta\bar{S}_{\mathrm{CF}},
+\qquad \eta=0.1.
+\end{equation}
+
+Với các ma trận trọng số đối xứng, không âm và được chuẩn hóa phù hợp, hai toán tử thành phần có chuẩn phổ không vượt quá 1. Khi đó, toán tử kết hợp cũng thỏa mãn:
+
+\begin{equation}
+\lVert S_4\rVert_2
+\leq
+(1-\eta)\lVert S_0\rVert_2
++
+\eta\lVert\bar{S}_{\mathrm{CF}}\rVert_2
+\leq 1.
+\end{equation}
+
+Việc kết hợp hai nguồn liên kết cho phép mô hình sử dụng đồng thời quan hệ ngữ nghĩa và tín hiệu cộng tác, trong khi vẫn kiểm soát mức thay đổi của toán tử đồ thị so với baseline.
+
+\noindent\textcolor{lightblue}{\textbf{3. Học tương phản trên biểu diễn trung gian}}
+
+STAIR5-v4 bổ sung hàm mất mát InfoNCE hai chiều giữa biểu diễn người dùng và sản phẩm từ các tầng trung gian $H^{(0)}$ và $H^{(1)}$ của Forward Stepwise Convolution (FSC). Nhóm sử dụng kỹ thuật Anchor Chunking để chia quá trình tính toán tương phản thành các khối nhỏ, qua đó giảm bộ nhớ trung gian khi xử lý batch lớn.
+
+Hàm mục tiêu kết hợp mất mát xếp hạng BPR và mất mát tương phản NLGCL:
+
+\begin{equation}
+\mathcal{L}_{\mathrm{total}}
+=
+\mathcal{L}_{\mathrm{BPR}}
++
+\lambda_{\mathrm{nlgcl}}\mathcal{L}_{\mathrm{nlgcl}},
+\qquad
+\lambda_{\mathrm{nlgcl}}=0.01.
+\end{equation}
+
+Phần mở rộng đồ thị được thực hiện trước huấn luyện, trong khi nhánh InfoNCE được tính trong quá trình tối ưu mô hình.
+
+% ============================================================
+% SƠ ĐỒ QUY TRÌNH STAIR5-v4
+% ============================================================
+
+\begin{figure}[!htbp]
+    \centering
+
+    \begin{tikzpicture}[
+        font=\scriptsize,
+        >=Stealth,
+        node distance=0.55cm,
+        inputbox/.style={
+            rectangle,
+            draw=blue!65!black,
+            fill=blue!5,
+            rounded corners=2pt,
+            text width=2.7cm,
+            minimum height=0.75cm,
+            align=center,
+            inner sep=3pt
+        },
+        processbox/.style={
+            rectangle,
+            draw=orange!75!black,
+            fill=orange!6,
+            rounded corners=2pt,
+            text width=6.0cm,
+            minimum height=0.75cm,
+            align=center,
+            inner sep=4pt
+        },
+        trainbox/.style={
+            rectangle,
+            draw=teal!65!black,
+            fill=teal!6,
+            rounded corners=2pt,
+            text width=6.0cm,
+            minimum height=0.75cm,
+            align=center,
+            inner sep=4pt
+        },
+        arr/.style={
+            -{Stealth[length=2mm]},
+            line width=0.7pt,
+            draw=gray!80!black
+        }
+    ]
+
+    % Dữ liệu đầu vào
+    \node[inputbox] (knn) at (-1.65,0) {Đồ thị kNN ngữ nghĩa $S_0$};
+    \node[inputbox] (interaction) at (1.65,0) {Dữ liệu tương tác huấn luyện $R$};
+
+    % Mở rộng đồ thị
+    \node[processbox,anchor=north] (cse) at (0,-1.2) {\textbf{Mở rộng tập cạnh ứng viên (CSE)}\\[2pt]Đồng tương tác, Ochiai và Top-$k_{\mathrm{CF}}$};
+
+    \node[processbox,below=of cse] (blend) {\textbf{Kết hợp toán tử đồ thị}\\[2pt]$S_4=(1-\eta)S_0+\eta\bar{S}_{\mathrm{CF}}$};
+
+    % Huấn luyện
+    \node[trainbox,below=of blend] (fsc) {\textbf{Forward Stepwise Convolution}\\[2pt]Biểu diễn trung gian $H^{(0)}$, $H^{(1)}$};
+
+    \node[trainbox,below=of fsc] (loss) {\textbf{Tối ưu BPR và InfoNCE}\\[2pt]$\mathcal{L}_{\mathrm{total}}=\mathcal{L}_{\mathrm{BPR}}+\lambda_{\mathrm{nlgcl}}\mathcal{L}_{\mathrm{nlgcl}}$};
+
+    % Luồng xử lý
+    \draw[arr] (knn.south) |- ([xshift=-1.1cm]cse.north);
+    \draw[arr] (interaction.south) |- ([xshift=1.1cm]cse.north);
+    \draw[arr] (cse.south) -- (blend.north);
+    \draw[arr] (blend.south) -- (fsc.north);
+    \draw[arr] (fsc.south) -- (loss.north);
+
+    \end{tikzpicture}
+
+    \caption{Quy trình xử lý của STAIR5-v4. Đồ thị cộng tác được xây dựng từ dữ liệu tương tác và kết hợp với đồ thị kNN ban đầu; mô hình sử dụng toán tử mới trong FSC và bổ sung hàm mất mát tương phản InfoNCE khi huấn luyện.}
+    \label{fig:stair_csgc_v4_architecture}
+\end{figure}
+
+
+% ============================================================
+% KẾT QUẢ THỰC NGHIỆM
+% ============================================================
+
+\subsubsection{Kết quả thực nghiệm trên ba tập dữ liệu}
+
+STAIR5-v4 được đánh giá trên ba tập dữ liệu Amazon Baby, Sports và Electronics, trong đó Electronics có gần 1.7 triệu tương tác. Bảng~\ref{tab:stair_cse_results} so sánh kết quả của phương pháp với STAIR Baseline, STAIR5-v1 và STAIR5-v3. Các giá trị được báo cáo tại checkpoint tốt nhất theo tiêu chí validation.
+
+\begin{table}[!htbp]
+    \centering
+    \caption{So sánh kết quả thực nghiệm STAIR5-v4 với Baseline, STAIR5-v1 và STAIR5-v3.}
+    \label{tab:stair_cse_results}
+    \scriptsize
+    \renewcommand{\arraystretch}{1.15}
+    \setlength{\tabcolsep}{3pt}
+
+    \resizebox{\linewidth}{!}{%
+    \begin{tabular}{llccccc}
+        \toprule
+        \rowcolor{gray!15}
+        \textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{Baseline} & \textbf{v1} & \textbf{v3} & \textbf{v4} & \textbf{$\Delta$ v4 vs BL} \\
+        \midrule
+
+        \multirow{4}{*}{\shortstack[l]{Baby\\(epoch 480)}}
+        & Recall@10 & 0.0674 & 0.0660 & \textbf{0.0678} & \textbf{0.0678} & $+0.59\%$ \\
+        & Recall@20 & 0.1042 & 0.1030 & 0.1030 & \textbf{0.1056} & $+1.34\%$ \\
+        & NDCG@10 & 0.0359 & 0.0352 & 0.0362 & \textbf{0.0364} & $+1.39\%$ \\
+        & NDCG@20 & 0.0454 & 0.0447 & 0.0452 & \textbf{0.0461} & $+1.54\%$ \\
+        \midrule
+
+        \multirow{4}{*}{\shortstack[l]{Sports\\(epoch 485)}}
+        & Recall@10 & 0.0743 & 0.0747 & 0.0744 & \textbf{0.0765} & $+2.96\%$ \\
+        & Recall@20 & 0.1111 & 0.1133 & 0.1129 & \textbf{0.1143} & $+2.88\%$ \\
+        & NDCG@10 & 0.0405 & 0.0407 & 0.0406 & \textbf{0.0419} & $+3.46\%$ \\
+        & NDCG@20 & 0.0500 & 0.0506 & 0.0505 & \textbf{0.0517} & $+3.40\%$ \\
+        \midrule
+
+        \multirow{4}{*}{\shortstack[l]{Electronics\\(epoch 495)}}
+        & Recall@10 & 0.0442 & 0.0435 & -- & \textbf{0.0458} & $+3.62\%$ \\
+        & Recall@20 & 0.0665 & 0.0666 & -- & \textbf{0.0678} & $+1.95\%$ \\
+        & NDCG@10 & 0.0246 & 0.0241 & -- & \textbf{0.0260} & $+5.69\%$ \\
+        & NDCG@20 & 0.0303 & 0.0301 & -- & \textbf{0.0316} & $+4.29\%$ \\
+
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+\noindent\textcolor{lightblue}{\textbf{Kết quả trên Amazon Baby.}} STAIR5-v4 đạt Recall@20 bằng 0.1056 ($+1.34\%$ so với baseline) và NDCG@20 bằng 0.0461 ($+1.54\%$). Cả bốn chỉ số đều đạt hoặc vượt các phiên bản đối chiếu. So với STAIR5-v3, mức cải thiện thể hiện rõ hơn ở Recall@20 và NDCG@20.
+
+\noindent\textcolor{lightblue}{\textbf{Kết quả trên Amazon Sports.}} Recall@20 đạt 0.1143 ($+2.88\%$) và NDCG@20 đạt 0.0517 ($+3.40\%$) so với baseline. Các chỉ số Recall@10 và NDCG@10 cũng tăng lần lượt $2.96\%$ và $3.46\%$. Kết quả này cao hơn các phiên bản v1 và v3 trong cùng bảng đối chiếu.
+
+\noindent\textcolor{lightblue}{\textbf{Kết quả trên Amazon Electronics.}} STAIR5-v4 đạt Recall@20 bằng 0.0678 ($+1.95\%$) và NDCG@20 bằng 0.0316 ($+4.29\%$). NDCG@10 đạt 0.0260, tăng $5.69\%$ so với baseline. Đây là tập dữ liệu có mức cải thiện NDCG@10 lớn nhất trong ba tập được thử nghiệm.
+
+\noindent\textcolor{lightblue}{\textbf{Phân tích tập cạnh mở rộng.}} Trên Electronics, đồ thị cộng tác có 168\,206 cạnh mới không thuộc đồ thị kNN ngữ nghĩa, chiếm $96.4\%$ tổng số cạnh CF. Hệ số Jaccard giữa hai tập cạnh đạt 0.0088, cho thấy mức độ giao nhau thấp giữa các liên kết ngữ nghĩa và liên kết đồng tương tác. Kết quả này phù hợp với giả thuyết rằng đồ thị kNN ban đầu chưa bao phủ đầy đủ quan hệ cộng tác giữa các sản phẩm.
+
+Nhìn chung, STAIR5-v4 cải thiện cả bốn chỉ số trên ba tập dữ liệu so với baseline. Tuy nhiên, vì phương pháp đồng thời bổ sung cạnh cộng tác và nhánh InfoNCE, kết quả hiện tại chưa xác định được mức đóng góp riêng của từng thành phần. Nhóm cần tiếp tục thực hiện thí nghiệm ablation để kiểm tra giả thuyết này.
+
+
+% ============================================================
+% CHI PHÍ TÍNH TOÁN VÀ BỘ NHỚ
+% ============================================================
+
+\subsubsection{Đánh giá chi phí tính toán và tiêu thụ bộ nhớ}
+
+Bên cạnh chất lượng xếp hạng, nhóm ghi nhận thời gian huấn luyện và mức phân bổ bộ nhớ tensor GPU của STAIR5-v4. Kết quả được tổng hợp trong Bảng~\ref{tab:stair_cse_hardware}.
+
+\begin{table}[!htbp]
+    \centering
+    \caption{Chi phí tính toán và bộ nhớ tensor GPU của STAIR5-v4.}
+    \label{tab:stair_cse_hardware}
+    \footnotesize
+    \renewcommand{\arraystretch}{1.15}
+    \setlength{\tabcolsep}{4pt}
+
+    \resizebox{\linewidth}{!}{%
+    \begin{tabular}{lcccc}
+        \toprule
+        \rowcolor{gray!15}
+        \textbf{Tập dữ liệu} & \textbf{VRAM tensor} & \textbf{Giây/epoch} & \textbf{Tổng thời gian (500 ep)} & \textbf{Giảm VRAM so với v1} \\
+        \midrule
+        \textbf{Amazon Baby} & 143.6 MB & 2.39 & 19.89 phút & $96.2\%$ \\
+        \textbf{Amazon Sports} & 218.5 MB & 5.06 & 42.21 phút & $96.0\%$ \\
+        \textbf{Amazon Electronics} & $\sim 680$ MB & 41.73 & 5.80 giờ & $94.2\%$ \\
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+STAIR5-v4 có thời gian huấn luyện trung bình 2.39 giây/epoch trên Baby, 5.06 giây/epoch trên Sports và 41.73 giây/epoch trên Electronics. Tổng thời gian cho 500 epoch lần lượt là 19.89 phút, 42.21 phút và 5.80 giờ. Trên Electronics, tổng thời gian giảm từ mức đối chiếu 18.5 giờ xuống 5.80 giờ, tương ứng tốc độ tăng khoảng $3.2\times$.
+
+Bộ nhớ tensor GPU được ghi nhận ở mức 143.6 MB trên Baby, 218.5 MB trên Sports và khoảng 680 MB trên Electronics. Theo số liệu đối chiếu, mức giảm so với v1 nằm trong khoảng $94.2\%$--$96.2\%$. Cần phân biệt các giá trị phân bổ bộ nhớ tensor này với tổng VRAM sử dụng bởi tiến trình, do hai phép đo không nhất thiết tương đương.
+
+\noindent\textcolor{lightblue}{\textbf{Nhận xét chung.}} STAIR5-v4 là phiên bản đầu tiên trong chuỗi thử nghiệm hiện tại cải thiện đồng thời Recall và NDCG trên cả ba tập dữ liệu so với STAIR Baseline. Phương pháp kết hợp đồ thị cộng tác với học tương phản trung gian cho kết quả tích cực, đặc biệt trên Electronics. Chi phí huấn luyện vẫn nằm trong khả năng xử lý của một GPU Tesla T4 theo các lần chạy đã ghi nhận. Giai đoạn tiếp theo, nhóm sẽ đánh giá riêng ảnh hưởng của Candidate Support Expansion và InfoNCE, đồng thời khảo sát các tham số $k_{\mathrm{CF}}$, $\eta$ và $\lambda_{\mathrm{nlgcl}}$ để xác định cấu hình phù hợp hơn.
+
+\subsection{Kết quả thực nghiệm cải tiến 5: Known-Positive Exclusion và Budgeted Path Expansion (STAIR5-v5.1/v5.2)}
+
+\subsubsection{Mục tiêu và phương pháp cải tiến}
+
+Sau khi STAIR5-v4 cải thiện kết quả trên cả ba tập dữ liệu, nhóm tiếp tục thử nghiệm hai phương án nhằm đánh giá khả năng cải thiện thêm chất lượng xếp hạng. Cả hai phiên bản đều kế thừa cơ chế mở rộng đồ thị cộng tác và học tương phản NLGCL của v4, nhưng tập trung vào hai thành phần khác nhau.
+
+\noindent\textcolor{lightblue}{\textbf{1. STAIR5-v5.1: Known-Positive Exclusion (KPE)}}
+
+Phiên bản v5.1 điều chỉnh hàm mất mát InfoNCE nhằm tránh sử dụng các sản phẩm mà người dùng đã tương tác làm mẫu âm. Trong quá trình huấn luyện theo mini-batch, một sản phẩm thuộc tập tương tác dương có thể xuất hiện ở vị trí mẫu âm của cặp khác, tạo ra tín hiệu tối ưu không phù hợp.
+
+Nhóm bổ sung mặt nạ loại trừ các mẫu dương đã biết:
+
+\begin{equation}
+M_{b,j}^{\mathrm{adm}}
+=
+\mathbb{1}\left[
+(u_b,j)\notin\mathcal{E}_{\mathrm{train}}
+\right].
+\end{equation}
+
+Các mẫu có $M_{b,j}^{\mathrm{adm}}=0$ được loại khỏi tập mẫu âm trong mẫu số InfoNCE, trong khi mẫu dương của cặp đang xét vẫn được giữ lại. Để giảm chi phí tra cứu, các cạnh tương tác được mã hóa thành khóa 64-bit và tìm kiếm song song trên GPU bằng \texttt{torch.searchsorted}. Ngoài thay đổi này, kiến trúc v5.1 giữ nguyên các thành phần của STAIR5-v4.
+
+\noindent\textcolor{lightblue}{\textbf{2. STAIR5-v5.2: Budgeted Path Expansion (BPE)}}
+
+Phiên bản v5.2 thử nghiệm mở rộng đồ thị cộng tác bằng các liên kết gián tiếp 2-hop, thay vì chỉ sử dụng các cặp sản phẩm có đồng tương tác trực tiếp. Từ đồ thị hành vi $W_1$, nhóm xây dựng đồ thị trung gian $T$ bằng cách giữ các cạnh tương hỗ thuộc top-$K_{\mathrm{seed}}=10$ láng giềng của mỗi nút.
+
+Điểm liên kết gián tiếp được tính từ số đường đi chung và trọng số của các cạnh trung gian:
+
+\begin{equation}
+\begin{aligned}
+m_{ij}
+&=
+\sum_k
+\mathbb{1}[T_{ik}>0]
+\mathbb{1}[T_{kj}>0],\\
+p_{ij}
+&=
+\sum_{k:d_k^T>0}
+\frac{T_{ik}T_{kj}}{d_k^T},\\
+a_{ij}
+&=
+\frac{m_{ij}}{m_{ij}+t_{\mathrm{path}}}\,p_{ij},
+\qquad t_{\mathrm{path}}=1.0.
+\end{aligned}
+\end{equation}
+
+Các cạnh đã tồn tại trong đồ thị hành vi, đồ thị ngữ nghĩa và các self-loop được loại bỏ. Để kiểm soát số cạnh bổ sung, mỗi nút được thêm tối đa $k_{\mathrm{add}}=3$ láng giềng, tổng số cạnh mới không vượt quá $25\%$ số cạnh của $W_1$. Trọng số cạnh mới được cân chỉnh theo trung vị và giới hạn khối lượng bổ sung tại mỗi nút với hệ số $\nu=0.5$.
+
+Toán tử đồ thị sau mở rộng được xác định:
+
+\begin{equation}
+S_{5.2}
+=
+(1-\eta)S_0+\eta S_{\star},
+\qquad
+S_{\star}
+=
+\operatorname{SymNormIso}
+\left(W_1+W_{\mathrm{add}}\right),
+\quad \eta=0.1.
+\end{equation}
+
+Nhánh BPR và NLGCL tiếp tục được giữ nguyên như STAIR5-v4. Do hai cải tiến chỉ điều chỉnh thành phần riêng lẻ của phiên bản trước, nhóm không thay đổi kiến trúc tổng thể của mô hình.
+
+% ============================================================
+% KẾT QUẢ THỰC NGHIỆM
+% ============================================================
+
+\subsubsection{Kết quả thực nghiệm}
+
+STAIR5-v5.1 được đánh giá trên Amazon Baby và Sports, trong khi v5.2 được thử nghiệm trên cả ba tập dữ liệu với tối đa 500 epoch. Bảng~\ref{tab:stair_v5_comparison} tổng hợp kết quả Recall@20 và NDCG@20, là hai chỉ số chính để đánh giá sự thay đổi so với STAIR5-v4.
+
+\begin{table}[!htbp]
+    \centering
+    \caption{So sánh kết quả STAIR5-v5.1 và v5.2 với Baseline và STAIR5-v4 trên ba tập dữ liệu.}
+    \label{tab:stair_v5_comparison}
+    \footnotesize
+    \renewcommand{\arraystretch}{1.15}
+    \setlength{\tabcolsep}{4pt}
+
+    \resizebox{\linewidth}{!}{%
+    \begin{tabular}{llcccc}
+        \toprule
+        \rowcolor{gray!15}
+        \textbf{Tập dữ liệu}
+        & \textbf{Chỉ số}
+        & \textbf{Baseline}
+        & \textbf{v4}
+        & \textbf{v5.1 (KPE)}
+        & \textbf{v5.2 (BPE)} \\
+        \midrule
+
+        \multirow{4}{*}{\textbf{Baby}}
+        & Recall@10 & 0.0674 & \textbf{0.0678} & 0.0676 & 0.0670 \\
+        & Recall@20 & 0.1042 & \textbf{0.1056} & 0.1054 & 0.1040 \\
+        & NDCG@10   & 0.0359 & \textbf{0.0364} & \textbf{0.0364} & 0.0362 \\
+        & NDCG@20   & 0.0454 & \textbf{0.0461} & \textbf{0.0461} & 0.0457 \\
+        \midrule
+
+        \multirow{4}{*}{\textbf{Sports}}
+        & Recall@10 & 0.0743 & \textbf{0.0765} & 0.0758 & 0.0756 \\
+        & Recall@20 & 0.1111 & \textbf{0.1143} & 0.1136 & 0.1135 \\
+        & NDCG@10   & 0.0405 & \textbf{0.0419} & 0.0418 & 0.0417 \\
+        & NDCG@20   & 0.0500 & \textbf{0.0517} & 0.0516 & 0.0515 \\
+        \midrule
+
+        \multirow{4}{*}{\textbf{Electronics}}
+        & Recall@10 & 0.0442 & 0.0458 & -- & \textbf{0.0460} \\
+        & Recall@20 & 0.0665 & \textbf{0.0678} & -- & \textbf{0.0678} \\
+        & NDCG@10   & 0.0246 & \textbf{0.0260} & -- & \textbf{0.0260} \\
+        & NDCG@20   & 0.0303 & \textbf{0.0316} & -- & \textbf{0.0316} \\
+
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+\noindent\textcolor{lightblue}{\textbf{Đánh giá STAIR5-v5.1.}} Kết quả KPE gần tương đương v4 nhưng không mang lại cải thiện bổ sung. Trên Baby, NDCG@20 giữ ở mức 0.0461, trong khi Recall@20 giảm từ 0.1056 xuống 0.1054. Trên Sports, Recall@20 và NDCG@20 lần lượt giảm từ 0.1143 và 0.0517 xuống 0.1136 và 0.0516. Một nguyên nhân có thể là tần suất va chạm mẫu dương thấp trên các tập tương tác thưa, khiến việc loại trừ mẫu dương đã biết ít ảnh hưởng đến gradient. Giả thuyết này cần được kiểm tra thêm bằng thống kê tỷ lệ va chạm thực tế.
+
+\noindent\textcolor{lightblue}{\textbf{Đánh giá STAIR5-v5.2.}} Việc bổ sung các cạnh 2-hop không cải thiện kết quả so với v4. NDCG@20 giảm $0.87\%$ trên Baby và $0.39\%$ trên Sports; trên Electronics, chỉ số này giữ nguyên ở mức 0.0316. Số cạnh bổ sung lần lượt khoảng 4.9 nghìn, 10.8 nghìn và 30.1 nghìn trên Baby, Sports và Electronics. Kết quả cho thấy các liên kết gián tiếp chưa cung cấp lợi ích rõ ràng. Nguyên nhân có thể liên quan đến nhiễu từ quan hệ 2-hop hoặc sự trùng lặp thông tin với cơ chế làm mịn BSC, vốn đã sử dụng đa thức Neumann bậc $L=3$.
+
+% ============================================================
+% CHI PHÍ TÍNH TOÁN
+% ============================================================
+
+\subsubsection{Chi phí tính toán và kết luận}
+
+Bảng~\ref{tab:stair_v5_hardware} trình bày thời gian huấn luyện và bộ nhớ tensor GPU của hai phiên bản. Đối với v5.2, thời gian tiền xử lý ngoại tuyến được ghi nhận riêng.
+
+\begin{table}[!htbp]
+    \centering
+    \caption{Chi phí thực thi của STAIR5-v5.1 và v5.2.}
+    \label{tab:stair_v5_hardware}
+    \footnotesize
+    \renewcommand{\arraystretch}{1.15}
+    \setlength{\tabcolsep}{4pt}
+
+    \resizebox{\linewidth}{!}{%
+    \begin{tabular}{llccc}
+        \toprule
+        \rowcolor{gray!15}
+        \textbf{Phiên bản} & \textbf{Tập dữ liệu} & \textbf{VRAM tensor} & \textbf{Thời gian 500 epoch} & \textbf{Tiền xử lý BPE} \\
+        \midrule
+        \multirow{2}{*}{v5.1 (KPE)}
+        & Baby & 168.2 MB & 22.66 phút & -- \\
+        & Sports & 238.1 MB & 51.84 phút & -- \\
+        \midrule
+        \multirow{3}{*}{v5.2 (BPE)}
+        & Baby & 143.33 MB & 20.37 phút & 0.64 giây \\
+        & Sports & 216.97 MB & 43.17 phút & 1.54 giây \\
+        & Electronics & 790.52 MB & 5.57 giờ & 5.27 giây \\
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+STAIR5-v5.1 làm tăng bộ nhớ tensor khoảng 20--30 MB và kéo dài thời gian huấn luyện so với baseline, nhưng không cải thiện chất lượng xếp hạng so với v4. Đối với v5.2, thời gian xây dựng cạnh 2-hop tương đối nhỏ, chỉ 5.27 giây trên Electronics, trong khi thời gian huấn luyện và bộ nhớ GPU vẫn gần với v4.
+
+\noindent\textcolor{lightblue}{\textbf{Kết luận.}} Hai phiên bản STAIR5-v5.1 và v5.2 chưa mang lại cải thiện đáng kể so với STAIR5-v4. KPE làm tăng chi phí tính toán nhưng hiệu quả hạn chế, còn BPE bổ sung các liên kết gián tiếp mà chưa cải thiện chất lượng xếp hạng. Do đó, nhóm không tiếp tục phát triển hai phương án này và giữ STAIR5-v4 làm cấu hình tham chiếu cho các thử nghiệm tiếp theo.
+
+\subsection{Kết quả thực nghiệm cải tiến 6: Behavior-Conditioned Semantic Retention (STAIR5-v6 / NLGCL-BCSR)}
+
+\subsubsection{Động lực kỹ thuật và kiến trúc đề xuất}
+
+Kết quả thực nghiệm STAIR5-v5.2 cho thấy việc bổ sung các cạnh hành vi gián tiếp 2-hop chưa cải thiện chất lượng xếp hạng so với STAIR5-v4. Do đó, ở phiên bản STAIR5-v6, nhóm chuyển sang điều chỉnh trọng số các cạnh ngữ nghĩa hiện có thay vì tiếp tục mở rộng tập cạnh. Phương pháp Behavior-Conditioned Semantic Retention (BCSR) sử dụng tín hiệu đồng tương tác để giảm trọng số những cạnh có mức hỗ trợ hành vi thấp, đồng thời bảo toàn tổng trọng số cạnh của từng nút.
+
+Phiên bản này kế thừa đồ thị cộng tác và nhánh học tương phản NLGCL của STAIR5-v4, chỉ thay đổi cách xây dựng toán tử đồ thị phục vụ quá trình làm mịn BSC. Các điều chỉnh chính gồm ba thành phần:
+
+\noindent\textcolor{lightblue}{\textbf{1. Ước lượng mức thiếu hụt bằng chứng hành vi}}
+
+Với mỗi cạnh $(i,j)$ trong đồ thị ngữ nghĩa $W_0$, nhóm ước lượng số lần đồng tương tác kỳ vọng theo mô hình null dựa trên số lượt tương tác của hai sản phẩm:
+
+\begin{equation}
+e_{ij}=\frac{n_i n_j}{M},
+\end{equation}
+
+trong đó $n_i$, $n_j$ là số lượt tương tác của hai sản phẩm và $M$ là tổng số tương tác trong tập huấn luyện. Mức thiếu hụt hành vi được xác định bằng:
+
+\begin{equation}
+h_{ij}=\left[1-\frac{c_{ij}}{e_{ij}}\right]_{+},
+\end{equation}
+
+với $c_{ij}$ là số lần đồng tương tác thực tế và $[x]_{+}=\max(x,0)$. Điểm $h_{ij}$ phản ánh mức độ đồng tương tác thực tế thấp hơn giá trị kỳ vọng theo mô hình null.
+
+\noindent\textcolor{lightblue}{\textbf{2. Điều chỉnh trọng số cạnh và bảo toàn bậc nút}}
+
+Để hạn chế tác động lên các sản phẩm có ít tương tác, nhóm áp dụng hệ số hiệu chỉnh theo mức kỳ vọng $e_{ij}$:
+
+\begin{equation}
+r_{ij}=\frac{e_{ij}}{e_{ij}+t_{\mathrm{rel}}},
+\qquad
+a_{ij}=\theta r_{ij}h_{ij},
+\end{equation}
+
+với $\theta=0.25$ và $t_{\mathrm{rel}}=5.0$. Trọng số bị giảm trên mỗi cạnh được tính bằng $A_{ij}=W_{0,ij}a_{ij}$. Phần trọng số này được chuyển về đường chéo chính:
+
+\begin{equation}
+m_i=\sum_j A_{ij},
+\qquad
+W_R=W_0-A+\operatorname{diag}(m).
+\end{equation}
+
+Phép hiệu chỉnh giữ nguyên tổng trọng số của mỗi hàng, tức $\sum_j W_{R,ij}=d_i^0$. Đối với đồ thị vô hướng có trọng số đối xứng, phương pháp đồng thời duy trì tính đối xứng của ma trận sau điều chỉnh.
+
+\noindent\textcolor{lightblue}{\textbf{3. Xây dựng toán tử đồ thị và huấn luyện}}
+
+Ma trận $W_R$ được chuẩn hóa theo ma trận bậc ban đầu $D_0$ và kết hợp với toán tử đồ thị cộng tác $S_{\mathrm{CF}}$:
+
+\begin{equation}
+S_R=D_0^{-1/2}W_RD_0^{-1/2},
+\qquad
+S_6=(1-\eta)S_R+\eta S_{\mathrm{CF}},
+\quad \eta=0.1.
+\end{equation}
+
+Với giả thiết các ma trận trọng số thành phần đối xứng, không âm và được chuẩn hóa phù hợp, toán tử kết hợp thỏa mãn $\lVert S_6\rVert_2\leq 1$. Bước xây dựng $S_6$ được thực hiện ngoại tuyến; quá trình huấn luyện tiếp tục sử dụng BPR, NLGCL InfoNCE và bộ làm mịn BSC như phiên bản v4.
+
+% ============================================================
+% SƠ ĐỒ QUY TRÌNH STAIR5-v6
+% ============================================================
+
+\begin{figure}[!htbp]
+    \centering
+    \begin{tikzpicture}[
+        font=\scriptsize,
+        >=Stealth,
+        node distance=0.55cm,
+        inputbox/.style={
+            rectangle,
+            draw=blue!65!black,
+            fill=blue!5,
+            rounded corners=2pt,
+            text width=2.7cm,
+            minimum height=0.75cm,
+            align=center,
+            inner sep=3pt
+        },
+        processbox/.style={
+            rectangle,
+            draw=orange!75!black,
+            fill=orange!6,
+            rounded corners=2pt,
+            text width=6.0cm,
+            minimum height=0.75cm,
+            align=center,
+            inner sep=4pt
+        },
+        trainbox/.style={
+            rectangle,
+            draw=teal!65!black,
+            fill=teal!6,
+            rounded corners=2pt,
+            text width=6.0cm,
+            minimum height=0.75cm,
+            align=center,
+            inner sep=4pt
+        },
+        arr/.style={
+            -{Stealth[length=2mm]},
+            line width=0.7pt,
+            draw=gray!80!black
+        }
+    ]
+
+    % Dữ liệu đầu vào
+    \node[inputbox] (semantic) at (-1.65,0) {Đồ thị ngữ nghĩa $W_0$};
+    \node[inputbox] (interaction) at (1.65,0) {Dữ liệu tương tác huấn luyện $R$};
+
+    % Các bước xử lý ngoại tuyến
+    \node[processbox,anchor=north] (deficit) at (0,-1.2) {\textbf{Ước lượng mức thiếu hụt hành vi}\\[2pt]Tính kỳ vọng $e_{ij}$ và điểm thiếu hụt $h_{ij}$};
+
+    \node[processbox,below=of deficit] (retention) {\textbf{Điều chỉnh trọng số và bảo toàn bậc}\\[2pt]$W_R=W_0-A+\operatorname{diag}(m)$};
+
+    \node[processbox,below=of retention] (operator) {\textbf{Kết hợp toán tử đồ thị}\\[2pt]$S_6=(1-\eta)S_R+\eta S_{\mathrm{CF}}$};
+
+    % Huấn luyện
+    \node[trainbox,below=of operator] (training) {\textbf{Huấn luyện STAIR5-v6}\\[2pt]BPR, NLGCL InfoNCE và BSC với toán tử $S_6$};
+
+    % Luồng xử lý
+    \draw[arr] (semantic.south) |- ([xshift=-1.1cm]deficit.north);
+    \draw[arr] (interaction.south) |- ([xshift=1.1cm]deficit.north);
+    \draw[arr] (deficit.south) -- (retention.north);
+    \draw[arr] (retention.south) -- (operator.north);
+    \draw[arr] (operator.south) -- (training.north);
+
+    \end{tikzpicture}
+
+    \caption{Quy trình xử lý của STAIR5-v6 (NLGCL-BCSR). Trọng số các cạnh ngữ nghĩa được hiệu chỉnh theo bằng chứng hành vi và bù vào đường chéo để bảo toàn bậc nút; toán tử sau hiệu chỉnh được sử dụng trong quá trình huấn luyện STAIR.}
+    \label{fig:stair_v6_architecture}
+\end{figure}
+
+
+% ============================================================
+% KẾT QUẢ THỰC NGHIỆM
+% ============================================================
+
+\subsubsection{Kết quả thực nghiệm trên ba tập dữ liệu}
+
+STAIR5-v6 được huấn luyện tối đa 500 epoch trên ba tập dữ liệu Amazon Baby, Sports và Electronics, sử dụng GPU Tesla T4 (16 GB). Bảng~\ref{tab:stair_v6_results} so sánh kết quả của v6 với STAIR Baseline và STAIR5-v4. Các chỉ số được ghi nhận tại checkpoint được chọn theo validation.
+
+\begin{table}[!htbp]
+    \centering
+    \caption{So sánh kết quả thực nghiệm STAIR5-v6 với Baseline và STAIR5-v4.}
+    \label{tab:stair_v6_results}
+    \scriptsize
+    \renewcommand{\arraystretch}{1.15}
+    \setlength{\tabcolsep}{3pt}
+
+    \resizebox{\linewidth}{!}{%
+    \begin{tabular}{llccccc}
+        \toprule
+        \rowcolor{gray!15}
+        \textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{Baseline} & \textbf{v4} & \textbf{v6} & \textbf{$\Delta$ vs BL} & \textbf{$\Delta$ vs v4} \\
+        \midrule
+
+        \multirow{4}{*}{\shortstack[l]{\textbf{Baby}\\(epoch 480)}}
+        & Recall@10 & 0.0674 & \textbf{0.0678} & 0.0677 & $+0.46\%$ & $-0.13\%$ \\
+        & Recall@20 & 0.1042 & \textbf{0.1056} & \textbf{0.1056} & $+1.34\%$ & $0.00\%$ \\
+        & NDCG@10 & 0.0359 & \textbf{0.0364} & \textbf{0.0364} & $+1.39\%$ & $0.00\%$ \\
+        & NDCG@20 & 0.0454 & \textbf{0.0461} & \textbf{0.0461} & $+1.59\%$ & $+0.04\%$ \\
+        \midrule
+
+        \multirow{4}{*}{\shortstack[l]{\textbf{Sports}\\(epoch 485)}}
+        & Recall@10 & 0.0743 & \textbf{0.0765} & \textbf{0.0765} & $+2.96\%$ & $0.00\%$ \\
+        & Recall@20 & 0.1111 & \textbf{0.1143} & \textbf{0.1143} & $+2.84\%$ & $-0.04\%$ \\
+        & NDCG@10 & 0.0405 & \textbf{0.0419} & \textbf{0.0419} & $+3.56\%$ & $+0.10\%$ \\
+        & NDCG@20 & 0.0500 & \textbf{0.0517} & 0.0516 & $+3.32\%$ & $-0.08\%$ \\
+        \midrule
+
+        \multirow{4}{*}{\shortstack[l]{\textbf{Electronics}\\(epoch 440)}}
+        & Recall@10 & 0.0442 & \textbf{0.0458} & \textbf{0.0458} & $+3.71\%$ & $+0.09\%$ \\
+        & Recall@20 & 0.0665 & 0.0678 & \textbf{0.0681} & $+2.45\%$ & $+0.49\%$ \\
+        & NDCG@10 & 0.0246 & \textbf{0.0260} & 0.0259 & $+5.28\%$ & $-0.38\%$ \\
+        & NDCG@20 & 0.0303 & 0.0316 & \textbf{0.0317} & $+4.55\%$ & $+0.25\%$ \\
+
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+\noindent\textcolor{lightblue}{\textbf{Kết quả trên Amazon Baby.}} STAIR5-v6 đạt Recall@20 bằng 0.1056 và NDCG@20 bằng 0.0461, tương đương STAIR5-v4 ở độ chính xác bốn chữ số thập phân. Recall@10 giảm nhẹ từ 0.0678 xuống 0.0677, trong khi NDCG@10 giữ nguyên ở mức 0.0364. Nhìn chung, cơ chế BCSR chưa tạo ra khác biệt rõ ràng trên tập Baby.
+
+\noindent\textcolor{lightblue}{\textbf{Kết quả trên Amazon Sports.}} Recall@20 đạt 0.1143, tương đương v4, trong khi NDCG@20 giảm nhẹ từ 0.0517 xuống 0.0516. Các chỉ số Recall@10 và NDCG@10 gần như không thay đổi. Kết quả cho thấy việc hiệu chỉnh trọng số cạnh ngữ nghĩa chưa cải thiện đáng kể chất lượng xếp hạng trên Sports.
+
+\noindent\textcolor{lightblue}{\textbf{Kết quả trên Amazon Electronics.}} STAIR5-v6 đạt Recall@20 bằng 0.0681 ($+2.45\%$ so với baseline và $+0.49\%$ so với v4) và NDCG@20 bằng 0.0317 ($+4.55\%$ so với baseline và $+0.25\%$ so với v4). Tuy nhiên, NDCG@10 giảm từ 0.0260 xuống 0.0259. Như vậy, v6 cải thiện nhẹ Recall@20 và NDCG@20 trên Electronics, nhưng chưa có cải thiện đồng đều ở tất cả các chỉ số.
+
+\noindent\textcolor{lightblue}{\textbf{Phân tích ảnh hưởng của BCSR.}} Theo thống kê của quá trình hiệu chỉnh, hệ số co thắt $r_{ij}$ thường có giá trị nhỏ, khoảng $10^{-3}$, do mức kỳ vọng đồng tương tác giữa các sản phẩm tương đối thấp. Tổng khối lượng trọng số được điều chỉnh chỉ chiếm khoảng $0.02\%$--$0.06\%$ khối lượng đồ thị. Vì vậy, toán tử $S_6$ chỉ khác biệt nhỏ so với toán tử của v4, phù hợp với kết quả thực nghiệm gần tương đương giữa hai phiên bản.
+
+Kết quả hiện tại cho thấy cơ chế BCSR duy trì chất lượng xếp hạng của v4 và cải thiện nhẹ một số chỉ số trên Electronics. Tuy nhiên, mức thay đổi nhỏ nên chưa đủ cơ sở kết luận phương pháp mang lại lợi ích nhất quán. Cần tiếp tục đánh giá trên nhiều lần chạy và khảo sát các hệ số hiệu chỉnh trước khi lựa chọn cấu hình cuối cùng.
+
+
+% ============================================================
+% CHI PHÍ TÍNH TOÁN VÀ BỘ NHỚ
+% ============================================================
+
+\subsubsection{Đánh giá chi phí tính toán và tiêu thụ bộ nhớ}
+
+Bảng~\ref{tab:stair_bcsr_hardware} so sánh chi phí tính toán của STAIR5-v6 với STAIR Baseline và STAIR5-v4 trên ba tập dữ liệu. Số liệu Baseline được tham chiếu từ bảng kết quả thực nghiệm của STAIR gốc, trong khi thời gian huấn luyện và bộ nhớ tensor của v4, v6 được ghi nhận từ các lần chạy thực nghiệm.
+
+\begin{table}[!htbp]
+    \centering
+    \caption{So sánh thời gian huấn luyện và bộ nhớ GPU của STAIR Baseline, STAIR5-v4 và STAIR5-v6.}
+    \label{tab:stair_bcsr_hardware}
+    \footnotesize
+    \renewcommand{\arraystretch}{1.15}
+    \setlength{\tabcolsep}{4pt}
+
+    \resizebox{\linewidth}{!}{%
+    \begin{tabular}{llccc}
+        \toprule
+        \rowcolor{gray!15}
+        \textbf{Chỉ số} & \textbf{Phiên bản} & \textbf{Baby} & \textbf{Sports} & \textbf{Electronics} \\
+        \midrule
+
+        \multirow{3}{*}{\shortstack[l]{Thời gian\\(giây/epoch)}}
+        & STAIR Baseline & 1.45 & 2.65 & 10.23 \\
+        & STAIR5-v4 & 2.39 & 5.06 & 41.73 \\
+        & STAIR5-v6 & 3.06 & 6.17 & 42.84 \\
+        \midrule
+
+        \multirow{3}{*}{\shortstack[l]{Tổng thời gian\\(500 epoch)}}
+        & STAIR Baseline & $\sim$12.08 phút & $\sim$22.08 phút & $\sim$1.42 giờ \\
+        & STAIR5-v4 & 19.89 phút & 42.21 phút & 5.80 giờ \\
+        & STAIR5-v6 & 25.47 phút & 51.38 phút & 5.95 giờ \\
+        \midrule
+
+        \multirow{3}{*}{\shortstack[l]{Bộ nhớ GPU\\(MB)}}
+        & STAIR Baseline & 490 & 696 & 1\,738 \\
+        & STAIR5-v4 & 143.60 & 218.50 & $\sim$680 \\
+        & STAIR5-v6 & 144.23 & 218.62 & 800.12 \\
+        \midrule
+
+        \multirow{1}{*}{\shortstack[l]{Tiền xử lý\\(giây)}}
+        & STAIR5-v6 & 0.76 & 1.53 & 7.45 \\
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+\noindent\textcolor{lightblue}{\textbf{So sánh thời gian huấn luyện.}} Theo số liệu tham chiếu, STAIR Baseline có thời gian trung bình 1.45, 2.65 và 10.23 giây/epoch trên Baby, Sports và Electronics. STAIR5-v6 cần lần lượt khoảng 3.06, 6.17 và 42.84 giây/epoch, tương ứng mức tăng khoảng $2.11\times$, $2.33\times$ và $4.19\times$ so với Baseline. So với v4, thời gian huấn luyện của v6 tiếp tục tăng, trong khi mức cải thiện chất lượng xếp hạng còn hạn chế.
+
+\noindent\textcolor{lightblue}{\textbf{So sánh bộ nhớ GPU.}} STAIR Baseline ghi nhận mức sử dụng bộ nhớ GPU là 490 MB, 696 MB và 1\,738 MB trên ba tập dữ liệu. Trong khi đó, bộ nhớ tensor được phân bổ của STAIR5-v6 lần lượt là 144.23 MB, 218.62 MB và 800.12 MB. Tuy nhiên, số liệu Baseline và các phiên bản cải tiến sử dụng cách ghi nhận bộ nhớ khác nhau, do đó chưa thể kết luận mức giảm VRAM thực tế từ các giá trị này. Việc so sánh chính xác cần được thực hiện bằng cùng một phương pháp đo, chẳng hạn bộ nhớ GPU đỉnh của toàn bộ tiến trình.
+
+\noindent\textcolor{lightblue}{\textbf{Nhận xét chung.}} STAIR5-v6 có chi phí huấn luyện cao hơn Baseline và v4, chủ yếu do các thành phần học tương phản và xử lý đồ thị bổ sung. Mặc dù v6 cải thiện nhẹ Recall@20 và NDCG@20 trên Electronics, mức tăng chưa đủ rõ ràng để khẳng định lợi ích so với chi phí tính toán phát sinh. Do đó, STAIR5-v4 vẫn là cấu hình tham chiếu phù hợp để đánh giá các cải tiến tiếp theo.
+\clearpage
