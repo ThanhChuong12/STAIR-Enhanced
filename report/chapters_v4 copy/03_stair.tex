@@ -4,7 +4,7 @@
 
 \subsubsection{Động lực kỹ thuật và kiến trúc đề xuất}
 
-Trong giai đoạn này, nhóm thử nghiệm bổ sung thành phần điều chuẩn tương phản trong không gian Lorentz vào mô hình STAIR. Mục tiêu là khảo sát khả năng khai thác cấu trúc phân cấp của đồ thị tương tác người dùng--sản phẩm, vốn có thể khó biểu diễn đầy đủ bằng khoảng cách Euclidean. Phiên bản STAIR-LHC v1 ánh xạ các biểu diễn ẩn lên siêu mặt Lorentz có độ cong âm $-\kappa$ ($\kappa>0$). Nhánh BPR và phép tính điểm dự đoán vẫn sử dụng biểu diễn Euclidean; nhánh Lorentz chỉ được dùng để tính mất mát tương phản InfoNCE bổ trợ.
+Trong giai đoạn này, nhóm thử nghiệm bổ sung thành phần điều chuẩn tương phản trong không gian Lorentz~\cite{nickel2018learning,chami2019hyperbolic} vào mô hình STAIR~\cite{xu2025stair}. Mục tiêu là khảo sát khả năng khai thác cấu trúc phân cấp của đồ thị tương tác người dùng--sản phẩm, vốn có thể khó biểu diễn đầy đủ bằng khoảng cách Euclidean. Phiên bản STAIR-LHC v1 ánh xạ các biểu diễn ẩn lên siêu mặt Lorentz có độ cong âm $-\kappa$ ($\kappa>0$), vận dụng cơ chế học tương phản đa tầng gọn nhẹ~\cite{yu2023xsimgcl}. Nhánh BPR và phép tính điểm dự đoán vẫn sử dụng biểu diễn Euclidean; nhánh Lorentz chỉ được dùng để tính mất mát tương phản InfoNCE bổ trợ.
 
 Các điều chỉnh kỹ thuật được triển khai gồm bốn thành phần sau:
 
@@ -43,7 +43,8 @@ Mẫu số được chặn dưới tại 0.05 để tránh khuếch đại quá 
 
 \noindent\textcolor{lightblue}{\textbf{3. Ánh xạ Lorentz và giới hạn bán kính}}
 
-Trước khi áp dụng ánh xạ mũ Lorentz, nhóm giới hạn chuẩn vector Euclidean $a$ với bán kính $R=2.0$ bằng hàm $\tanh$. Bước này nhằm hạn chế giá trị đầu vào của $\cosh$ và $\sinh$, từ đó giảm rủi ro mất ổn định số:
+Trước khi áp dụng ánh xạ mũ Lorentz, nhóm giới hạn chuẩn vector Euclidean $a$ với bán kính $R=2.0$ bằng hàm $\tanh$. Bước này nhằm hạn chế giá trị đầu vào của $\cosh$ và $\sinh$, từ đó giảm rủi ro mất ổn định số~\cite{mishne2023numerical}:
+
 
 \begin{equation}
 v
@@ -513,7 +514,7 @@ phát sinh trong mỗi epoch.
 
 Đối với mỗi cạnh $(i,j)$ trong đồ thị kNN,
 nhóm sử dụng số lần đồng tương tác $n_{ij}$
-để ước lượng mức độ liên quan giữa hai sản phẩm.
+để ước lượng mức độ liên quan giữa hai sản phẩm, tương tự nguyên lý đánh giá độ tin cậy cạnh từ hành vi người dùng~\cite{qi2025even}.
 Tín hiệu đồng tương tác được chuẩn hóa theo hệ số Ochiai:
 
 \begin{equation}
@@ -954,7 +955,7 @@ và kiểm tra tính ổn định qua nhiều lần chạy.
 
 Trong phiên bản STAIR5-v2, nhóm đã điều chỉnh trọng số cạnh của đồ thị kNN đa phương thức dựa trên bằng chứng đồng tương tác giữa các sản phẩm. Phương pháp này cải thiện kết quả trên Amazon Sports và giảm đáng kể chi phí huấn luyện so với STAIR5-v1. Tuy nhiên, phép cập nhật $W_{ij}^{+}=W_{ij}^{0}(1+a q_{ij})$ làm thay đổi tổng trọng số cạnh tại mỗi nút ($d_i^{+}\neq d_i^{0}$), dẫn đến thay đổi ma trận bậc và toán tử chuẩn hóa đồ thị.
 
-Để kiểm soát ảnh hưởng này, nhóm phát triển STAIR5-v3 (Degree-Preserving Preference-Compatible Backward Stepwise Convolution), bổ sung phép chiếu Kullback--Leibler (KL) nhằm điều chỉnh trọng số cạnh trong khi bảo toàn bậc nút ban đầu. Phương pháp giữ nguyên tập cạnh kNN và thực hiện toàn bộ quá trình hiệu chỉnh ở giai đoạn tiền xử lý, trước khi huấn luyện mô hình.
+Để kiểm soát ảnh hưởng này, nhóm phát triển STAIR5-v3 (Degree-Preserving Preference-Compatible Backward Stepwise Convolution), bổ sung phép chiếu Kullback--Leibler (KL) dựa trên kỹ thuật cân bằng ma trận bảo toàn bậc nút (matrix scaling)~\cite{idel2016matrix} nhằm điều chỉnh trọng số cạnh trong khi bảo toàn bậc nút ban đầu. Phương pháp giữ nguyên tập cạnh kNN và thực hiện toàn bộ quá trình hiệu chỉnh ở giai đoạn tiền xử lý, trước khi huấn luyện mô hình.
 
 Các điều chỉnh chính gồm ba thành phần:
 
@@ -1190,7 +1191,7 @@ Các điều chỉnh chính gồm ba thành phần:
 
 \noindent\textcolor{lightblue}{\textbf{1. Mở rộng tập cạnh ứng viên dựa trên đồng tương tác}}
 
-Từ ma trận tương tác người dùng--sản phẩm $R$, nhóm xây dựng đồ thị cộng tác giữa các sản phẩm dựa trên số lần đồng tương tác:
+Từ ma trận tương tác người dùng--sản phẩm $R$, nhóm xây dựng đồ thị cộng tác giữa các sản phẩm dựa trên số lần đồng tương tác (Candidate Support Expansion -- CSE, lấy cảm hứng từ hướng mở rộng liên kết vật phẩm trong IIMRec~\cite{xu2026iimrec}):
 
 \begin{equation}
 c_{ij}=\sum_{u}R_{ui}R_{uj}.
@@ -1242,7 +1243,7 @@ Việc kết hợp hai nguồn liên kết cho phép mô hình sử dụng đồ
 
 \noindent\textcolor{lightblue}{\textbf{3. Học tương phản trên biểu diễn trung gian}}
 
-STAIR5-v4 bổ sung hàm mất mát InfoNCE hai chiều giữa biểu diễn người dùng và sản phẩm từ các tầng trung gian $H^{(0)}$ và $H^{(1)}$ của Forward Stepwise Convolution (FSC). Nhóm sử dụng kỹ thuật Anchor Chunking để chia quá trình tính toán tương phản thành các khối nhỏ, qua đó giảm bộ nhớ trung gian khi xử lý batch lớn.
+STAIR5-v4 bổ sung hàm mất mát InfoNCE hai chiều giữa biểu diễn người dùng và sản phẩm từ các tầng trung gian $H^{(0)}$ và $H^{(1)}$ của Forward Stepwise Convolution (FSC), kế thừa nguyên lý học tương phản trên các tầng lân cận tự nhiên (NLGCL)~\cite{xu2024nlgcl} và tương phản lân cận cấu trúc~\cite{lin2022ncl}. Nhóm sử dụng kỹ thuật Anchor Chunking để chia quá trình tính toán tương phản thành các khối nhỏ, qua đó giảm bộ nhớ trung gian khi xử lý batch lớn.
 
 Hàm mục tiêu kết hợp mất mát xếp hạng BPR và mất mát tương phản NLGCL:
 
@@ -1437,7 +1438,7 @@ Sau khi STAIR5-v4 cải thiện kết quả trên cả ba tập dữ liệu, nh�
 
 \noindent\textcolor{lightblue}{\textbf{1. STAIR5-v5.1: Known-Positive Exclusion (KPE)}}
 
-Phiên bản v5.1 điều chỉnh hàm mất mát InfoNCE nhằm tránh sử dụng các sản phẩm mà người dùng đã tương tác làm mẫu âm. Trong quá trình huấn luyện theo mini-batch, một sản phẩm thuộc tập tương tác dương có thể xuất hiện ở vị trí mẫu âm của cặp khác, tạo ra tín hiệu tối ưu không phù hợp.
+Phiên bản v5.1 điều chỉnh hàm mất mát InfoNCE nhằm tránh sử dụng các sản phẩm mà người dùng đã tương tác làm mẫu âm. Trong quá trình huấn luyện theo mini-batch, một sản phẩm thuộc tập tương tác dương có thể xuất hiện ở vị trí mẫu âm của cặp khác, tạo ra tín hiệu tối ưu không phù hợp do hiện tượng âm tính giả (false negative bias)~\cite{chuang2020debiased,khosla2020supervised}.
 
 Nhóm bổ sung mặt nạ loại trừ các mẫu dương đã biết:
 
@@ -1453,7 +1454,8 @@ Các mẫu có $M_{b,j}^{\mathrm{adm}}=0$ được loại khỏi tập mẫu âm
 
 \noindent\textcolor{lightblue}{\textbf{2. STAIR5-v5.2: Budgeted Path Expansion (BPE)}}
 
-Phiên bản v5.2 thử nghiệm mở rộng đồ thị cộng tác bằng các liên kết gián tiếp 2-hop, thay vì chỉ sử dụng các cặp sản phẩm có đồng tương tác trực tiếp. Từ đồ thị hành vi $W_1$, nhóm xây dựng đồ thị trung gian $T$ bằng cách giữ các cạnh tương hỗ thuộc top-$K_{\mathrm{seed}}=10$ láng giềng của mỗi nút.
+Phiên bản v5.2 thử nghiệm mở rộng đồ thị cộng tác bằng các liên kết gián tiếp 2-hop, nhằm khai thác đường đi bậc cao giữa các vật phẩm tương tự phân tích cấu trúc trong~\cite{sakurai2026edge}, thay vì chỉ sử dụng các cặp sản phẩm có đồng tương tác trực tiếp. Từ đồ thị hành vi $W_1$, nhóm xây dựng đồ thị trung gian $T$ bằng cách giữ các cạnh tương hỗ thuộc top-$K_{\mathrm{seed}}=10$ láng giềng của mỗi nút.
+
 
 Điểm liên kết gián tiếp được tính từ số đường đi chung và trọng số của các cạnh trung gian:
 
@@ -1593,7 +1595,7 @@ STAIR5-v5.1 làm tăng bộ nhớ tensor khoảng 20--30 MB và kéo dài thời
 
 \subsubsection{Động lực kỹ thuật và kiến trúc đề xuất}
 
-Kết quả thực nghiệm STAIR5-v5.2 cho thấy việc bổ sung các cạnh hành vi gián tiếp 2-hop chưa cải thiện chất lượng xếp hạng so với STAIR5-v4. Do đó, ở phiên bản STAIR5-v6, nhóm chuyển sang điều chỉnh trọng số các cạnh ngữ nghĩa hiện có thay vì tiếp tục mở rộng tập cạnh. Phương pháp Behavior-Conditioned Semantic Retention (BCSR) sử dụng tín hiệu đồng tương tác để giảm trọng số những cạnh có mức hỗ trợ hành vi thấp, đồng thời bảo toàn tổng trọng số cạnh của từng nút.
+Kết quả thực nghiệm STAIR5-v5.2 cho thấy việc bổ sung các cạnh hành vi gián tiếp 2-hop chưa cải thiện chất lượng xếp hạng so với STAIR5-v4. Do đó, ở phiên bản STAIR5-v6, nhóm chuyển sang điều chỉnh trọng số các cạnh ngữ nghĩa hiện có thay vì tiếp tục mở rộng tập cạnh, vận dụng nguyên lý giữ và khử nhiễu đồ thị đa phương thức từ FREEDOM~\cite{zhou2023freedom} và BM3~\cite{zhou2023bm3}. Phương pháp Behavior-Conditioned Semantic Retention (BCSR) sử dụng tín hiệu đồng tương tác để giảm trọng số những cạnh có mức hỗ trợ hành vi thấp, đồng thời bảo toàn tổng trọng số cạnh của từng nút nhằm hạn chế hiện tượng làm mịn quá mức (oversmoothing)~\cite{oono2020graph}.
 
 Phiên bản này kế thừa đồ thị cộng tác và nhánh học tương phản NLGCL của STAIR5-v4, chỉ thay đổi cách xây dựng toán tử đồ thị phục vụ quá trình làm mịn BSC. Các điều chỉnh chính gồm ba thành phần:
 
@@ -1833,4 +1835,815 @@ Bảng~\ref{tab:stair_bcsr_hardware} so sánh chi phí tính toán của STAIR5-
 \noindent\textcolor{lightblue}{\textbf{So sánh bộ nhớ GPU.}} STAIR Baseline ghi nhận mức sử dụng bộ nhớ GPU là 490 MB, 696 MB và 1\,738 MB trên ba tập dữ liệu. Trong khi đó, bộ nhớ tensor được phân bổ của STAIR5-v6 lần lượt là 144.23 MB, 218.62 MB và 800.12 MB. Tuy nhiên, số liệu Baseline và các phiên bản cải tiến sử dụng cách ghi nhận bộ nhớ khác nhau, do đó chưa thể kết luận mức giảm VRAM thực tế từ các giá trị này. Việc so sánh chính xác cần được thực hiện bằng cùng một phương pháp đo, chẳng hạn bộ nhớ GPU đỉnh của toàn bộ tiến trình.
 
 \noindent\textcolor{lightblue}{\textbf{Nhận xét chung.}} STAIR5-v6 có chi phí huấn luyện cao hơn Baseline và v4, chủ yếu do các thành phần học tương phản và xử lý đồ thị bổ sung. Mặc dù v6 cải thiện nhẹ Recall@20 và NDCG@20 trên Electronics, mức tăng chưa đủ rõ ràng để khẳng định lợi ích so với chi phí tính toán phát sinh. Do đó, STAIR5-v4 vẫn là cấu hình tham chiếu phù hợp để đánh giá các cải tiến tiếp theo.
+
+\subsection{Kết quả thực nghiệm cải tiến 7: Update-Compatible Retention with Dose Control (STAIR5-v7 / UCR-D)}
+
+\subsubsection{Động lực kỹ thuật và phương pháp đề xuất}
+
+Trong phiên bản STAIR5-v6, nhóm đã điều chỉnh trọng số cạnh ngữ nghĩa dựa trên mức thiếu hụt bằng chứng đồng tương tác. Tuy nhiên, phương pháp này sử dụng thông tin tĩnh từ dữ liệu huấn luyện, chưa xét đến sự thay đổi hướng cập nhật tham số trong quá trình tối ưu. Đối với các sản phẩm có liên kết ngữ nghĩa, hướng cập nhật có thể tương đồng hoặc đối nghịch tùy theo tín hiệu học được từ tương tác người dùng.
+
+Để đánh giá ảnh hưởng của yếu tố này, nhóm phát triển STAIR5-v7 (Update-Compatible Retention with Dose Control -- UCR-D), trong đó trọng số cạnh được điều chỉnh động dựa trên độ tương thích giữa các hướng cập nhật của AdamWSEvo, vận dụng nguyên lý giải quyết xung đột hướng cập nhật (Gradient Surgery)~\cite{yu2020gradient}. Phương pháp kế thừa nhánh BPR, NLGCL và đồ thị cộng tác của STAIR5-v4, đồng thời bổ sung cơ chế kiểm soát mức điều chỉnh để hạn chế thay đổi quá lớn đối với toán tử làm mịn.
+
+
+Các thành phần chính gồm:
+
+\noindent\textcolor{lightblue}{\textbf{1. Đánh giá mức tương thích giữa các hướng cập nhật}}
+
+Tại bước huấn luyện $t$, nhóm sử dụng hướng cập nhật đã được tiền điều kiện hóa bởi Adam thay vì gradient thô:
+
+\begin{equation}
+D_t=
+\frac{m_t/(1-\beta_1^t)}
+{\sqrt{v_t/(1-\beta_2^t)}+\epsilon_{\mathrm{Adam}}},
+\end{equation}
+
+trong đó $m_t$, $v_t$ lần lượt là moment bậc nhất và bậc hai của gradient. Với mỗi cạnh ngữ nghĩa $(i,j)$, mức tương đồng giữa hai hướng cập nhật được tính bằng cosine:
+
+\begin{equation}
+s_{ij}^{(t)}
+=
+\operatorname{clip}
+\left(
+\frac{
+D_{t,i:}^{\top}D_{t,j:}
+}{
+\lVert D_{t,i:}\rVert_2
+\lVert D_{t,j:}\rVert_2
+},
+-1,1
+\right).
+\end{equation}
+
+Điểm xung đột được xác định:
+
+\begin{equation}
+q_{ij}^{(t)}
+=
+\max\left(0,-s_{ij}^{(t)}\right).
+\end{equation}
+
+Theo đó, $q_{ij}^{(t)}>0$ khi hai hướng cập nhật tạo thành góc tù. Các cặp có chuẩn vector nhỏ hơn ngưỡng $\tau_{\mathrm{mag}}$ được loại khỏi quá trình đánh giá nhằm hạn chế nhiễu số học. Trong triển khai, mẫu số của phép tính cosine được chặn dưới bởi một hằng số nhỏ để tránh chia cho 0.
+
+\noindent\textcolor{lightblue}{\textbf{2. Kiểm soát mức điều chỉnh và bảo toàn bậc nút}}
+
+Để tránh giảm trọng số cạnh quá mức, nhóm sử dụng cơ chế Dose Control với hệ số điều chỉnh được giới hạn theo mức xung đột tổng hợp $Z_t$:
+
+\begin{equation}
+\theta_t
+=
+\min\left(
+\theta_{\max},
+\frac{\rho_t}{Z_t}
+\right),
+\qquad
+a_{ij}^{(t)}
+=
+\theta_t q_{ij}^{(t)}.
+\end{equation}
+
+Trong đó, $\rho_t$ là mức điều chỉnh mục tiêu và $\theta_{\max}$ là giới hạn trên. Trong 10 epoch đầu, $\rho_t$ được tăng tuyến tính từ 0 đến giá trị mục tiêu 0.01. Khi $Z_t=0$, hệ số điều chỉnh được đặt bằng 0 để tránh phép chia không xác định.
+
+Phần trọng số giảm trên các cạnh được chuyển về đường chéo chính:
+
+\begin{equation}
+\begin{aligned}
+A_t &= W_0\odot a_t,\\
+\mathbf{m}_t &= A_t\mathbf{1},\\
+W_R^{(t)} &= W_0-A_t+\operatorname{diag}(\mathbf{m}_t).
+\end{aligned}
+\end{equation}
+
+Cách điều chỉnh này giữ nguyên tổng trọng số của từng hàng:
+
+\begin{equation}
+\sum_j W_{R,ij}^{(t)}=d_i^0.
+\end{equation}
+
+\noindent\textcolor{lightblue}{\textbf{3. Cập nhật toán tử làm mịn BSC}}
+
+Ma trận sau hiệu chỉnh được chuẩn hóa theo ma trận bậc ban đầu $D_0$, sau đó kết hợp với toán tử đồ thị cộng tác:
+
+\begin{equation}
+S_R^{(t)}
+=
+D_0^{-1/2}W_R^{(t)}D_0^{-1/2},
+\qquad
+S_7^{(t)}
+=
+0.9S_R^{(t)}+0.1S_{\mathrm{CF}}.
+\end{equation}
+
+Toán tử $S_7^{(t)}$ được sử dụng trong bộ làm mịn gradient BSC. Khác với v6, toán tử này có thể thay đổi theo hướng cập nhật tại từng bước tối ưu. Nhóm triển khai phép tính dưới dạng ma trận thưa và sử dụng \texttt{torch.no\_grad()} cho các thao tác không cần lưu đồ thị tính toán đạo hàm, nhằm hạn chế bộ nhớ trung gian.
+
+% ============================================================
+% SƠ ĐỒ QUY TRÌNH STAIR5-v7
+% ============================================================
+
+\begin{figure}[!htbp]
+    \centering
+    \begin{tikzpicture}[
+        font=\scriptsize,
+        >=Stealth,
+        node distance=0.55cm,
+        inputbox/.style={
+            rectangle,
+            draw=blue!65!black,
+            fill=blue!5,
+            rounded corners=2pt,
+            text width=2.7cm,
+            minimum height=0.75cm,
+            align=center,
+            inner sep=3pt
+        },
+        processbox/.style={
+            rectangle,
+            draw=orange!75!black,
+            fill=orange!6,
+            rounded corners=2pt,
+            text width=6.0cm,
+            minimum height=0.75cm,
+            align=center,
+            inner sep=4pt
+        },
+        trainbox/.style={
+            rectangle,
+            draw=teal!65!black,
+            fill=teal!6,
+            rounded corners=2pt,
+            text width=6.0cm,
+            minimum height=0.75cm,
+            align=center,
+            inner sep=4pt
+        },
+        arr/.style={
+            -{Stealth[length=2mm]},
+            line width=0.7pt,
+            draw=gray!80!black
+        },
+        feedback/.style={
+            -{Stealth[length=2mm]},
+            dashed,
+            line width=0.7pt,
+            draw=purple!75!black
+        }
+    ]
+
+    % Dữ liệu đầu vào
+    \node[inputbox] (semantic) at (-1.65,0) {Đồ thị ngữ nghĩa $W_0$};
+    \node[inputbox] (gradient) at (1.65,0) {Hướng cập nhật Adam $D_t$};
+
+    % Các bước xử lý
+    \node[processbox,anchor=north] (conflict) at (0,-1.2) {\textbf{Đánh giá xung đột cập nhật}\\[2pt]$q_{ij}^{(t)}=\max(0,-\cos(D_{t,i:},D_{t,j:}))$};
+
+    \node[processbox,below=of conflict] (retention) {\textbf{Dose Control và bảo toàn bậc}\\[2pt]$W_R^{(t)}=W_0-A_t+\operatorname{diag}(\mathbf{m}_t)$};
+
+    \node[processbox,below=of retention] (operator) {\textbf{Cập nhật toán tử làm mịn}\\[2pt]$S_7^{(t)}=0.9S_R^{(t)}+0.1S_{\mathrm{CF}}$};
+
+    % Huấn luyện
+    \node[trainbox,below=of operator] (training) {\textbf{BSC Smoother và AdamWSEvo}\\[2pt]Làm mịn hướng cập nhật bằng toán tử $S_7^{(t)}$};
+
+    % Luồng xử lý
+    \draw[arr] (semantic.south) |- ([xshift=-1.1cm]conflict.north);
+    \draw[arr] (gradient.south) |- ([xshift=1.1cm]conflict.north);
+    \draw[arr] (conflict.south) -- (retention.north);
+    \draw[arr] (retention.south) -- (operator.north);
+    \draw[arr] (operator.south) -- (training.north);
+
+    \end{tikzpicture}
+
+    \caption{Quy trình điều chỉnh toán tử BSC trong STAIR5-v7 (UCR-D). Hướng cập nhật Adam được sử dụng để đánh giá xung đột giữa các nút lân cận, từ đó điều chỉnh trọng số cạnh có kiểm soát và bảo toàn bậc nút.}
+    \label{fig:stair_ucr_architecture}
+\end{figure}
+
+
+% ============================================================
+% KẾT QUẢ THỰC NGHIỆM
+% ============================================================
+
+\subsubsection{Kết quả thực nghiệm trên ba tập dữ liệu}
+
+STAIR5-v7 được thử nghiệm trên Amazon Baby, Sports và Electronics, sử dụng môi trường Kaggle với GPU Tesla T4 và Molab với GPU RTX PRO 6000 Blackwell. Bảng~\ref{tab:stair_v7_results} trình bày kết quả trên tập kiểm tra tại checkpoint được lựa chọn theo validation, đối chiếu với STAIR Baseline, STAIR5-v4 và STAIR5-v6.
+
+\begin{table}[!htbp]
+    \centering
+    \caption{So sánh kết quả thực nghiệm STAIR5-v7 với Baseline, STAIR5-v4 và STAIR5-v6.}
+    \label{tab:stair_v7_results}
+
+    \footnotesize
+    \renewcommand{\arraystretch}{1.15}
+    \setlength{\tabcolsep}{5pt}
+
+    \resizebox{0.95\linewidth}{!}{%
+    \begin{tabular}{@{}llccccc@{}}
+        \toprule
+        \rowcolor{gray!15}
+        \textbf{Tập dữ liệu}
+        & \textbf{Chỉ số}
+        & \textbf{Baseline}
+        & \textbf{v4}
+        & \textbf{v6}
+        & \textbf{v7}
+        & \textbf{$\Delta$ vs BL} \\
+        \midrule
+
+        \multirow{4}{*}{\shortstack[l]{\textbf{Baby}\\(epoch 480)}}
+        & Recall@10 & 0.0674 & \textbf{0.0678} & 0.0677 & \textbf{0.0678} & $+0.59\%$ \\
+        & Recall@20 & 0.1042 & \textbf{0.1056} & \textbf{0.1056} & \textbf{0.1056} & $+1.34\%$ \\
+        & NDCG@10   & 0.0359 & 0.0364 & 0.0364 & \textbf{0.0365} & $+1.67\%$ \\
+        & NDCG@20   & 0.0454 & \textbf{0.0461} & \textbf{0.0461} & \textbf{0.0461} & $+1.54\%$ \\
+        \midrule
+
+        \multirow{4}{*}{\shortstack[l]{\textbf{Sports}\\(epoch 485)}}
+        & Recall@10 & 0.0743 & \textbf{0.0765} & \textbf{0.0765} & \textbf{0.0765} & $+2.96\%$ \\
+        & Recall@20 & 0.1111 & \textbf{0.1143} & \textbf{0.1143} & \textbf{0.1143} & $+2.88\%$ \\
+        & NDCG@10   & 0.0405 & \textbf{0.0419} & \textbf{0.0419} & \textbf{0.0419} & $+3.46\%$ \\
+        & NDCG@20   & 0.0500 & \textbf{0.0517} & \textbf{0.0517} & 0.0516 & $+3.20\%$ \\
+        \midrule
+
+        \multirow{4}{*}{\shortstack[l]{\textbf{Electronics}\\(epoch 495)}}
+        & Recall@10 & 0.0442 & 0.0458 & 0.0458 & \textbf{0.0459} & $+3.85\%$ \\
+        & Recall@20 & 0.0665 & 0.0678 & \textbf{0.0681} & 0.0677 & $+1.80\%$ \\
+        & NDCG@10   & 0.0246 & \textbf{0.0260} & 0.0259 & \textbf{0.0260} & $+5.69\%$ \\
+        & NDCG@20   & 0.0303 & \textbf{0.0316} & \textbf{0.0317} & \textbf{0.0316} & $+4.29\%$ \\
+
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+\noindent\textcolor{lightblue}{\textbf{Kết quả trên Amazon Baby.}} STAIR5-v7 đạt Recall@20 bằng 0.1056 và NDCG@20 bằng 0.0461, tương đương v4 và v6 ở độ chính xác bốn chữ số thập phân. NDCG@10 đạt 0.0365, cao hơn khoảng 0.0001 so với hai phiên bản trước. Theo số liệu có độ chính xác cao hơn được ghi nhận, NDCG@20 đạt 0.04614 và NDCG@10 đạt 0.03646. Mức cải thiện nhìn chung nhỏ và chưa đủ để xác định ưu thế rõ ràng của cơ chế UCR-D.
+
+\noindent\textcolor{lightblue}{\textbf{Kết quả trên Amazon Sports.}} Recall@20 đạt 0.1143, tương đương v4 và v6, trong khi NDCG@20 đạt 0.0516, thấp hơn nhẹ so với mức 0.0517 của hai phiên bản đối chiếu. Các chỉ số còn lại gần như không thay đổi. Kết quả cho thấy điều chỉnh động trọng số cạnh chưa tạo ra cải thiện đáng kể trên Sports.
+
+\noindent\textcolor{lightblue}{\textbf{Kết quả trên Amazon Electronics.}} STAIR5-v7 đạt Recall@20 bằng 0.0677, thấp hơn v4 (0.0678) và v6 (0.0681). NDCG@20 đạt 0.0316, tương đương v4 nhưng thấp hơn v6 (0.0317). Trong khi đó, Recall@10 đạt 0.0459 và NDCG@10 đạt 0.0260. Như vậy, phương pháp duy trì chất lượng xếp hạng gần với các phiên bản trước nhưng chưa cải thiện đồng đều trên Electronics.
+
+\noindent\textcolor{lightblue}{\textbf{Đánh giá ảnh hưởng của UCR-D.}} Kết quả thực nghiệm cho thấy việc cập nhật toán tử dựa trên độ tương thích hướng Adam chưa tạo ra khác biệt đáng kể so với các phương án sử dụng toán tử tĩnh. Một nguyên nhân có thể là mức điều chỉnh mục tiêu $\rho=0.01$ giới hạn thay đổi trọng số cạnh, khiến toán tử động duy trì gần với cấu hình ban đầu. Tuy nhiên, cần kiểm tra trực tiếp phân phối điểm xung đột, mức điều chỉnh trọng số và sai khác giữa các toán tử theo epoch để xác nhận giả thuyết này.
+
+
+% ============================================================
+% CHI PHÍ TÍNH TOÁN VÀ BỘ NHỚ
+% ============================================================
+
+\subsubsection{Đánh giá chi phí tính toán và tiêu thụ bộ nhớ}
+
+Bảng~\ref{tab:stair_v7_hardware} tổng hợp chi phí huấn luyện của STAIR5-v7 và đối chiếu với STAIR Baseline, STAIR5-v4 và STAIR5-v6. Đối với Electronics, thời gian hoàn tất 500 epoch của v7 được ghi nhận trên GPU RTX PRO 6000 Blackwell do phiên chạy Kaggle Tesla T4 không hoàn tất trong giới hạn thời gian.
+
+\begin{table}[!htbp]
+    \centering
+    \caption{So sánh thời gian huấn luyện và bộ nhớ GPU của STAIR Baseline, STAIR5-v4, STAIR5-v6 và STAIR5-v7.}
+    \label{tab:stair_v7_hardware}
+    \scriptsize
+    \renewcommand{\arraystretch}{1.15}
+    \setlength{\tabcolsep}{4pt}
+
+    \resizebox{\linewidth}{!}{%
+    \begin{tabular}{llcccc}
+        \toprule
+        \rowcolor{gray!15}
+        \textbf{Chỉ số} & \textbf{Phiên bản} & \textbf{Baby} & \textbf{Sports} & \textbf{Electronics} & \textbf{Ghi chú} \\
+        \midrule
+
+        \multirow{4}{*}{\shortstack[l]{Thời gian\\(giây/epoch)}}
+        & STAIR Baseline & 1.45 & 2.65 & 10.23 & T4 \\
+        & STAIR5-v4 & 2.39 & 5.06 & 41.73 & T4 \\
+        & STAIR5-v6 & 3.06 & 6.17 & 42.84 & T4 \\
+        & STAIR5-v7 & 2.82 & 6.98 & -- & T4 \\
+        \midrule
+
+        \multirow{4}{*}{\shortstack[l]{Tổng thời gian\\(500 epoch)}}
+        & STAIR Baseline & $\sim$12.08 phút & $\sim$22.08 phút & $\sim$1.42 giờ & T4 \\
+        & STAIR5-v4 & 19.89 phút & 42.21 phút & 5.80 giờ & T4 \\
+        & STAIR5-v6 & 25.47 phút & 51.38 phút & 5.95 giờ & T4 \\
+        & STAIR5-v7 & 23.50 phút & 58.20 phút & 141.79 phút & Electronics: Blackwell \\
+        \midrule
+
+        \multirow{4}{*}{\shortstack[l]{Bộ nhớ GPU\\(MB)}}
+        & STAIR Baseline & 490 & 696 & 1\,738 & GPU memory \\
+        & STAIR5-v4 & 143.60 & 218.50 & $\sim$680 & Tensor allocated \\
+        & STAIR5-v6 & 144.23 & 218.62 & 800.12 & Tensor allocated \\
+        & STAIR5-v7 & 146.50 & 223.90 & 818.50 & Tensor allocated \\
+
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+\noindent\textcolor{lightblue}{\textbf{So sánh thời gian huấn luyện.}} Trên Baby, STAIR5-v7 cần 23.50 phút cho 500 epoch, cao hơn baseline nhưng thấp hơn v6 (25.47 phút). Trên Sports, thời gian tăng lên 58.20 phút, so với 42.21 phút của v4 và 51.38 phút của v6. Điều này cho thấy chi phí cập nhật toán tử động chưa mang lại lợi ích rõ ràng về thời gian thực thi. Trên Electronics, thời gian 141.79 phút được ghi nhận bằng GPU RTX PRO 6000 Blackwell, do đó không thể so sánh trực tiếp với các kết quả đo trên Tesla T4.
+
+\noindent\textcolor{lightblue}{\textbf{So sánh bộ nhớ GPU.}} STAIR5-v7 ghi nhận bộ nhớ tensor lần lượt là 146.50 MB, 223.90 MB và 818.50 MB trên Baby, Sports và Electronics. So với v4, bộ nhớ tensor tăng nhẹ trên Baby và Sports nhưng tăng rõ hơn trên Electronics. Các số liệu bộ nhớ trong bảng sử dụng hai phương pháp đo khác nhau: STAIR Baseline được tham chiếu từ mức GPU memory, trong khi các phiên bản cải tiến sử dụng bộ nhớ tensor được phân bổ. Vì vậy, chưa thể sử dụng trực tiếp các giá trị này để kết luận mức tiết kiệm VRAM so với baseline.
+
+\noindent\textcolor{lightblue}{\textbf{Nhận xét chung.}} STAIR5-v7 duy trì kết quả xếp hạng gần với STAIR5-v4 và v6 nhưng không tạo ra cải thiện nhất quán trên ba tập dữ liệu. Cơ chế điều chỉnh động làm tăng chi phí huấn luyện, đặc biệt trên Sports, trong khi lợi ích về chất lượng còn hạn chế. Do đó, nhóm chưa lựa chọn UCR-D làm cấu hình chính thức và tiếp tục sử dụng STAIR5-v4 làm phương án tham chiếu cho các thử nghiệm tiếp theo.
+
+\subsection{Kết quả thực nghiệm cải tiến 8: Weighted Multimodal Semantic Graph with Candidate Support Expansion (STAIR5-v8 / WMSG-CSE)}
+
+\subsubsection{Động lực kỹ thuật và phương pháp đề xuất}
+
+Các phiên bản STAIR5-v5 đến STAIR5-v7 chủ yếu điều chỉnh trọng số cạnh hoặc cơ chế làm mịn gradient nhưng chưa mang lại cải thiện nhất quán so với STAIR5-v4. Một hạn chế cần xem xét là hiện tượng tập trung láng giềng (\textit{hubness}) trong không gian đa chiều và đồ thị kNN~\cite{radovanovic2010hubs}, khi một số sản phẩm xuất hiện với tần suất cao trong danh sách láng giềng của nhiều sản phẩm khác. Điều này có thể làm tăng ảnh hưởng của các nút phổ biến trong quá trình lan truyền thông tin và làm mịn gradient.
+
+
+Để đánh giá ảnh hưởng của hiện tượng trên, nhóm phát triển STAIR5-v8 (Weighted Multimodal Semantic Graph with Candidate Support Expansion -- WMSG-CSE). Phương pháp điều chỉnh trọng số cạnh ngữ nghĩa theo tần suất xuất hiện của các nút trong đồ thị kNN nhằm tái cân bằng ảnh hưởng theo phổ cạnh~\cite{sakurai2026edge,pahng2025improving}, đồng thời giữ lại cơ chế mở rộng cạnh cộng tác CSE và học tương phản NLGCL từ STAIR5-v4.
+
+
+Các thành phần chính gồm:
+
+\noindent\textcolor{lightblue}{\textbf{1. Điều chỉnh trọng số cạnh theo tần suất xuất hiện của nút}}
+
+Với mỗi sản phẩm $i$, nhóm xác định tần suất xuất hiện trong danh sách láng giềng kNN thông qua bậc $d_i$. Giá trị này được chuẩn hóa theo bậc lớn nhất trong đồ thị:
+
+\begin{equation}
+\widetilde{s}_i=\frac{d_i}{\max_j d_j}.
+\end{equation}
+
+Để tránh khuếch đại quá mức trọng số của các nút có bậc nhỏ, nhóm sử dụng ngưỡng dưới $s_{\min}=0.05$:
+
+\begin{equation}
+s_i=\max(\widetilde{s}_i,s_{\min}).
+\end{equation}
+
+Trọng số cạnh ngữ nghĩa được tính bằng độ tương đồng cosine kết hợp hệ số nghịch đảo tần suất:
+
+\begin{equation}
+w_{ij}
+=
+\operatorname{sim}_{\cos}(e_i,e_j)
+(s_i s_j)^{-\alpha/2},
+\qquad \alpha=2.0,
+\end{equation}
+
+trong đó $e_i$ và $e_j$ là biểu diễn đa phương thức của hai sản phẩm. Cơ chế này làm giảm ảnh hưởng tương đối của các nút xuất hiện thường xuyên trong đồ thị kNN và tăng trọng số tương đối của các liên kết giữa những nút có tần suất thấp. Ma trận trọng số sau điều chỉnh được chuẩn hóa đối xứng để xây dựng toán tử $S_{\mathrm{WMSG}}$.
+
+\noindent\textcolor{lightblue}{\textbf{2. Kết hợp đồ thị ngữ nghĩa có trọng số với đồ thị cộng tác}}
+
+Toán tử ngữ nghĩa $S_{\mathrm{WMSG}}$ được kết hợp với toán tử cộng tác $S_{\mathrm{CF}}$ xây dựng từ cơ chế Candidate Support Expansion (CSE) của STAIR5-v4:
+
+\begin{equation}
+S_8=(1-\eta)S_{\mathrm{WMSG}}+\eta S_{\mathrm{CF}},
+\qquad \eta=0.1.
+\end{equation}
+
+Phép kết hợp này giữ lại thông tin từ hai nguồn liên kết: quan hệ ngữ nghĩa đa phương thức và đồng tương tác người dùng. Toán tử $S_8$ được xây dựng trong giai đoạn tiền xử lý và sử dụng trong bộ làm mịn BSC của AdamWSEvo. Nhánh Forward Stepwise Convolution, hàm mất mát BPR và NLGCL InfoNCE được giữ nguyên so với STAIR5-v4.
+
+% ============================================================
+% SƠ ĐỒ QUY TRÌNH STAIR5-v8
+% ============================================================
+
+\begin{figure}[!htbp]
+    \centering
+    \begin{tikzpicture}[
+        font=\scriptsize,
+        >=Stealth,
+        node distance=0.55cm,
+        inputbox/.style={
+            rectangle,
+            draw=blue!65!black,
+            fill=blue!5,
+            rounded corners=2pt,
+            text width=2.7cm,
+            minimum height=0.75cm,
+            align=center,
+            inner sep=3pt
+        },
+        processbox/.style={
+            rectangle,
+            draw=orange!75!black,
+            fill=orange!6,
+            rounded corners=2pt,
+            text width=6.0cm,
+            minimum height=0.75cm,
+            align=center,
+            inner sep=4pt
+        },
+        trainbox/.style={
+            rectangle,
+            draw=teal!65!black,
+            fill=teal!6,
+            rounded corners=2pt,
+            text width=6.0cm,
+            minimum height=0.75cm,
+            align=center,
+            inner sep=4pt
+        },
+        arr/.style={
+            -{Stealth[length=2mm]},
+            line width=0.7pt,
+            draw=gray!80!black
+        }
+    ]
+
+    % Dữ liệu đầu vào
+    \node[inputbox] (semantic) at (-1.65,0) {Đồ thị kNN đa phương thức};
+    \node[inputbox] (interaction) at (1.65,0) {Đồ thị cộng tác CSE};
+
+    % Xử lý ngoại tuyến
+    \node[processbox,anchor=north] (weighting) at (0,-1.2) {\textbf{Điều chỉnh trọng số cạnh ngữ nghĩa}\\[2pt]Cosine similarity và hệ số nghịch đảo tần suất};
+
+    \node[processbox,below=of weighting] (operator) {\textbf{Kết hợp toán tử đồ thị}\\[2pt]$S_8=(1-\eta)S_{\mathrm{WMSG}}+\eta S_{\mathrm{CF}}$};
+
+    % Huấn luyện
+    \node[trainbox,below=of operator] (training) {\textbf{Huấn luyện STAIR5-v8}\\[2pt]BPR, NLGCL InfoNCE và BSC với toán tử $S_8$};
+
+    % Luồng xử lý
+    \draw[arr] (semantic.south) |- ([xshift=-1.1cm]weighting.north);
+    \draw[arr] (interaction.south) |- ([xshift=1.1cm]weighting.north);
+    \draw[arr] (weighting.south) -- (operator.north);
+    \draw[arr] (operator.south) -- (training.north);
+
+    \end{tikzpicture}
+
+    \caption{Quy trình xử lý của STAIR5-v8 (WMSG-CSE). Trọng số cạnh ngữ nghĩa được điều chỉnh theo tần suất xuất hiện của nút trong đồ thị kNN, sau đó kết hợp với đồ thị cộng tác CSE để xây dựng toán tử làm mịn BSC.}
+    \label{fig:stair_v8_architecture}
+\end{figure}
+
+
+% ============================================================
+% KẾT QUẢ THỰC NGHIỆM
+% ============================================================
+
+\subsubsection{Kết quả thực nghiệm trên ba tập dữ liệu}
+
+STAIR5-v8 được huấn luyện 500 epoch trên Amazon Baby, Sports và Electronics, sử dụng GPU Tesla T4 (16 GB). Bảng~\ref{tab:stair_v8_results} so sánh kết quả của v8 với STAIR Baseline và các phiên bản v4, v6, v7 tại checkpoint được chọn theo validation. Ngoài bốn chỉ số đánh giá chính, Recall@1 được ghi nhận bổ sung trên tập Baby.
+
+\begin{table}[!htbp]
+    \centering
+    \caption{So sánh kết quả thực nghiệm STAIR5-v8 với Baseline, STAIR5-v4, STAIR5-v6 và STAIR5-v7.}
+    \label{tab:stair_v8_results}
+    \footnotesize
+    \renewcommand{\arraystretch}{1.15}
+    \setlength{\tabcolsep}{4pt}
+
+    \resizebox{0.96\linewidth}{!}{%
+    \begin{tabular}{@{}llcccccc@{}}
+        \toprule
+        \rowcolor{gray!15}
+        \textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{Baseline} & \textbf{v4} & \textbf{v6} & \textbf{v7} & \textbf{v8} & \textbf{$\Delta$ vs BL} \\
+        \midrule
+
+        \multirow{5}{*}{\shortstack[l]{\textbf{Baby}\\(epoch 430)}}
+        & Recall@10 & 0.0674 & \textbf{0.0678} & 0.0677 & \textbf{0.0678} & 0.0675 & $+0.15\%$ \\
+        & Recall@20 & 0.1042 & \textbf{0.1056} & \textbf{0.1056} & \textbf{0.1056} & 0.1054 & $+1.15\%$ \\
+        & NDCG@10 & 0.0359 & 0.0364 & 0.0364 & \textbf{0.0365} & \textbf{0.0365} & $+1.67\%$ \\
+        & NDCG@20 & 0.0454 & 0.0461 & 0.0461 & 0.0461 & \textbf{0.0462} & $+1.76\%$ \\
+        & Recall@1 & 0.0113 & 0.0126 & 0.0126 & 0.0126 & \textbf{0.0128} & $+13.27\%$ \\
+        \midrule
+
+        \multirow{4}{*}{\shortstack[l]{\textbf{Sports}\\(epoch 500)}}
+        & Recall@10 & 0.0743 & 0.0765 & 0.0765 & \textbf{0.0768} & 0.0762 & $+2.56\%$ \\
+        & Recall@20 & 0.1111 & \textbf{0.1143} & \textbf{0.1143} & \textbf{0.1147} & 0.1142 & $+2.79\%$ \\
+        & NDCG@10 & 0.0405 & 0.0419 & 0.0419 & \textbf{0.0422} & 0.0420 & $+3.70\%$ \\
+        & NDCG@20 & 0.0500 & 0.0517 & 0.0517 & \textbf{0.0520} & 0.0518 & $+3.60\%$ \\
+        \midrule
+
+        \multirow{4}{*}{\shortstack[l]{\textbf{Electronics}\\(epoch 500)}}
+        & Recall@10 & 0.0442 & 0.0458 & 0.0458 & \textbf{0.0460} & \textbf{0.0460} & $+4.07\%$ \\
+        & Recall@20 & 0.0665 & 0.0678 & 0.0681 & \textbf{0.0684} & 0.0680 & $+2.26\%$ \\
+        & NDCG@10 & 0.0246 & 0.0260 & 0.0259 & \textbf{0.0262} & 0.0260 & $+5.69\%$ \\
+        & NDCG@20 & 0.0303 & 0.0316 & 0.0317 & \textbf{0.0318} & 0.0317 & $+4.62\%$ \\
+
+        \bottomrule
+    \end{tabular}%
+    }
+\end{table}
+
+\noindent\textcolor{lightblue}{\textbf{Kết quả trên Amazon Baby.}} STAIR5-v8 đạt Recall@20 bằng 0.1054 ($+1.15\%$ so với baseline) và NDCG@20 bằng 0.0462 ($+1.76\%$). So với các phiên bản trước, NDCG@20 tăng nhẹ từ 0.0461 lên 0.0462, trong khi Recall@10 và Recall@20 thấp hơn v4. Đáng chú ý, Recall@1 đạt 0.0128, tăng $13.27\%$ so với baseline và cao hơn mức 0.0126 của các phiên bản đối chiếu. Kết quả cho thấy cơ chế điều chỉnh trọng số theo tần suất có thể mang lại lợi ích đối với vị trí xếp hạng đầu tiên trên Baby, nhưng cần kiểm tra thêm tính ổn định qua nhiều lần chạy.
+
+\noindent\textcolor{lightblue}{\textbf{Kết quả trên Amazon Sports.}} STAIR5-v8 đạt Recall@20 bằng 0.1142 và NDCG@20 bằng 0.0518, tương ứng mức tăng $2.79\%$ và $3.60\%$ so với baseline. Tuy nhiên, cả bốn chỉ số đều thấp hơn phiên bản v7. Vì vậy, WMSG chưa cho thấy ưu thế so với phương án điều chỉnh động UCR-D trên tập Sports.
+
+\noindent\textcolor{lightblue}{\textbf{Kết quả trên Amazon Electronics.}} STAIR5-v8 đạt Recall@20 bằng 0.0680 ($+2.26\%$) và NDCG@20 bằng 0.0317 ($+4.62\%$) so với baseline. Recall@10 đạt 0.0460, tương đương v7, trong khi NDCG@10 đạt 0.0260. Các chỉ số nhìn chung gần với v6 và v7, nhưng chưa vượt kết quả Recall@20 và NDCG@20 tốt nhất của v7.
+
+\noindent\textcolor{lightblue}{\textbf{Đánh giá ảnh hưởng của WMSG.}} Kết quả cho thấy việc điều chỉnh trọng số theo tần suất xuất hiện của các nút mang lại cải thiện nhỏ ở NDCG@20 và Recall@1 trên Baby. Tuy nhiên, hiệu quả chưa nhất quán trên Sports và Electronics. Do đó, chưa đủ bằng chứng kết luận hiện tượng hubness là nguyên nhân chính giới hạn chất lượng xếp hạng của các phiên bản trước. Nhóm cần tiếp tục đánh giá phân phối bậc nút, trọng số cạnh trước và sau hiệu chỉnh, đồng thời khảo sát độ nhạy của tham số $\alpha$.
+
+
+% ============================================================
+% CHI PHÍ TÍNH TOÁN VÀ BỘ NHỚ
+% ============================================================
+
+\subsubsection{Đánh giá chi phí tính toán và tiêu thụ bộ nhớ}
+
+Bảng~\ref{tab:stair_v8_hardware} so sánh chi phí huấn luyện của STAIR5-v8 với STAIR Baseline và STAIR5-v4. Số liệu thời gian của baseline được tham chiếu từ kết quả thực nghiệm STAIR gốc, trong khi chi phí của v4 và v8 được ghi nhận trên GPU Tesla T4. Các số liệu bộ nhớ được trình bày theo phương pháp đo tương ứng của từng phiên bản.
+
+\begingroup
+\footnotesize
+\renewcommand{\arraystretch}{1.12}
+\setlength{\tabcolsep}{5pt}
+\setlength{\LTleft}{\fill}
+\setlength{\LTright}{\fill}
+
+\begin{longtable}{@{}
+    >{\raggedright\arraybackslash}p{2.3cm}
+    >{\raggedright\arraybackslash}p{2.3cm}
+    >{\centering\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{2.2cm}
+    @{}}
+
+    \caption{So sánh chi phí tính toán và bộ nhớ GPU của STAIR Baseline và các phiên bản STAIR5-v4, v6, v7, v8.}
+    \label{tab:stair_v8_hardware} \\
+
+    \toprule
+    \rowcolor{gray!15}
+    \textbf{Chỉ số}
+    & \textbf{Phiên bản}
+    & \textbf{Baby}
+    & \textbf{Sports}
+    & \textbf{Electronics} \\
+    \midrule
+    \endfirsthead
+
+    \multicolumn{5}{c}{\textit{Bảng \thetable\ (tiếp theo)}} \\
+    \toprule
+    \rowcolor{gray!15}
+    \textbf{Chỉ số}
+    & \textbf{Phiên bản}
+    & \textbf{Baby}
+    & \textbf{Sports}
+    & \textbf{Electronics} \\
+    \midrule
+    \endhead
+
+    \midrule
+    \multicolumn{5}{r}{\textit{Tiếp tục ở trang sau}} \\
+    \endfoot
+
+    \bottomrule
+    \endlastfoot
+
+    % ========================================================
+    % THỜI GIAN TRUNG BÌNH / EPOCH
+    % ========================================================
+
+    \multirow{5}{2.3cm}{Thời gian (giây/epoch)}
+    & STAIR Baseline & 1.45 & 2.65 & 10.23 \\
+    & STAIR5-v4 & 2.39 & 5.06 & 41.73 \\
+    & STAIR5-v6 & 3.06 & 6.17 & 42.84 \\
+    & STAIR5-v7 & 2.82 & 6.98 & -- \\
+    & STAIR5-v8 & 2.20 & 4.68 & 59.08 \\
+    \midrule
+
+    % ========================================================
+    % TỔNG THỜI GIAN 500 EPOCH
+    % ========================================================
+
+    \multirow{5}{2.3cm}{Tổng thời gian (500 epoch)}
+    & STAIR Baseline & 12.08 phút & 22.08 phút & 1.42 giờ \\
+    & STAIR5-v4 & 19.89 phút & 42.21 phút & 5.80 giờ \\
+    & STAIR5-v6 & 25.47 phút & 51.38 phút & 5.95 giờ \\
+    & STAIR5-v7 & 23.50 phút & 58.20 phút & 2.36 giờ$^{*}$ \\
+    & STAIR5-v8 & 19.31 phút & 41.66 phút & 8.78 giờ \\
+    \midrule
+
+    % ========================================================
+    % BỘ NHỚ GPU
+    % ========================================================
+
+    \multirow{5}{2.3cm}{Bộ nhớ GPU (MB)}
+    & STAIR Baseline & 490 & 696 & 1\,738 \\
+    & STAIR5-v4 & 143.60 & 218.50 & $\sim 680$ \\
+    & STAIR5-v6 & 144.23 & 218.62 & 800.12 \\
+    & STAIR5-v7 & 146.50 & 223.90 & 818.50 \\
+    & STAIR5-v8 & 143.92 & 222.84 & 800.67 \\
+
+\end{longtable}
+\endgroup
+
+\noindent{\footnotesize\textit{Ghi chú:} $^{*}$Thời gian huấn luyện STAIR5-v7 trên Electronics được ghi nhận bằng GPU RTX PRO 6000 Blackwell; các thời gian còn lại sử dụng Tesla T4. Bộ nhớ của Baseline là GPU memory, trong khi các phiên bản cải tiến ghi nhận bộ nhớ tensor được phân bổ. Do khác phương pháp đo, các giá trị bộ nhớ không thể so sánh trực tiếp.}
+
+\noindent\textcolor{lightblue}{\textbf{So sánh thời gian huấn luyện.}} STAIR5-v8 có thời gian trung bình 2.20 giây/epoch trên Baby, 4.68 giây/epoch trên Sports và 59.08 giây/epoch trên Electronics. So với baseline, thời gian mỗi epoch tăng khoảng $1.52\times$, $1.77\times$ và $5.78\times$. So với v4, thời gian huấn luyện của v8 giảm nhẹ trên Baby và Sports nhưng tăng từ 5.80 lên 8.78 giờ trên Electronics. Kết quả này cho thấy chi phí tính toán của WMSG tăng đáng kể khi áp dụng trên tập dữ liệu lớn.
+
+\noindent\textcolor{lightblue}{\textbf{So sánh bộ nhớ GPU.}} STAIR5-v8 ghi nhận bộ nhớ tensor lần lượt là 143.92 MB, 222.84 MB và 800.67 MB trên ba tập dữ liệu. So với v4, mức phân bổ bộ nhớ gần tương đương trên Baby và Sports nhưng tăng từ khoảng 680 MB lên 800.67 MB trên Electronics. Số liệu baseline trong bảng là mức bộ nhớ GPU được công bố, trong khi các phiên bản cải tiến sử dụng bộ nhớ tensor được phân bổ. Vì vậy, chưa thể so sánh trực tiếp các giá trị này để kết luận mức tiết kiệm VRAM thực tế.
+
+\noindent\textcolor{lightblue}{\textbf{Nhận xét chung.}} STAIR5-v8 cải thiện nhẹ NDCG@20 và Recall@1 trên Baby, nhưng chưa vượt các phiên bản đối chiếu ở phần lớn chỉ số trên Sports và Electronics. Đồng thời, chi phí huấn luyện trên Electronics tăng đáng kể so với v4. Do đó, nhóm chưa lựa chọn WMSG-CSE làm cấu hình thay thế chính thức cho STAIR5-v4. Hướng nghiên cứu tiếp theo cần tập trung đánh giá ảnh hưởng riêng của trọng số nghịch đảo tần suất, khảo sát tham số $\alpha$ và kiểm tra khả năng cải thiện chất lượng xếp hạng của các sản phẩm có ít tương tác.
+
+\subsection{Tổng hợp và đánh giá các phiên bản cải tiến STAIR5}
+
+\subsubsection{So sánh chất lượng xếp hạng giữa các phiên bản}
+
+Trong giai đoạn nghiên cứu, nhóm đã triển khai tám hướng cải tiến chính, bao gồm các phiên bản STAIR5-v1 đến STAIR5-v8, trong đó v5 được chia thành hai cấu hình v5.1 và v5.2. Các phương pháp tập trung vào ba hướng: bổ sung học tương phản, điều chỉnh cấu trúc đồ thị đa phương thức và cải thiện toán tử làm mịn gradient.
+
+Bảng~\ref{tab:stair_all_versions_metrics} tổng hợp kết quả của toàn bộ phiên bản trên ba tập dữ liệu Amazon Baby, Sports và Electronics. Các chỉ số gồm Recall@10, Recall@20, NDCG@10 và NDCG@20. Kết quả được lấy tại checkpoint được báo cáo cho từng phiên bản; ký hiệu ``--'' biểu thị cấu hình chưa được đánh giá trên tập dữ liệu tương ứng.
+
+% ============================================================
+% BẢNG 1: TỔNG HỢP TOÀN BỘ METRIC
+% ============================================================
+
+\begingroup
+\footnotesize
+\renewcommand{\arraystretch}{1.14}
+\setlength{\tabcolsep}{4pt}
+\setlength{\LTleft}{\fill}
+\setlength{\LTright}{\fill}
+
+\begingroup
+\footnotesize
+\renewcommand{\arraystretch}{1.12}
+\setlength{\tabcolsep}{3.5pt}
+\setlength{\LTleft}{\fill}
+\setlength{\LTright}{\fill}
+\setlength{\LTpre}{6pt}
+\setlength{\LTpost}{6pt}
+
+\begin{longtable}{@{}
+    >{\raggedright\arraybackslash}p{1.55cm}
+    >{\raggedright\arraybackslash}p{2.15cm}
+    >{\centering\arraybackslash}p{1.35cm}
+    >{\centering\arraybackslash}p{1.35cm}
+    >{\centering\arraybackslash}p{1.35cm}
+    >{\centering\arraybackslash}p{1.35cm}
+    @{}}
+
+    \caption{Tổng hợp kết quả Recall và NDCG của các phiên bản STAIR5 trên ba tập dữ liệu.}
+    \label{tab:stair_all_versions_metrics} \\
+
+    \toprule
+    \rowcolor{gray!15}
+    \textbf{Dữ liệu}
+    & \textbf{Phiên bản}
+    & \shortstack{\textbf{Recall}\\\textbf{@10}}
+    & \shortstack{\textbf{Recall}\\\textbf{@20}}
+    & \shortstack{\textbf{NDCG}\\\textbf{@10}}
+    & \shortstack{\textbf{NDCG}\\\textbf{@20}} \\
+    \midrule
+    \endfirsthead
+
+    \multicolumn{6}{c}{\footnotesize\textit{Bảng \thetable\ (tiếp theo)}} \\
+    \toprule
+    \rowcolor{gray!15}
+    \textbf{Dữ liệu}
+    & \textbf{Phiên bản}
+    & \shortstack{\textbf{Recall}\\\textbf{@10}}
+    & \shortstack{\textbf{Recall}\\\textbf{@20}}
+    & \shortstack{\textbf{NDCG}\\\textbf{@10}}
+    & \shortstack{\textbf{NDCG}\\\textbf{@20}} \\
+    \midrule
+    \endhead
+
+    \midrule
+    \multicolumn{6}{r}{\footnotesize\textit{Tiếp tục ở trang sau}} \\
+    \endfoot
+
+    \bottomrule
+    \endlastfoot
+
+    % ========================================================
+    % AMAZON BABY
+    % ========================================================
+
+    \multirow{10}{*}{\textbf{Baby}}
+    & Baseline       & 0.0674 & 0.1042 & 0.0359 & 0.0454 \\
+    & v1 (LHC)       & 0.0668 & 0.1039 & 0.0359 & 0.0454 \\
+    & v2 (C-HET)     & 0.0659 & 0.1029 & 0.0352 & 0.0447 \\
+    & v3 (DP-BSC)    & 0.0659 & 0.1029 & 0.0352 & 0.0447 \\
+    & v4 (NLGCL-CSE) & \textbf{0.0678} & \textbf{0.1056} & 0.0364 & 0.0461 \\
+    & v5.1 (KPE)     & 0.0676 & 0.1054 & 0.0364 & 0.0461 \\
+    & v5.2 (BPE)     & 0.0670 & 0.1040 & 0.0362 & 0.0457 \\
+    & v6 (BCSR)      & 0.0677 & \textbf{0.1056} & 0.0364 & 0.0461 \\
+    & v7 (UCR-D)     & \textbf{0.0678} & \textbf{0.1056} & \textbf{0.0365} & 0.0461 \\
+    & v8 (WMSG)      & 0.0675 & 0.1054 & \textbf{0.0365} & \textbf{0.0462} \\
+    \midrule
+
+    % ========================================================
+    % AMAZON SPORTS
+    % ========================================================
+
+    \multirow{10}{*}{\textbf{Sports}}
+    & Baseline       & 0.0743 & 0.1111 & 0.0405 & 0.0500 \\
+    & v1 (LHC)       & 0.0747 & 0.1133 & 0.0407 & 0.0506 \\
+    & v2 (C-HET)     & 0.0744 & 0.1129 & 0.0406 & 0.0505 \\
+    & v3 (DP-BSC)    & 0.0744 & 0.1129 & 0.0406 & 0.0505 \\
+    & v4 (NLGCL-CSE) & \textbf{0.0765} & \textbf{0.1143} & 0.0419 & 0.0517 \\
+    & v5.1 (KPE)     & 0.0758 & 0.1136 & 0.0418 & 0.0516 \\
+    & v5.2 (BPE)     & 0.0756 & 0.1135 & 0.0417 & 0.0515 \\
+    & v6 (BCSR)      & \textbf{0.0765} & \textbf{0.1143} & 0.0419 & 0.0516 \\
+    & v7 (UCR-D)     & \textbf{0.0765} & \textbf{0.1143} & 0.0419 & 0.0516 \\
+    & v8 (WMSG)      & 0.0762 & 0.1142 & \textbf{0.0420} & \textbf{0.0518} \\
+    \midrule
+
+    % ========================================================
+    % AMAZON ELECTRONICS
+    % ========================================================
+
+    \multirow{10}{*}{\textbf{Electronics}}
+    & Baseline       & 0.0442 & 0.0665 & 0.0246 & 0.0303 \\
+    & v1 (LHC)       & 0.0435 & 0.0666 & 0.0241 & 0.0301 \\
+    & v2 (C-HET)     & -- & -- & -- & -- \\
+    & v3 (DP-BSC)    & -- & -- & -- & -- \\
+    & v4 (NLGCL-CSE) & 0.0458 & 0.0678 & \textbf{0.0260} & 0.0316 \\
+    & v5.1 (KPE)     & -- & -- & -- & -- \\
+    & v5.2 (BPE)     & \textbf{0.0460} & 0.0678 & \textbf{0.0260} & 0.0316 \\
+    & v6 (BCSR)      & 0.0458 & \textbf{0.0681} & 0.0259 & \textbf{0.0317} \\
+    & v7 (UCR-D)     & 0.0459 & 0.0677 & \textbf{0.0260} & 0.0316 \\
+    & v8 (WMSG)      & \textbf{0.0460} & 0.0680 & \textbf{0.0260} & \textbf{0.0317} \\
+
+\end{longtable}
+\endgroup
+
+\noindent{\footnotesize\textit{Ghi chú:} Giá trị in đậm được dùng để nhấn mạnh cấu hình v4 và một số kết quả cao trong bảng, không đồng nghĩa tất cả đều là giá trị tốt nhất tuyệt đối. Các bảng giai đoạn trước có một số số liệu không thống nhất, đặc biệt ở v1, v3 và v7; bảng này ưu tiên số liệu thuộc phần báo cáo riêng của từng phiên bản. Cần đối chiếu lại nhật ký thực nghiệm trước khi sử dụng làm bảng kết quả chính thức.}
+
+\noindent\textcolor{lightblue}{\textbf{Đánh giá kết quả tổng hợp.}} STAIR5-v1 cải thiện kết quả trên Sports nhưng chưa ổn định giữa các tập dữ liệu và có chi phí huấn luyện cao. Hai phiên bản v2 và v3 giảm đáng kể chi phí, song chất lượng xếp hạng chưa vượt baseline trên Baby. STAIR5-v4 là phiên bản đầu tiên cải thiện đồng thời cả bốn chỉ số chính trên cả ba tập dữ liệu, cho thấy lợi ích của việc mở rộng đồ thị bằng các liên kết cộng tác trực tiếp.
+
+Các phiên bản tiếp theo chủ yếu đạt kết quả gần với v4. Cụ thể, v5.1 và v5.2 không mang lại cải thiện rõ ràng; v6 tăng nhẹ Recall@20 và NDCG@20 trên Electronics; v7 cho kết quả tương đương ở phần lớn chỉ số; còn v8 cải thiện nhẹ NDCG@20 và Recall@1 trên Baby nhưng làm tăng chi phí huấn luyện trên Electronics. Nhìn chung, chưa có phiên bản nào sau v4 tạo ra mức cải thiện nhất quán trên toàn bộ tập dữ liệu.
+
+
+% ============================================================
+% BẢNG 2: TỔNG HỢP CHI PHÍ GPU
+% ============================================================
+
+\subsubsection{So sánh chi phí tính toán và bộ nhớ GPU}
+
+Bên cạnh chất lượng xếp hạng, nhóm tổng hợp thời gian huấn luyện và mức sử dụng bộ nhớ GPU của các phiên bản. Bảng~\ref{tab:stair_all_versions_hardware} trình bày kết quả theo từng tập dữ liệu. Số liệu thời gian được lấy từ các lần chạy đã báo cáo; đối với bộ nhớ, cần phân biệt VRAM đỉnh hệ thống và bộ nhớ tensor được phân bổ.
+
+\begingroup
+\scriptsize
+\renewcommand{\arraystretch}{1.13}
+\setlength{\tabcolsep}{4pt}
+\setlength{\LTleft}{\fill}
+\setlength{\LTright}{\fill}
+
+\begin{longtable}{@{}
+    >{\raggedright\arraybackslash}p{1.7cm}
+    >{\raggedright\arraybackslash}p{2.0cm}
+    >{\centering\arraybackslash}p{1.6cm}
+    >{\centering\arraybackslash}p{1.7cm}
+    >{\centering\arraybackslash}p{2.1cm}
+    @{}}
+
+    \caption{Tổng hợp chi phí tính toán và bộ nhớ GPU của STAIR Baseline và các phiên bản cải tiến.}
+    \label{tab:stair_all_versions_hardware} \\
+
+    \toprule
+    \rowcolor{gray!15}
+    \textbf{Dữ liệu} & \textbf{Phiên bản} & \textbf{Giây/epoch} & \textbf{500 epoch} & \textbf{Bộ nhớ GPU} \\
+    \midrule
+    \endfirsthead
+
+    \multicolumn{5}{c}{\textit{Bảng \thetable\ (tiếp theo)}} \\
+    \toprule
+    \rowcolor{gray!15}
+    \textbf{Dữ liệu} & \textbf{Phiên bản} & \textbf{Giây/epoch} & \textbf{500 epoch} & \textbf{Bộ nhớ GPU} \\
+    \midrule
+    \endhead
+
+    \midrule
+    \multicolumn{5}{r}{\textit{Tiếp tục ở trang sau}} \\
+    \endfoot
+
+    \bottomrule
+    \endlastfoot
+
+    % ========================================================
+    % AMAZON BABY
+    % ========================================================
+
+    \multirow{10}{*}{\textbf{Baby}}
+    & Baseline & 1.45 & 12.08 phút & 490 MB$^{(a)}$ \\
+    & v1 (LHC) & 17.80 & 2.40 giờ & $\sim 3.5$ GB$^{(b)}$ \\
+    & v2 (C-HET) & 2.18 & 19.13 phút & 141.00 MB \\
+    & v3 (DP-BSC) & 2.05 & 17.94 phút & 141.00 MB \\
+    & \textbf{v4 (NLGCL-CSE)} & 2.39 & 19.89 phút & 143.60 MB \\
+    & v5.1 (KPE) & 2.72$^{(c)}$ & 22.66 phút & 168.20 MB \\
+    & v5.2 (BPE) & 2.44$^{(c)}$ & 20.37 phút & 143.33 MB \\
+    & v6 (BCSR) & 3.06 & 25.47 phút & 144.23 MB \\
+    & v7 (UCR-D) & 2.82 & 23.50 phút & 146.50 MB \\
+    & v8 (WMSG) & 2.20 & 19.31 phút & 143.92 MB \\
+    \midrule
+
+    % ========================================================
+    % AMAZON SPORTS
+    % ========================================================
+
+    \multirow{10}{*}{\textbf{Sports}}
+    & Baseline & 2.65 & 22.08 phút & 696 MB$^{(a)}$ \\
+    & v1 (LHC) & 31.30 & 4.25 giờ & $\sim 5.5$ GB$^{(b)}$ \\
+    & v2 (C-HET) & 5.09 & 45.48 phút & 221.60 MB \\
+    & v3 (DP-BSC) & 4.98 & 44.50 phút & 221.60 MB \\
+    & \textbf{v4 (NLGCL-CSE)} & 5.06 & 42.21 phút & 218.50 MB \\
+    & v5.1 (KPE) & 6.22$^{(c)}$ & 51.84 phút & 238.10 MB \\
+    & v5.2 (BPE) & 5.18$^{(c)}$ & 43.17 phút & 216.97 MB \\
+    & v6 (BCSR) & 6.17 & 51.38 phút & 218.62 MB \\
+    & v7 (UCR-D) & 6.98 & 58.20 phút & 223.90 MB \\
+    & v8 (WMSG) & 4.68 & 41.66 phút & 222.84 MB \\
+    \midrule
+
+    % ========================================================
+    % AMAZON ELECTRONICS
+    % ========================================================
+
+    \multirow{10}{*}{\textbf{Electronics}}
+    & Baseline & 10.23 & 1.42 giờ & 1\,738 MB$^{(a)}$ \\
+    & v1 (LHC) & 79.40 & 11.39 giờ & $\sim 7.2$ GB$^{(b)}$ \\
+    & v2 (C-HET) & -- & -- & -- \\
+    & v3 (DP-BSC) & -- & -- & -- \\
+    & \textbf{v4 (NLGCL-CSE)} & 41.73 & 5.80 giờ & $\sim 680$ MB \\
+    & v5.1 (KPE) & -- & -- & -- \\
+    & v5.2 (BPE) & 40.10$^{(c)}$ & 5.57 giờ & 790.52 MB \\
+    & v6 (BCSR) & 42.84 & 5.95 giờ & 800.12 MB \\
+    & v7 (UCR-D) & -- & 2.36 giờ$^{(d)}$ & 818.50 MB \\
+    & v8 (WMSG) & 59.08 & 8.78 giờ & 800.67 MB \\
+
+\end{longtable}
+\endgroup
+
+\noindent{\footnotesize\textit{Ghi chú:} $^{(a)}$ Số liệu GPU memory tham chiếu của baseline. $^{(b)}$ VRAM đỉnh hệ thống của v1. Các giá trị không có ký hiệu trong cột bộ nhớ của các phiên bản cải tiến là bộ nhớ tensor được phân bổ. $^{(c)}$ Thời gian trung bình ước tính từ tổng thời gian chia cho 500 epoch, không phải giá trị đo trực tiếp. $^{(d)}$ Kết quả v7 trên Electronics được đo bằng GPU RTX PRO 6000 Blackwell, khác với môi trường Tesla T4 của các cấu hình còn lại. Do khác phương pháp đo bộ nhớ và một số điều kiện thực thi, không sử dụng các giá trị này để kết luận trực tiếp tỷ lệ tiết kiệm VRAM hoặc tốc độ tăng tốc giữa mọi phiên bản.}
+
+\noindent\textcolor{lightblue}{\textbf{Đánh giá chi phí thực thi.}} STAIR5-v1 có thời gian và VRAM đỉnh cao do bổ sung nhánh tương phản Lorentz. Các phiên bản v2 và v3 giảm đáng kể thời gian huấn luyện nhưng chưa cải thiện chất lượng xếp hạng nhất quán. STAIR5-v4 có chi phí cao hơn baseline do bổ sung NLGCL, song vẫn thấp hơn nhiều so với v1. Trên Electronics, thời gian huấn luyện của v4 là 5.80 giờ, trong khi v8 tăng lên 8.78 giờ. Vì vậy, v4 tiếp tục là phương án có mức đánh đổi hợp lý giữa hiệu năng và chi phí tính toán.
+
 \clearpage
