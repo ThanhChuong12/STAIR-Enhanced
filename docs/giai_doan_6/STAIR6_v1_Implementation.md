@@ -1,21 +1,23 @@
 # STAIR6-v1 implementation and validation
 
-Date: 2026-10-13. Specification: `STAIR6_v1_Report.md`.
+Date: 2026-10-13. Canonical specification: [STAIR6_v1_Report.md](STAIR6_v1_Report.md).
 
-Implemented architecture: **CAE-WMSG-CSE**. This implementation enriches the
-existing semantic graph with shrunken positive category associations. It does
-not classify substitutes/complements, introduce signed edges, add topology or
-change the V8 representation/loss/evaluation methods.
+Primary implementation: **LCAE-WMSG-CSE**, static latent cluster association
+enrichment of the native V8 item smoother. The primary now works from native
+feature rows without external category labels or ASIN mapping. Verified Amazon
+metadata remains a separate `category_source=metadata` experiment.
 
-## Material Passport
+## Material Passport and review boundary
 
-- Material: isolated STAIR6-v1 source implementation and synthetic validation.
-- Scope: CPU numerical/integration tests, CLI training/resume smoke and metadata preflight.
-- Evidence status: executed checks; no Amazon CAE benchmark or GPU performance result.
-- Data prerequisite: verified ASIN mapping and informative category metadata are missing from the current Baby bundle.
-- Baseline: original STAIR5-v8 source retained unchanged.
+- Material: revised architecture, isolated STAIR6 implementation, methodology review.
+- Evidence: CPU numerical/integration tests, synthetic actual FreeRec training/resume,
+  real Baby feature clustering and complete graph-only preprocessing.
+- Not measured: LCAE Amazon ranking gains, target GPU memory/time, real Sports/Electronics clustering.
+- Reviewer provenance: separately invoked methodology reviewer plus primary-agent
+  synthesis, same model family, NOT_CALIBRATED. No independent human certification.
+- Baseline V8/V7 implementation files remain unchanged.
 
-## File layout
+## Source layout
 
 ```text
 main_stair6_v1.py
@@ -23,133 +25,123 @@ stair6_v1_config.py
 models/
     stair6_v1.py
     stair6_v1_categories.py
+    stair6_v1_latent_categories.py
     stair6_v1_graph.py
-tools/
-    audit_stair6_v1_metadata.py
 configs/
     Amazon2014Baby_STAIR6_v1.yaml
     Amazon2014Sports_STAIR6_v1.yaml
     Amazon2014Electronics_STAIR6_v1.yaml
+tools/
+    audit_stair6_v1_latent.py
+    audit_stair6_v1_metadata.py
 tests/
+    test_stair6_v1_latent_categories.py
     test_stair6_v1_categories.py
     test_stair6_v1_graph.py
     test_stair6_v1_pipeline.py
+requirements-stair6-v1.txt
 ```
 
-The model inherits V8 `encode`, `encode_for_eval`, `training_objective`,
-`fit`, `marked_params`, sampling, ranking buffers, full scoring and pool scoring.
-Its preparation observes the original CPU kNN inputs, runs native V8 MI/graph
-construction, then replaces the item operator with the CAE graph. Transient
-raw features, category memberships and baseline operators are not kept on GPU.
+The model inherits V8 encode/evaluation, training_objective, fit, marked_params,
+sampling and scorers. It observes native CPU feature/kNN inputs during prepare,
+generates latent memberships or validates metadata, enriches raw semantic
+weights, then replaces mAdj with one final CSR operator. Transient raw features,
+centers/memberships and baseline graph are not retained on GPU.
 
-No new optimizer or loss module is needed. The existing V8 smoother is reused,
-with the final operator exposed by `self.mAdj`. User parameters remain
-unsmoothed; item parameters use the same BSC polynomial. The same V8 coach
-provides model selection, telemetry and checkpoint lifecycle.
+No additional optimizer, loss or smoother module is needed. The native V8
+AdamWSEvo groups and BSC recurrence are reused. The launcher reuses the native
+coach/evaluator and creates a writable FreeRec Processed bridge for a directly
+located dataset. It also provides --preprocess-only without optimizer steps.
 
-## Mathematical contracts
+## Source selection and exact recovery
 
-For canonical informative terminal category memberships, rows of H sum to
-one; missing/root-only rows are zero. Train user-category incidence is binary
-and built from distinct train pairs. Its population includes users with at
-least one informative category.
+| Setting | Meaning |
+|---|---|
+| category_source=latent | Generate unlabeled groups from existing text/image rows |
+| category_source=metadata | Require verified mapping, taxonomy and manifest |
+| category_mode=off | Exact native V8 path; no grouping/metadata work |
+| category_strength=0 | Exact native V8 path, irrespective of source |
 
-For requested off-diagonal category pairs only:
+There is no auto source detection or silent metadata-to-latent fallback. Unknown
+source/invalid parameters fail. The default three YAMLs select latent at64D.
+Electronics preserves batch4096 and effective historical CL chunk128. Native
+500epoch horizon, validation NDCG@20 selection, full-ranking masks, MI/FSC/BPR/
+NLGCL settings and dataset LR/decay remain unchanged.
 
-\[
-h_{ab}=\frac{n_{ab}}{n_{ab}+5}
-\tanh\left(\max\left(0,\log\frac{n_{ab}N_*}{n_an_b}\right)\right)
-\]
+## Implemented grouping/statistics contracts
 
-when shared-user count is at least two; otherwise h is zero, including h_aa.
-Item-edge scores pool this evidence using the normalized memberships. The
-enrichment multiplier is `1 + category_strength * h_ij`, with strength in [0,1].
-The enriched graph is normalized with current degrees and blended with the
-original CF graph using the native globally-empty-CF fallback.
+1. Read CPU FP32 contiguous feature rows in native processed item order.
+2. Normalize each raw row safely, use separate seeded Gaussian projections to
+   r64 per modality, normalize projected views and concatenate sqrt(5/6) text
+   and sqrt(1/6) image blocks. No coordinate-wise modal alignment is assumed.
+3. Spherical k-means++ initialization and up to20 full blocked spherical Lloyd
+   passes, C50, local seed2718. No Euclidean MiniBatchKMeans approximation is
+   called spherical. No training RNG mutation.
+4. Hard sparse one-hot H. Double-invalid content rows have no assignment;
+   single-view rows use the valid block. Nonfinite inputs/collapsed partitions
+   fail. All group IDs are anonymous and item_asins remains empty.
+5. Binary user-group OR uses unique TRAIN pairs only. Dense positive GMM/softmax
+   membership is intentionally excluded: it would make every group present for
+   every active user and destroy lift.
+6. Requested off-diagonal pairs only, with minimum count2 and support attenuation
+   n/(n+5) times tanh(positive log-lift). This is not a calibrated Bayesian model.
+   Integer comparison handles exact independence before evaluating logs.
+7. h_aa0: within-group semantic edges are neutral. Existing edge scores enrich
+   raw W by1+delta*h, delta0.5; support is unchanged. Reverse reuse ensures exact
+   symmetry. Recompute current degrees and retain original CF normalization and
+   empty-CF behavior before eta0.1 blending.
+8. All-zero active evidence raises InactiveCategorySignal. A small raw change
+   can disappear in normalization, so operator and BSC probe doses are logged.
 
-Support stays fixed. Reverse-edge scores are evaluated once and reused for
-exact FP32 symmetry. Missing labels preserve the raw edge; normalization can
-still change that edge's normalized magnitude through changed node degrees.
+## Cache, checkpoints and reproducibility
 
-`--category-mode off` or `--category-strength 0` bypasses all category inputs
-and returns the exact original V8 numerical path. Enabled but empty/generic
-metadata or all-zero positive association raises `InactiveCategorySignal`.
-It must not be reported as a successful category-enabled experiment.
+Latent cache includes exact raw-array hashes as well as ordered feature-file
+hashes, dataset/splits, algorithm/source version, rank/C/iterations/seed, NumPy/
+Torch versions, recorded thread setting and effective block. It stores CPU
+assignments/centers, content hashes and deterministic diagnostics. Corrupt caches
+warn and recompute. Group centers are offline artifacts, not model parameters.
 
-## Metadata inputs
+Checkpoint identity includes source revision, source kind, group provenance,
+configuration and graph/data fingerprints. Runtime seconds/cache-hit flags are
+not used as deterministic model identity. Changing source/rank/C/seed/data or
+code invalidates an old run. Do not resume a metadata-only checkpoint under the
+new latent model or silently cross this source revision.
 
-Each dataset configuration declares paths to three required files:
+Within-environment repeatability is tested. Different BLAS/hardware/near-tie
+rounding can change hard assignments; record fingerprints and use a fixed
+clustering realization across training seeds. Full-catalog content fitting is
+transductive, matching V8 feature availability; held-out interaction values are
+excluded from all fitted statistics. Hashing valid/test files binds the protocol,
+not their use in model fitting.
 
-1. `item_id_to_asin.json`: exactly N_i original ASINs in processed item order,
-   or records with unique contiguous `item_id` and `asin` fields.
-2. `item_categories.jsonl`: records with `item_id`, matching `asin`, and
-   `categories` as lists of full hierarchy paths. Missing item records or
-   empty category lists are neutral; duplicate records and malformed explicit
-   category paths are rejected.
-3. `category_metadata_manifest.json`: source attestation and hash binding.
+## Commands
 
-The manifest uses this schema; angle-bracket values below are placeholders,
-not actual verified inputs:
+Install the runtime consistent with V8; preserve Kaggle's CUDA-enabled Torch.
+requirements-stair6-v1.txt records the dependencies used for CPU verification.
 
-```json
-{
-  "schema_version": 1,
-  "dataset": "Amazon2014Baby_550_MMRec",
-  "n_items": 7050,
-  "mapping_verified": true,
-  "mapping_source": "<the actual provider/preprocessing artifact establishing item order>",
-  "metadata_source": {
-    "source": "<the actual metadata source>",
-    "snapshot": "<the documented snapshot>"
-  },
-  "files": {
-    "mapping_sha256": "<SHA256 of the mapping file>",
-    "metadata_sha256": "<SHA256 of the JSONL file>"
-  },
-  "baseline": {
-    "features": {
-      "textual_modality.pkl": "<SHA256>",
-      "visual_modality.pkl": "<SHA256>"
-    },
-    "splits": {
-      "train.txt": "<SHA256>",
-      "valid.txt": "<SHA256>",
-      "test.txt": "<SHA256>"
-    }
-  }
-}
-```
-
-Only set the mapping attestation after obtaining and validating the provider's
-actual item order. A one-to-one array plus matching hashes cannot prove that an
-invented ASIN mapping is semantically correct. Do not infer order from metadata
-file position, sorted ASINs or approximate feature matching. External
-`also_bought`/`also_viewed` links are not used.
-
-The model checks dataset identity before MI, rejects entirely uninformative
-taxonomy before SVD, and checks the actual split/feature hashes after native
-preparation. Root-only paths and generic terminals are excluded; full parent
-paths distinguish identical leaf names under different parents.
-
-## Run the preflight
+Feature-only grouping audit (does not build the ranking model or graph):
 
 ```bash
-python tools/audit_stair6_v1_metadata.py \
+python tools/audit_stair6_v1_latent.py \
   --dataset-dir data/Amazon2014Baby_550_MMRec \
-  --output reports/stair6_v1/baby_metadata_audit.json
+  --cache-dir .cache/stair6_v1 \
+  --output reports/stair6_v1/baby_latent_clustering_audit.json
 ```
 
-Exit 0 means `READY_FOR_GRAPH_DIAGNOSTICS`, not guaranteed ranking usefulness.
-Exit 2 means `NO-GO`. Missing metadata is detected without importing the ML
-runtime. Full validation uses the same loader/provenance rules as the model.
-The audit does not modify mappings or baseline dataset inputs.
+Complete graph/dose preflight, with native MI and graph construction:
 
-The current Baby bundle returns NO-GO with all three metadata inputs missing.
-This is expected and is not a model import/training failure.
+```bash
+python main_stair6_v1.py \
+  --config configs/Amazon2014Baby_STAIR6_v1.yaml \
+  --device cpu --preprocess-only \
+  --artifact-dir runs/stair6_v1/baby_graph_preflight
+```
 
-## Training commands
+The preflight writes a manifest but runs no training/evaluation. Use a separate
+fresh artifact directory for training, so a preflight cannot masquerade as or
+overwrite a training attempt.
 
-Explicit V8 control, which works without category metadata:
+Matched V8 control:
 
 ```bash
 python main_stair6_v1.py \
@@ -158,92 +150,111 @@ python main_stair6_v1.py \
   --artifact-dir runs/stair6_v1/baby_control_seed1
 ```
 
-Category-enabled run, after valid metadata and graph diagnostics:
+Latent pilot, then decide whether to run the matched full budget:
 
 ```bash
 python main_stair6_v1.py \
   --config configs/Amazon2014Baby_STAIR6_v1.yaml \
-  --artifact-dir runs/stair6_v1/baby_cae_seed1
+  --category-source latent --epochs 100 \
+  --artifact-dir runs/stair6_v1/baby_latent_pilot_seed1
 ```
 
-Use the Sports/Electronics YAMLs similarly. Their embedding dimension is 64.
-Electronics preserves batch 4096 and CL chunk 128, matching the effective
-historical V8 run. All three preserve validation NDCG@20 model selection,
-full-ranking masks, 500 epochs and the native sampler/optimizer settings.
+Use Sports/Electronics YAMLs similarly after making the native feature/split
+bundles available. Clustering requires no outside category files, but missing
+base datasets/features still fail. A positive short-pilot trend is not final
+TEST superiority. Do not select C/r/delta or clustering seeds on TEST.
 
-Resume an existing attempt:
+Resume only the same source/config/data attempt:
 
 ```bash
 python main_stair6_v1.py \
   --config configs/Amazon2014Baby_STAIR6_v1.yaml \
-  --artifact-dir runs/stair6_v1/baby_cae_seed1 \
-  --resume-from runs/stair6_v1/baby_cae_seed1/training_checkpoint.pt
+  --artifact-dir runs/stair6_v1/baby_latent_seed1 \
+  --resume-from runs/stair6_v1/baby_latent_seed1/training_checkpoint.pt
 ```
 
-Checkpoint provenance rejects changed metadata, splits, features, graph,
-strength, dimensions or source contracts. It is not a V8-to-CAE warm-start
-utility. A fresh attempt cannot silently overwrite existing training artifacts.
+For verified metadata CAE, explicitly pass --category-source metadata and the
+three original metadata paths. The schema and provenance boundaries are in
+STAIR6_v1_Metadata_Design.md and the loader. The current Baby metadata preflight
+still returns NO-GO; this does not block the separately declared latent source.
+No helper invents ASIN mappings, text category names or verified attestations.
 
-## Performance implementation
+## Real Baby preprocessing receipts
 
-- Graph/statistics processing is CPU-only. Category pair counts are queried
-  from sorted CSC user postings; the smaller posting list uses vectorized
-  search in the larger list. No dense N_i²/C² matrix or full HhH-transpose is built.
-- Requested-pair generation avoids duplicate reverse edges on symmetric input.
-  Pooling uses dictionary lookup and reverse-edge reuse, avoiding a scalar
-  binary search for every label combination.
-- Pair-set and probe workspaces have explicit budgets; pathological multi-label
-  inputs fail rather than silently truncate the model. Budgets do not bound
-  total RSS, which also includes raw features and caller graphs.
-- Enabled models share the validated native raw-CF cache, avoiding a second
-  catalog-wide co-occurrence multiplication. CAE scores have their own
-  content-addressed cache binding taxonomy, train keys, raw weights and sources.
-- Final S6,1 replaces S8 with the same support/CSR dimensions. No additional
-  parameters or per-step graph branch are introduced. Original checkpointed
-  NLGCL chunking and no-grad optimizer recurrence are retained.
-- Manifests include raw/normalized graph fingerprints, coverage, active edge
-  mass, score quantiles, operator perturbation and deterministic BSC probe dose.
-  Probe dose is not a measurement of actual Adam-direction or ranking benefit.
+Executed on the existing7050item/19445user Baby bundle,118551 TRAIN interactions,
+CPU, with C50/r64/T20/seed2718. No optimizer training or ranking evaluation was
+performed in this real-data preflight.
 
-A synthetic CPU profile with 63,001 items, 504,008 semantic edges and 100
-single-label categories measured approximately 0.778 s for requested-pair
-generation and 2.091 s for pooling, with a 1.923 MiB edge-score tensor and exact
-symmetry. This is a synthetic component benchmark, not real Electronics
-preprocessing, GPU training throughput or an OOM guarantee.
+| Observation | Executed value |
+|---|---:|
+| Occupied groups | 50/50 |
+| Informative feature coverage | 7050/7050 in this bundle |
+| Largest group fraction | 4.0709% |
+| Normalized group entropy | 0.98060 |
+| Standalone uncached grouping stage | 0.8713s |
+| Full native model/graph preprocessing | 41.41s |
+| Within-group semantic weight mass | 61.3497% |
+| Cross-group semantic weight mass | 38.6503% |
+| Active positive-association semantic mass | 37.9745% |
+| Requested/positive group pairs | 1094/1034 |
+| Relative normalized-operator Frobenius delta vsV8 | 5.2710% |
+| Relative BSC deterministic probe delta vsV8 | 1.3396% |
+| Semantic/final nonzeros | 59852/84138, native support retained |
 
-## Verification and limits
+The0.8713s grouping-stage clock excludes caller PKL loading/file hashing and the
+parent native kNN/SVD/CF work. The full preflight reused that grouping cache and
+completed in41.41s. Neither observation supports a universal two-second GPU
+claim. Measured coverage100% is specific to this Baby bundle, not a theoretical
+guarantee for other features. A20pass run need not be at the global clustering
+optimum; assignment/objective history and margins are recorded.
 
-Executed in an isolated Python 3.12.10 environment with Torch 2.10.0+cpu,
-FreeRec 0.9.7, NumPy 2.5.4, SciPy 1.18.1, PyYAML 6.0.3, Polars 2.0.0,
-torch-geometric 2.8.1 and pytest 9.1.1.
+Receipts:
 
-Final validation receipt: **62 passed, 3 upstream warnings in 30.93 s** on
-2026-10-13, with Torch CPU threads set to one. The exact-independence regression
-also verifies that integer count equality yields zero category evidence rather
-than a spurious positive score from floating-point log cancellation.
+- reports/stair6_v1/baby_latent_clustering_audit.json
+- reports/stair6_v1/baby_latent_graph_preflight/manifest.json
+
+These show usable clustering and non-negligible intervention on Baby, not
+ranking improvement, semantic-label accuracy, statistical significance or
+measured GPU/process memory. They support progression to a matched pilot.
+
+## Performance and validation scope
+
+CPU blocks bound projection and item-to-centroid logits; no item²/category²
+matrix, full cdist or dense HhH-transpose is used. Fused features are128D and
+membership has at most one nonzero per item. Native raw-CF cache is shared,
+avoiding duplicate catalog-wide co-occurrence construction. Native CL chunking
+and no-grad BSC recurrence are inherited.
+
+Workspace budgets constrain additional grouping/query/probe allocations, not
+total RSS, raw feature arrays, baseline full SVD/kNN/CF work or libraries. Final
+CSR replaces S8, with no extra train-time GPU branch. Actual Electronics/T4
+memory and wall time still need measurement; no universal OOM guarantee.
+
+Executed test environment: Python3.12.10, Torch2.10.0+cpu, FreeRec0.9.7,
+NumPy2.5.4, SciPy1.18.1, PyYAML6.0.3, Polars2.0.0, torch-geometric2.8.1,
+pytest9.1.1. Tests include hard membership, normalized centers, RNG isolation,
+missing/degenerate content, corrupt-cache recovery, feature binding, global
+cluster-ID permutation invariance, dense-soft-incidence counterexample, graph
+bounds/support and exact off/zero forward/gradient/optimizer recovery.
+
+Final regression receipt: **87 passed, 3 upstream warnings in58.33s** on
+2026-10-13. CPU Torch/OMP/MKL thread settings were set to one for this run.
+
+Pipeline smoke tests use the actual FreeRec dataset/datapipe/coach, train two
+synthetic epochs and resume to epoch three for **both metadata and latent**.
+The latent smoke has no external metadata files; its synthetic TRAIN co-interest
+is deliberately constructed to test integration, not presented as natural
+Amazon behavior or a ranking experiment. Checkpoint continuation on fixed
+batches and full/pool scorer parity are separately covered.
 
 ```bash
 python -m pytest -q \
+  tests/test_stair6_v1_latent_categories.py \
   tests/test_stair6_v1_categories.py \
   tests/test_stair6_v1_graph.py \
   tests/test_stair6_v1_pipeline.py
 ```
 
-The suites cover taxonomy/mapping/hash integrity, duplicate-aware counts,
-multi-label pooling, graph bounds/support/cache recovery, zero-intervention
-forward/RNG/gradient/two-step optimizer parity, live autograd, exact checkpoint
-continuation on the same batches and full/pool scoring parity.
-
-A subprocess smoke additionally executes the actual FreeRec dataset, datapipe,
-coach, validation, selected-checkpoint evaluation and artifact writer for two
-synthetic epochs, then resumes the same attempt to epoch three. This confirms
-the production launcher path; it does not replace the Amazon benchmark.
-
-Upstream warnings about deprecated `torch.jit.script` and beta CSR support are
-left visible. They were not failures in the CPU checks. GPU kernels, process
-VRAM, evaluation peaks, real metadata coverage and ranking gains still require
-measurement on the target environment.
-
-Use the research report's matched controls and GO/NO-GO protocol before making
-improvement claims. No real dataset metrics or guaranteed percentage gains
-were produced by this implementation request.
+Keep upstream torch.jit.script deprecation and sparse CSR warnings visible.
+The research report defines the matched-seed, placebo and GO/NO-GO protocol.
+Do not convert preprocessing readiness or test success into an improvement claim.

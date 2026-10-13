@@ -192,7 +192,7 @@ def build_stair6_v1_graph(baseline_state, raw_semantic=None, raw_cf=None,
         return GraphStateSTAIR6(baseline_state.operator, metadata)
     started = time.perf_counter()
     if category_data is None:
-        raise ValueError("CAE requires verified item mapping and category metadata.")
+        raise ValueError("CAE requires provenance-bound metadata or latent group memberships.")
     if not isinstance(min_count, int) or min_count < 1 or not math.isfinite(shrinkage) or shrinkage <= 0:
         raise ValueError("Category count/shrinkage must be positive.")
     if not math.isfinite(eta) or not 0 <= eta <= 1:
@@ -206,6 +206,17 @@ def build_stair6_v1_graph(baseline_state, raw_semantic=None, raw_cf=None,
     if 64 * n_items * probe_dim > memory_budget_mib * 2**20:
         raise MemoryError("CPU probe workspace exceeds the configured budget; reduce probe_dim.")
     raw = _canonical_graph(raw_semantic, n_items, "Raw WMSG", True)
+    membership = category_data.memberships.tocsr()
+    if np.all(np.diff(membership.indptr) <= 1):
+        labels = np.full(n_items, -1, dtype=np.int64)
+        known = np.diff(membership.indptr) == 1
+        labels[known] = membership.indices[membership.indptr[:-1][known]]
+        rows = np.repeat(np.arange(n_items), np.diff(raw.indptr))
+        valid = (labels[rows] >= 0) & (labels[raw.indices] >= 0)
+        same = valid & (labels[rows] == labels[raw.indices])
+        denominator = max(1e-12, raw.data.sum(dtype=np.float64))
+        metadata["within_group_semantic_mass"] = float(raw.data[same].sum(dtype=np.float64) / denominator)
+        metadata["cross_group_semantic_mass"] = float(raw.data[valid & ~same].sum(dtype=np.float64) / denominator)
     cf = _canonical_graph(raw_cf, n_items, "Raw CF", True)
     original = _canonical_graph(tensor_to_scipy(baseline_state.operator), n_items, "V8 operator")
     reconstructed, _ = _blend(raw, cf, eta)
@@ -264,6 +275,7 @@ def build_stair6_v1_graph(baseline_state, raw_semantic=None, raw_cf=None,
     delta = final - original
     metadata.update(audit)
     metadata.update(category_effective_mode="cae", category_active=True, category_bypass=False,
+                    category_source=category_data.audit.get("source_kind", "verified_metadata"),
                     category_cache_key=key, category_metadata_fingerprint=fingerprint,
                     category_graph_signature=signature, category_mapping_audit=dict(category_data.audit),
                     effective_eta=effective_eta, category_semantic_nnz=int(raw.nnz), s6_nnz=int(final.nnz),

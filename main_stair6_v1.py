@@ -1,6 +1,7 @@
 """Train STAIR6-v1 with the inherited V8 evaluator and checkpoint lifecycle.
 
-Category-enabled mode requires audited ASIN mapping and train-bound metadata.
+Latent mode generates groups from existing features; metadata mode requires
+audited ASIN mapping. Neither mode claims to identify economic relation types.
 Use --category-mode off to run the exact V8 backbone as an isolated control.
 """
 
@@ -61,8 +62,9 @@ def load_dataset(cfg):
                 print(f"Warning resolving read-only symlink: {e}")
 
     # 2. If processed doesn't exist, search across candidates and bridge safely
-    if not processed.is_dir() and not direct.is_dir():
+    if not processed.is_dir():
         for cand_root in [
+            str(Path(cfg.root)),
             "/kaggle/data",
             "/kaggle/data/Processed",
             "/kaggle/working/STAIR-Enhanced/data",
@@ -128,6 +130,7 @@ def load_dataset(cfg):
 
 def _compile_config(check_metadata=True):
     cfg = freerec.parser.Parser()
+    cfg.add_argument("--preprocess-only", action="store_true", default=False)
     for flag, kind, default in CATEGORY_OPTIONS:
         cfg.add_argument("--" + flag, type=kind, default=default)
     for flag, kind, default in (
@@ -177,7 +180,7 @@ def _compile_config(check_metadata=True):
     cfg.add_argument("--knn-device", choices=("cpu",), default="cpu")
 
     cfg.set_defaults(
-        description="STAIR6-v1-CAE-WMSG-CSE",
+        description="STAIR6-v1-LCAE-WMSG-CSE",
         root="data",
         dataset="Amazon2014Sports_550_MMRec",
         epochs=500,
@@ -333,7 +336,8 @@ def main():
         "which4best", "ranking", "num_workers", "CHECKPOINT_FREQ",
     )
     manifest = {
-        "architecture": "STAIR6-v1-CAE-WMSG-CSE", "argv": list(sys.argv), "commit": commit,
+        "architecture": model.get_extra_state()["stair6_category"]["architecture"],
+        "argv": list(sys.argv), "commit": commit,
         "python": platform.python_version(), "torch": str(torch.__version__), "freerec": freerec.__version__,
         "device": str(device), "gpu": torch.cuda.get_device_name(device) if device.type == "cuda" else None,
         "precision": {"tf32": False, "amp": False}, "seed": cfg.seed,
@@ -352,6 +356,9 @@ def main():
     filename = "resume_manifest.json" if resuming else "manifest.json"
     (artifact / filename).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print("[STAIR6-v1 category] " + json.dumps(model.category_metadata), flush=True)
+    if cfg.preprocess_only:
+        print("[STAIR6-v1] Preprocessing completed; no optimizer/training/evaluation was executed.", flush=True)
+        return
     coach = CoachForSTAIR5_v8(
         dataset=dataset, model=model, cfg=cfg,
         trainpipe=model.sure_trainpipe(cfg.batch_size), validpipe=model.sure_validpipe(cfg.ranking),

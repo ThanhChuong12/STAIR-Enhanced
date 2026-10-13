@@ -94,7 +94,7 @@ def setup(tmp_path):
         anchor_seed=2718, anchor_per_stratum=1024, relation_threshold=0.7, relation_temperature=0.1,
         placebo_seed=1, knn_device="cpu", knn_chunk_size=32, cf_block_size=16, cf_memory_budget_mib=128.0,
         graph_cache_dir=str(tmp_path / "cache"), artifact_dir=str(tmp_path / "artifacts"),
-        root=str(tmp_path), dataset="ToyDataset", category_mode="cae", category_strength=0.5,
+        root=str(tmp_path), dataset="ToyDataset", category_mode="cae", category_source="metadata", category_strength=0.5,
         category_mapping_file=str(mapping), category_metadata_file=str(metadata), category_manifest_file=str(manifest),
     )
     cfg.beta3 = 0.1 + 0.9 * (torch.arange(cfg.embedding_dim) / cfg.embedding_dim).pow(cfg.gamma)
@@ -248,6 +248,7 @@ def test_all_three_cli_configs_and_explicit_control_override(tmp_path):
                 "--device", "cpu", "--artifact-dir", str(tmp_path / name)]
         cfg = build_config(args, check_metadata=False)
         assert cfg.category_strength == 0.5 and cfg.embedding_dim == 64
+        assert cfg.category_source == "latent" and cfg.latent_clusters == 50
         assert cfg.cl_chunk_size == (128 if name == "Electronics" else 1024)
         cfg = build_config([*args, "--category-mode", "off"])
         assert cfg.category_mode == "off" and cfg.which4best == "NDCG@20"
@@ -262,9 +263,29 @@ def test_metadata_audit_returns_no_go_and_valid_binding(setup):
     assert valid["ready"] and valid["status"] == "READY_FOR_GRAPH_DIAGNOSTICS"
 
 
-def test_native_training_entrypoint_two_epochs(setup):
+@pytest.mark.parametrize("category_source", ["metadata", "latent"])
+def test_native_training_entrypoint_two_epochs(setup, category_source):
     """Exercise actual FreeRec dataset, datapipe, coach, validation and save/load."""
     dataset, cfg, path = setup
+    cfg = copy.copy(cfg)
+    if category_source == "latent":
+        from models.stair6_v1_latent_categories import build_latent_category_data
+        cfg.category_source = "latent"
+        cfg.latent_clusters, cfg.latent_projection_dim, cfg.latent_iterations = 6, 8, 10
+        with (path / "text.pkl").open("rb") as handle:
+            text = pickle.load(handle)
+        with (path / "image.pkl").open("rb") as handle:
+            image = pickle.load(handle)
+        latent = build_latent_category_data([text, image], dataset="ToyDataset",
+            feature_manifest=[{"file": "text.pkl", "sha256": "a" * 64},
+                              {"file": "image.pkl", "sha256": "b" * 64}],
+            split_manifest={"train.txt": "c" * 64}, clusters=6, projection_dim=8, iterations=10)
+        # Construct controlled TRAIN co-interest across two content groups.
+        # This tests live integration without assuming random groups carry signal.
+        items_a = [i for i, group in enumerate(latent.assignments) if group in (0, 1)]
+        items_b = [i for i, group in enumerate(latent.assignments) if group not in (0, 1)]
+        dataset.edge_index = torch.tensor([(u, i) for u in range(12)
+                                          for i in (items_a if u < 4 else items_b)]).T.contiguous()
     train_lines = ["USER\tITEM\tTIMESTAMP\n"]
     train_lines.extend(f"{u}\t{i}\t{step + 1}\n" for step, (u, i) in enumerate(dataset.edge_index.T.tolist()))
     (path / "train.txt").write_text("".join(train_lines), encoding="utf-8")
@@ -284,7 +305,8 @@ def test_native_training_entrypoint_two_epochs(setup):
     directory.mkdir()
     for filename in ("train.txt", "valid.txt", "test.txt", "text.pkl", "image.pkl",
                      "mapping.json", "categories.jsonl", "manifest.json"):
-        shutil.copy2(path / filename, directory / filename)
+        if category_source == "metadata" or filename not in ("mapping.json", "categories.jsonl", "manifest.json"):
+            shutil.copy2(path / filename, directory / filename)
     config = {key: value for key, value in vars(cfg).items() if key != "beta3"}
     config.update(epochs=2, eval_freq=1, CHECKPOINT_FREQ=1, device="cpu", batch_size=64,
                   optimizer="adamwsevo", eval_valid=True, eval_test=False,
@@ -305,6 +327,7 @@ def test_native_training_entrypoint_two_epochs(setup):
     assert [record["epoch"] for record in records] == [1, 2]
     recorded_manifest = json.loads((artifact / "manifest.json").read_text())
     assert recorded_manifest["category"]["category_active"]
+    assert recorded_manifest["category"]["category_source"] == category_source
     assert recorded_manifest["selection"] == "validation NDCG@20"
     checkpoint = torch.load(artifact / "training_checkpoint.pt", map_location="cpu", weights_only=True)
     assert checkpoint["epoch"] == 2
@@ -323,7 +346,38 @@ def test_native_training_entrypoint_two_epochs(setup):
 
 @pytest.mark.parametrize("name,value", [("category_strength", float("nan")),
     ("category_strength", 1.01), ("category_min_count", True), ("category_shrinkage", 0),
-    ("category_probe_dim", 10_000), ("relation_gate", "metadata_proxy"), ("bsc_residual", 0.1)])
+    ("category_probe_dim", 10_000), ("relation_gate", "metadata_proxy"), ("bsc_residual", 0.1),
+    ("category_source", "auto"), ("latent_clusters", True), ("latent_projection_dim", 0),
+    ("latent_iterations", 1000), ("latent_memory_budget_mib", float("nan"))])
 def test_invalid_config_rejected(name, value):
     with pytest.raises(ValueError):
         validate_category_config({name: value})
+
+
+def test_latent_zero_strength_skips_clustering_and_missing_metadata(setup, monkeypatch):
+    monkeypatch.setattr("models.stair6_v1.build_latent_category_data",
+                        lambda *args, **kwargs: pytest.fail("Unexpected clustering in bypass"))
+    reference = make_model(setup, reference=True)
+    model = make_model(setup, category_source="latent", category_strength=0,
+                       category_mapping_file="", category_metadata_file="", category_manifest_file="")
+    assert model.graph_fingerprint == reference.graph_fingerprint
+
+
+def test_latent_audit_cli_generates_groups_without_external_metadata(setup):
+    path = setup[2]
+    root = Path(__file__).resolve().parents[1]
+    output = path / "latent_audit.json"
+    result = subprocess.run([sys.executable, str(root / "tools/audit_stair6_v1_latent.py"),
+        "--dataset-dir", str(path), "--mfiles", "text.pkl,image.pkl", "--clusters", "6",
+        "--projection-dim", "8", "--iterations", "10", "--cache-dir", str(path / "latent_cache"),
+        "--output", str(output)], cwd=root, capture_output=True, text=True, encoding="utf-8", timeout=90)
+    assert result.returncode == 0, result.stdout + result.stderr
+    record = json.loads(output.read_text())
+    assert record["status"] == "READY_FOR_GRAPH_DIAGNOSTICS"
+    assert not record["audit"]["asin_mapping_used"] and record["audit"]["informative_items"] == 72
+
+
+def test_preprocess_only_cli_option_is_registered(tmp_path):
+    cfg = build_config(["--config", "configs/Amazon2014Baby_STAIR6_v1.yaml", "--device", "cpu",
+                        "--artifact-dir", str(tmp_path / "preflight"), "--preprocess-only"])
+    assert cfg.preprocess_only and cfg.category_source == "latent"

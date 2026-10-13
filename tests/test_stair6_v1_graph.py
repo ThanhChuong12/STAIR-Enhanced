@@ -126,7 +126,7 @@ class CAEGraphTests(unittest.TestCase):
         self.assertGreater(state.metadata["relative_operator_delta_vs_v8"], 0)
 
     def test_invalid_and_inactive_sources_fail_fast(self):
-        with self.assertRaisesRegex(ValueError, "verified item mapping"):
+        with self.assertRaisesRegex(ValueError, "provenance-bound"):
             self._build(category_data=None)
         with mock.patch.object(graph, "build_category_edge_scores", return_value=(np.zeros_like(self.scores), {})):
             with self.assertRaises(graph.InactiveCategorySignal):

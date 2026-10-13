@@ -1,5 +1,5 @@
 # STAIR6-v1 Configuration: Amazon Baby
-description: STAIR6-v1-CAE-WMSG-CSE
+description: STAIR6-v1-LCAE-WMSG-CSE
 root: data
 dataset: Amazon2014Baby_550_MMRec
 
@@ -56,15 +56,24 @@ eval_valid: true
 eval_test: false
 ranking: full
 
-# Category-association enrichment; paths require real verified artifacts.
+# Latent cluster association enrichment; no Amazon category labels or ASIN mapping required.
 category_mode: cae
+category_source: latent
 category_strength: 0.5
 category_min_count: 2
 category_shrinkage: 5.0
-category_mapping_file: data/Amazon2014Baby_550_MMRec/item_id_to_asin.json
-category_metadata_file: data/Amazon2014Baby_550_MMRec/item_categories.jsonl
-category_manifest_file: data/Amazon2014Baby_550_MMRec/category_metadata_manifest.json
+category_mapping_file: ""
+category_metadata_file: ""
+category_manifest_file: ""
 category_memory_budget_mib: 128.0
 category_probe_dim: 8
 category_probe_seed: 2718
 graph_cache_dir: .cache/stair6_v1
+
+# Offline clustering is fixed independently of the training seed and ID dimension.
+latent_clusters: 50
+latent_projection_dim: 64
+latent_iterations: 20
+latent_chunk_size: 2048
+latent_seed: 2718
+latent_memory_budget_mib: 128.0

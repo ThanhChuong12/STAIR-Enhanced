@@ -15,6 +15,7 @@ from models.stair5_v8_graph import (
 )
 from models.stair5_v4_utils import file_sha256
 from models.stair6_v1_categories import load_category_data, assert_category_provenance
+from models.stair6_v1_latent_categories import build_latent_category_data
 from models.stair6_v1_graph import InactiveCategorySignal, build_stair6_v1_graph, load_native_raw_cf
 from stair6_v1_config import CATEGORY_NAMES, category_enabled, validate_category_config
 
@@ -40,6 +41,7 @@ class STAIR6_v1_Model(STAIR5_v8_Model):
         for source in (
             Path(__file__), Path(__file__).with_name("stair6_v1_categories.py"),
             Path(__file__).with_name("stair6_v1_graph.py"),
+            Path(__file__).with_name("stair6_v1_latent_categories.py"),
             root / "stair6_v1_config.py", root / "main_stair6_v1.py",
         ):
             self.source_manifest[source.name] = file_sha256(source)
@@ -57,7 +59,7 @@ class STAIR6_v1_Model(STAIR5_v8_Model):
     def prepare(self, path):
         active = category_enabled(self.cfg)
         category_data = None
-        if active:
+        if active and self.cfg.category_source == "metadata":
             # Reject structural/provenance failures before the expensive SVD.
             category_data = load_category_data(
                 self.cfg.category_mapping_file, self.cfg.category_metadata_file,
@@ -84,6 +86,19 @@ class STAIR6_v1_Model(STAIR5_v8_Model):
                 "features": {record["file"]: record["sha256"] for record in self.feature_manifest},
                 "splits": self.split_manifest,
             }
+            self.latent_preprocessing = None
+            if self.cfg.category_source == "latent":
+                latent = build_latent_category_data(
+                    self._category_raw_features, dataset=self.cfg.dataset,
+                    feature_manifest=self.feature_manifest, split_manifest=self.split_manifest,
+                    clusters=self.cfg.latent_clusters, projection_dim=self.cfg.latent_projection_dim,
+                    iterations=self.cfg.latent_iterations, chunk_size=self.cfg.latent_chunk_size,
+                    seed=self.cfg.latent_seed, memory_budget_mib=self.cfg.latent_memory_budget_mib,
+                    cache_dir=self.cfg.graph_cache_dir or None,
+                )
+                category_data = latent.data
+                self.latent_preprocessing = latent.metadata
+                del latent
             assert_category_provenance(category_data, expected)
             raw_semantic, _ = build_wmsg_semantic_graph(
                 mfeats=self._category_raw_features, knn_edges_list=self._category_knn_edges,
@@ -112,12 +127,15 @@ class STAIR6_v1_Model(STAIR5_v8_Model):
             self.mAdj = state.operator
             self.graph_fingerprint = sparse_fingerprint(tensor_to_scipy(self.mAdj))
             self.category_metadata = state.metadata
+            self.category_metadata["category_source"] = self.cfg.category_source
+            self.category_metadata["latent_preprocessing"] = self.latent_preprocessing
             self.category_provenance = {
                 "fingerprint": category_data.metadata_fingerprint,
                 "audit": category_data.audit, "source": category_data.provenance,
             }
             self.graph_metadata = {
-                **self.graph_metadata, "version": "6.1", "architecture": "CAE-WMSG-CSE",
+                **self.graph_metadata, "version": "6.1", "architecture": (
+                    "LCAE-WMSG-CSE" if self.cfg.category_source == "latent" else "CAE-WMSG-CSE"),
                 "baseline_graph_fingerprint": self.baseline_graph_fingerprint,
                 "graph_fingerprint": self.graph_fingerprint, "category": state.metadata,
             }
@@ -129,7 +147,8 @@ class STAIR6_v1_Model(STAIR5_v8_Model):
         """Bind model/checkpoint identity to verified metadata and source revision."""
         state = super().get_extra_state()
         state["stair6_category"] = {
-            "architecture": "STAIR6-v1-CAE-WMSG-CSE", "contract_version": 1,
+            "architecture": ("STAIR6-v1-LCAE-WMSG-CSE" if self.cfg.category_source == "latent"
+                             else "STAIR6-v1-CAE-WMSG-CSE"), "contract_version": 2,
             "config": {key: getattr(self.cfg, key) for key in CATEGORY_NAMES},
             "baseline_graph_fingerprint": self.baseline_graph_fingerprint,
             "metadata": self.category_provenance,
