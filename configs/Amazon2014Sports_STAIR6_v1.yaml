@@ -1,0 +1,70 @@
+# STAIR6-v1 Configuration: Amazon Sports
+description: STAIR6-v1-CAE-WMSG-CSE
+root: data
+dataset: Amazon2014Sports_550_MMRec
+
+embedding_dim: 64
+num_layers: 3
+mfiles: textual_modality.pkl,visual_modality.pkl
+num_neighbors: 5-1
+gamma: 0.2
+
+optimizer: adamwsevo
+lr: 0.001
+weight_decay: 0.1
+batch_size: 1024
+epochs: 500
+eval_freq: 5
+seed: 1
+
+which4best: NDCG@20
+monitors: ['LOSS', 'Recall@1', 'Recall@10', 'Recall@20', 'NDCG@10', 'NDCG@20']
+
+# Inherited V4 CSE and NLGCL parameters
+lambda_nlgcl: 0.01
+nlgcl_tau: 0.2
+nlgcl_G: 1
+nlgcl_alpha: 0.5
+eta: 0.1
+k_cf: 5
+c_min: 2
+t_shrinkage: 5.0
+cl_chunk_size: 1024
+
+# STAIR5-v8 (WMSG-CSE) parameters
+v8_arm: WMSG-core
+semantic_mode: weighted
+edge_power: 2.0
+edge_floor: 0.05
+semantic_mix: 1.0
+alignment: "off"
+anchor_seed: 2718
+anchor_per_stratum: 1024
+relation_gate: "off"
+relation_strength: 0.0
+relation_threshold: 0.7
+relation_temperature: 0.1
+bsc_residual: 0.0
+lambda_dirichlet: 0.0
+
+# Exact preprocessing and backward memory budgets
+knn_device: cpu
+knn_chunk_size: 1024
+cf_block_size: 64
+cf_memory_budget_mib: 128.0
+eval_valid: true
+eval_test: false
+ranking: full
+
+# Category-association enrichment; paths require real verified artifacts.
+category_mode: cae
+category_strength: 0.5
+category_min_count: 2
+category_shrinkage: 5.0
+category_mapping_file: data/Amazon2014Sports_550_MMRec/item_id_to_asin.json
+category_metadata_file: data/Amazon2014Sports_550_MMRec/item_categories.jsonl
+category_manifest_file: data/Amazon2014Sports_550_MMRec/category_metadata_manifest.json
+category_memory_budget_mib: 128.0
+category_probe_dim: 8
+category_probe_seed: 2718
+graph_cache_dir: .cache/stair6_v1
