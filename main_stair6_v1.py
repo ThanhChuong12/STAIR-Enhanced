@@ -17,10 +17,113 @@ import models.freerec_compat
 import freerec
 import torch
 
-from main_stair5_v8 import CoachForSTAIR5_v8, load_dataset
+import os, shutil
+from main_stair5_v8 import CoachForSTAIR5_v8
 from models.stair5_v8_graph import ARMS_V8, resolve_v8_config
 from models.stair6_v1 import STAIR6_v1_Model
 from stair6_v1_config import CATEGORY_OPTIONS, CATEGORY_NAMES, validate_category_config
+
+
+def load_dataset(cfg):
+    """Load FreeRec dataset with robust isolation against read-only mounts (e.g. /kaggle/input)."""
+    from freerec.data.datasets.base import MatchingRecDataSet
+
+    processed = Path(cfg.root) / "Processed" / cfg.dataset
+    direct = Path(cfg.root) / cfg.dataset
+
+    # 1. If processed is a directory symlink pointing to a read-only directory
+    if processed.is_symlink():
+        target = processed.resolve()
+        if not os.access(target, os.W_OK) or "/kaggle/input" in str(target):
+            try:
+                processed.unlink()
+                processed.mkdir(parents=True, exist_ok=True)
+                for item in target.iterdir():
+                    dst_item = processed / item.name
+                    if item.name == "chunks":
+                        dst_item.mkdir(parents=True, exist_ok=True)
+                    elif item.is_dir():
+                        dst_item.mkdir(parents=True, exist_ok=True)
+                        for sub_f in item.iterdir():
+                            sub_dst = dst_item / sub_f.name
+                            if not sub_dst.exists():
+                                try:
+                                    sub_dst.symlink_to(sub_f.resolve())
+                                except Exception:
+                                    shutil.copy2(sub_f, sub_dst)
+                    else:
+                        if not dst_item.exists():
+                            try:
+                                dst_item.symlink_to(item.resolve())
+                            except Exception:
+                                shutil.copy2(item, dst_item)
+            except Exception as e:
+                print(f"Warning resolving read-only symlink: {e}")
+
+    # 2. If processed doesn't exist, search across candidates and bridge safely
+    if not processed.is_dir() and not direct.is_dir():
+        for cand_root in [
+            "/kaggle/data",
+            "/kaggle/data/Processed",
+            "/kaggle/working/STAIR-Enhanced/data",
+            "/kaggle/working/data",
+            os.path.expanduser("~/STAIR-Enhanced/data"),
+            "data",
+            "../data",
+            str(Path(cfg.root).parent),
+        ]:
+            p_cand = Path(cand_root) / "Processed" / cfg.dataset
+            d_cand = Path(cand_root) / cfg.dataset
+            if p_cand.is_dir():
+                direct = p_cand
+                break
+            elif d_cand.is_dir():
+                direct = d_cand
+                break
+        else:
+            raise FileNotFoundError(
+                f"Expected dataset at {processed} or {direct}; prepare data before training."
+            )
+
+        processed.parent.mkdir(parents=True, exist_ok=True)
+        if not os.access(direct.resolve(), os.W_OK) or "/kaggle/input" in str(direct.resolve()):
+            processed.mkdir(parents=True, exist_ok=True)
+            for item in direct.resolve().iterdir():
+                dst_item = processed / item.name
+                if item.name == "chunks":
+                    dst_item.mkdir(parents=True, exist_ok=True)
+                elif item.is_dir():
+                    dst_item.mkdir(parents=True, exist_ok=True)
+                    for sub_f in item.iterdir():
+                        sub_dst = dst_item / sub_f.name
+                        if not sub_dst.exists():
+                            try:
+                                sub_dst.symlink_to(sub_f.resolve())
+                            except Exception:
+                                shutil.copy2(sub_f, sub_dst)
+                else:
+                    if not dst_item.exists():
+                        try:
+                            dst_item.symlink_to(item.resolve())
+                        except Exception:
+                            shutil.copy2(item, dst_item)
+        else:
+            try:
+                processed.symlink_to(direct.resolve(), target_is_directory=True)
+            except Exception:
+                shutil.copytree(direct.resolve(), processed, dirs_exist_ok=True)
+
+    # 3. Always ensure chunks is a writable folder
+    chunks_dir = processed / "chunks"
+    if chunks_dir.is_symlink():
+        try:
+            chunks_dir.unlink()
+        except Exception:
+            pass
+    chunks_dir.mkdir(parents=True, exist_ok=True)
+
+    return MatchingRecDataSet(cfg.root, cfg.dataset, tasktag=freerec.data.tags.MATCHING)
+
 
 
 def _compile_config(check_metadata=True):
