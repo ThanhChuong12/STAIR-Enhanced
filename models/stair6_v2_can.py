@@ -98,6 +98,10 @@ def solve_can(costs, regularizer, memory_budget_mib=64.0):
     return CANResult(p, mask, counts, float(regularizer), {"kkt_residual": residual})
 
 
+# Canonical alias for simplex solver contract
+solve_can_simplex = solve_can
+
+
 def calibrate_can(costs, target_mean=4.0, relative_tolerance=0.01, memory_budget_mib=64.0):
     """Choose a shared positive lambda from content-only support breakpoints.
 
