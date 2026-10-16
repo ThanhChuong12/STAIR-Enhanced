@@ -1,10 +1,10 @@
-"""models/stair_icaart_evidence.py — Activity-conditioned co-interaction evidence and replication.
+"""models/stair_icaart_evidence.py — Full-activity pooled evidence and legacy replicated controls.
 ====================================================================================================
 Implements:
 1. Deterministic activity stratification b(u) = floor(log2(h_u)) on deduplicated TRAIN data.
 2. Disjoint user splitting f in {0, 1} with deterministic seeded hash (no Python randomized hash).
 3. Candidate-only observed co-interactions c_ijf and activity-null expectations mu_ijf.
-4. Replicated excess score r_ij in [0, 1) and scientific control scoring variants.
+4. Full-activity pooled excess with kappa=2*tau, preserving all legacy half-based controls.
 
 Contracts:
 - Runs strictly on CPU in bounded blocks (default candidate_block = 8192).
@@ -115,6 +115,157 @@ def _canonical_presence(matrix: sp.spmatrix, format: str) -> sp.spmatrix:
     result.eliminate_zeros()
     result.sort_indices()
     return result
+
+
+def build_activity_strata(R_csr: sp.csr_matrix) -> Tuple[np.ndarray, np.ndarray]:
+    """Full-user log2 activity strata; inactive users are excluded, with no RNG or split."""
+    if not sp.isspmatrix_csr(R_csr):
+        raise TypeError("R_csr must be a scipy.sparse.csr_matrix")
+    if min(R_csr.shape) <= 0:
+        raise ValueError("Interaction dimensions must be positive")
+    matrix = _canonical_presence(R_csr, "csr")
+    activity = np.diff(matrix.indptr).astype(np.int64)
+    bins = np.full(matrix.shape[0], -1, dtype=np.int64)
+    active = activity > 0
+    bins[active] = np.floor(np.log2(activity[active])).astype(np.int64)
+    sizes = np.bincount(bins[active]).astype(np.int64)
+    return bins, sizes
+
+
+def candidate_pooled_statistics(
+    R_csc: sp.csc_matrix,
+    E_sem: np.ndarray,
+    user_bin: np.ndarray,
+    group_sizes: np.ndarray,
+    candidate_block: int = 8192,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Compute full-user c[E], mu[E] on semantic candidates, without half-conditioned nulls.
+
+    mu_ij = sum_b n_ib*n_jb/M_b, using binary TRAIN presence. Integer counters
+    are promoted before multiplication. Temporary expectation arrays are block-by-bin,
+    never item-by-item. Posting searches execute in NumPy, not per-history pair loops.
+    """
+    if not sp.isspmatrix_csc(R_csc):
+        raise TypeError("R_csc must be a scipy.sparse.csc_matrix")
+    if (isinstance(candidate_block, bool)
+            or not isinstance(candidate_block, (int, np.integer)) or candidate_block < 1):
+        raise ValueError("candidate_block must be a positive integer")
+    matrix = _canonical_presence(R_csc, "csc")
+    n_users, n_items = matrix.shape
+    if min(matrix.shape) <= 0:
+        raise ValueError("Interaction dimensions must be positive")
+    pairs = np.asarray(E_sem)
+    if (pairs.ndim != 2 or pairs.shape[1] != 2 or pairs.dtype.kind not in "iu"
+            or np.any(pairs < 0) or np.any(pairs >= n_items)
+            or np.any(pairs[:, 0] >= pairs[:, 1])):
+        raise ValueError("Candidate pairs must be integer [E,2], in catalog, with i < j")
+    pairs = pairs.astype(np.int64, copy=False)
+    if len(np.unique(pairs[:, 0] * n_items + pairs[:, 1])) != len(pairs):
+        raise ValueError("Candidate pairs must be unique")
+    bins, sizes = np.asarray(user_bin), np.asarray(group_sizes)
+    activity = np.bincount(matrix.indices, minlength=n_users)
+    active = activity > 0
+    expected_bins = np.full(n_users, -1, dtype=np.int64)
+    expected_bins[active] = np.floor(np.log2(activity[active])).astype(np.int64)
+    expected_sizes = np.bincount(expected_bins[active])
+    if (bins.shape != (n_users,) or bins.dtype.kind not in "iu"
+            or sizes.ndim != 1 or sizes.dtype.kind not in "iu"
+            or not np.array_equal(bins, expected_bins)
+            or not np.array_equal(sizes, expected_sizes)):
+        raise ValueError("Full-activity groups must match binary TRAIN histories exactly")
+
+    counts = np.zeros(len(pairs), dtype=np.int64)
+    expected = np.zeros(len(pairs), dtype=np.float64)
+    if not len(pairs) or not active.any():
+        return counts, expected
+    n_bins = len(sizes)
+    item_ids = np.repeat(np.arange(n_items, dtype=np.int64), np.diff(matrix.indptr))
+    flat = item_ids * n_bins + bins[matrix.indices]
+    item_counts = np.bincount(flat, minlength=n_items * n_bins).reshape(n_items, n_bins)
+    del flat, item_ids
+    inverse = np.zeros(n_bins, dtype=np.float64)
+    np.divide(1.0, sizes, out=inverse, where=sizes > 0)
+    for start in range(0, len(pairs), candidate_block):
+        stop = min(start + candidate_block, len(pairs))
+        left_ids, right_ids = pairs[start:stop].T
+        for offset, (i, j) in enumerate(zip(left_ids, right_ids)):
+            left = matrix.indices[matrix.indptr[i]:matrix.indptr[i + 1]]
+            right = matrix.indices[matrix.indptr[j]:matrix.indptr[j + 1]]
+            if len(left) > len(right):
+                left, right = right, left
+            positions = np.searchsorted(right, left)
+            valid = positions < len(right)
+            selected = left[valid]
+            counts[start + offset] = np.count_nonzero(right[positions[valid]] == selected)
+        products = item_counts[left_ids].astype(np.float64)
+        products *= item_counts[right_ids].astype(np.float64)
+        expected[start:stop] = products @ inverse
+    if np.any((counts > 0) & (expected <= 0)):
+        raise ArithmeticError("Positive overlap must imply positive null expectation")
+    return counts, expected
+
+
+def degree_stratified_permutation(
+    scores: np.ndarray, degrees: np.ndarray, pairs: np.ndarray, seed: int,
+) -> np.ndarray:
+    """Shuffle the supplied score family on unordered endpoint-degree quintile pairs."""
+    scores, degrees, pairs = map(np.asarray, (scores, degrees, pairs))
+    if (scores.ndim != 1 or not np.isfinite(scores).all()
+            or degrees.ndim != 1 or not np.isfinite(degrees).all() or np.any(degrees < 0)
+            or pairs.shape != (len(scores), 2) or pairs.dtype.kind not in "iu"
+            or np.any(pairs < 0) or np.any(pairs >= len(degrees))
+            or np.any(pairs[:, 0] >= pairs[:, 1])):
+        raise ValueError("Invalid scores, train degrees or unordered candidate pairs")
+    if isinstance(seed, bool) or not isinstance(seed, (int, np.integer)) or seed < 0:
+        raise ValueError("Permutation seed must be a non-negative integer")
+    if not len(scores):
+        return scores.astype(np.float64, copy=True)
+    cuts = np.unique(np.quantile(degrees, [.2, .4, .6, .8]))
+    strata = np.searchsorted(cuts, degrees, side="right")
+    left, right = strata[pairs[:, 0]], strata[pairs[:, 1]]
+    groups = np.minimum(left, right) * 5 + np.maximum(left, right)
+    rng = np.random.default_rng(seed)
+    result = scores.astype(np.float64, copy=True)
+    for group in np.unique(groups):
+        indices = np.flatnonzero(groups == group)
+        result[indices] = rng.permutation(scores[indices])
+    return result
+
+
+def pooled_activity_score(
+    c: np.ndarray, mu: np.ndarray, tau: float = 2.0,
+    mode: str = "pooled_activity_excess", *, degrees: Optional[np.ndarray] = None,
+    E_sem: Optional[np.ndarray] = None, placebo_seed: int = 20261016,
+) -> np.ndarray:
+    """PEEC-full: [c-mu]+/(c+mu+2*tau), or its explicitly labeled count/placebo controls.
+
+    The vectors are full-stratum statistics, not sums of half-specific expectations.
+    tau retains its legacy count-scale convention; pooled kappa is exactly 2*tau.
+    """
+    from stair_icaart_config import FULL_ACTIVITY_MODES
+    if mode not in FULL_ACTIVITY_MODES:
+        raise ValueError(f"Unknown full-activity evidence mode: {mode}")
+    if isinstance(tau, bool) or not math.isfinite(tau) or tau <= 0 or not math.isfinite(2 * tau):
+        raise ValueError("tau and pooled kappa must be finite and positive")
+    c, mu = np.asarray(c), np.asarray(mu)
+    if (c.ndim != 1 or c.dtype.kind not in "iu" or mu.shape != c.shape
+            or np.any(c < 0) or not np.isfinite(mu).all() or np.any(mu < 0)):
+        raise ValueError("Full counts must be integer [E]; expectations must be finite nonnegative [E]")
+    if np.any((c > 0) & (mu <= 0)):
+        raise ArithmeticError("Positive overlap must imply positive null expectation")
+    counts = c.astype(np.float64)
+    expected = mu.astype(np.float64)
+    if mode == "pooled_activity_count":
+        scores = counts / (counts + 2.0 * tau)
+    else:
+        scores = np.maximum(0.0, counts - expected) / (counts + expected + 2.0 * tau)
+    if not np.isfinite(scores).all() or np.any(scores < 0) or np.any(scores >= 1):
+        raise ArithmeticError("Pooled evidence score must lie in [0,1)")
+    if mode == "pooled_activity_shuffle":
+        if degrees is None or E_sem is None:
+            raise ValueError("Pooled placebo requires TRAIN item degrees and candidate pairs")
+        scores = degree_stratified_permutation(scores, degrees, E_sem, placebo_seed)
+    return scores
 
 
 def candidate_excess_statistics(
@@ -267,11 +418,13 @@ def replicated_excess_score(
     - 'degree_stratified_shuffle': Permute r among pairs stratified by endpoint degree.
     - 'uniform_multiplier': Constant r across all candidate edges.
     """
-    from stair_icaart_config import ALLOWED_EVIDENCE_MODES
+    from stair_icaart_config import ALLOWED_EVIDENCE_MODES, FULL_ACTIVITY_MODES
     if mode not in ALLOWED_EVIDENCE_MODES:
         raise ValueError(f"Unknown evidence mode: {mode}")
     if isinstance(tau, bool) or tau <= 0 or not math.isfinite(tau):
         raise ValueError(f"tau must be finite and positive; got {tau}")
+    if mode in FULL_ACTIVITY_MODES:
+        raise ValueError("Full-activity modes require pooled_activity_score, not half statistics")
     c, mu = np.asarray(c), np.asarray(mu)
     if c.ndim != 2 or c.shape[1] != 2 or c.dtype.kind not in "iu" or mu.shape != c.shape:
         raise ValueError("c must be integer [E, 2] and mu must have the same shape")

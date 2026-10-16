@@ -1,9 +1,9 @@
-"""Train STAIR-REEC (versionICAART) with exact V8 coach/evaluator/checkpoint lifecycle.
+"""Train STAIR-PEEC / legacy REEC (versionICAART) with exact V8 coach/evaluator/checkpoint lifecycle.
 
 Example CLI usage:
-    python main_stair_icaart.py --config configs/Amazon2014Baby_STAIR_ICAART.yaml
-    python main_stair_icaart.py --config configs/Amazon2014Baby_STAIR_ICAART.yaml --evidence-delta 0.0
-    python main_stair_icaart.py --config configs/Amazon2014Baby_STAIR_ICAART.yaml --preprocess-only
+    python main_stair_icaart.py --config configs/Amazon2014Baby_STAIR_PEEC.yaml
+    python main_stair_icaart.py --config configs/Amazon2014Baby_STAIR_PEEC.yaml --evidence-delta 0.0
+    python main_stair_icaart.py --config configs/Amazon2014Baby_STAIR_PEEC.yaml --preprocess-only
 """
 
 import hashlib
@@ -22,7 +22,39 @@ import torch
 from main_stair5_v8 import CoachForSTAIR5_v8, load_dataset
 from models.stair5_v8_graph import ARMS_V8, resolve_v8_config
 from models.stair_icaart import STAIR_ICAART_Model
-from stair_icaart_config import ICAART_OPTIONS, ICAART_NAMES, validate_icaart_config
+from stair_icaart_config import ICAART_OPTIONS, ICAART_NAMES, evidence_identity, validate_icaart_config
+from stair_icaart_reporting import atomic_json, native_metric_snapshot, validate_selected_receipt
+from freerec.ddp import is_main_process
+
+
+class CoachForSTAIRICAART(CoachForSTAIR5_v8):
+    """Observe native evaluation without changing ranking, selection or optimization."""
+
+    def evaluate(self, epoch, step=-1, mode="valid"):
+        result = super().evaluate(epoch=epoch, step=step, mode=mode)
+        if not is_main_process():
+            return result
+        receipt = {
+            "mode": mode, "epoch": int(epoch), "step": int(step),
+            "selected_checkpoint": bool(getattr(self, "_exporting_selected", False)),
+            "selection": "validation NDCG@20", "seed": int(self.cfg.seed),
+            "evidence_mode": self.cfg.evidence_mode,
+            "evidence_delta": float(self.cfg.evidence_delta),
+            "graph_fingerprint": self.get_res_sys_arch().graph_fingerprint,
+            "metrics": native_metric_snapshot(self.monitors, mode),
+        }
+        with self._artifact("evaluation_metrics.jsonl").open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(receipt, allow_nan=False) + "\n")
+        if mode == "test" and receipt["selected_checkpoint"]:
+            atomic_json(self._artifact("selected_metrics.json"), validate_selected_receipt(receipt))
+        return result
+
+    def eval_at_best(self):
+        self._exporting_selected = True
+        try:
+            return super().eval_at_best()
+        finally:
+            self._exporting_selected = False
 
 
 def _compile_config():
@@ -146,7 +178,7 @@ def _compile_config():
         raise ValueError("Canonical V8 requires text/visual modalities with support [5, 1].")
 
     cfg.beta3 = (
-        0.1 + 0.9 * (torch.arange(cfg.embedding_dim) / cfg.embedding_dim).pow(cfg.gamma)
+        0.1 + 0.9 * (torch.arange(cfg.embedding_dim, dtype=torch.float32) / cfg.embedding_dim).pow(cfg.gamma)
     ).to(cfg.device)
 
     cfg.artifact_dir = cfg.artifact_dir or str(Path(cfg.LOG_PATH) / "icaart_artifacts")
@@ -172,6 +204,8 @@ def main():
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
+    if str(freerec.__version__) != "0.9.7":
+        raise RuntimeError("Native metric receipt adapter requires FreeRec 0.9.7; audit other versions before use")
     cfg = build_config()
 
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -180,7 +214,8 @@ def main():
     artifact = Path(cfg.artifact_dir)
     if not (cfg.resume or cfg.resume_from) and any(
         (artifact / name).exists()
-        for name in ("manifest.json", "training_checkpoint.pt", "training_telemetry.jsonl")
+        for name in ("manifest.json", "training_checkpoint.pt", "training_telemetry.jsonl",
+                     "evaluation_metrics.jsonl", "selected_metrics.json", "run_status.json")
     ):
         raise FileExistsError(
             "Artifact directory belongs to an existing attempt; use a new directory or explicit resume."
@@ -208,7 +243,7 @@ def main():
         commit = "unavailable"
 
     manifest = {
-        "architecture": "STAIR-REEC-versionICAART",
+        **evidence_identity(validate_icaart_config(cfg)),
         "icaart_manifest": model.icaart_manifest,
         "icaart_config": {name: getattr(model.cfg, name) for name in ICAART_NAMES},
         "argv": sys.argv,
@@ -268,13 +303,11 @@ def main():
     }
 
     manifest_name = "resume_manifest.json" if cfg.resume or cfg.resume_from else "manifest.json"
-    Path(cfg.artifact_dir, manifest_name).write_text(
-        json.dumps(manifest, indent=2), encoding="utf-8"
-    )
+    atomic_json(Path(cfg.artifact_dir, manifest_name), manifest)
 
     # Mechanism diagnostics report printout
     print("\n" + "=" * 80, flush=True)
-    print("STAIR-REEC (versionICAART) — MECHANISM DIAGNOSTICS REPORT", flush=True)
+    print(f"{model.icaart_manifest['architecture']} — MECHANISM DIAGNOSTICS REPORT", flush=True)
     print("=" * 80, flush=True)
     icaart_meta = model.icaart_metadata
     print(f"Evidence Mode:              {cfg.evidence_mode}")
@@ -282,9 +315,10 @@ def main():
     print(f"Tau (count regularizer):    {cfg.evidence_tau}")
     print(f"Exact V8 Bypass:            {icaart_meta.get('exact_v8_bypass')} (reason: {icaart_meta.get('inactive_reason')})")
     print(f"Candidate Edges E:          {icaart_meta.get('num_candidate_edges')}")
-    print(f"Edges with score > 0:       {icaart_meta.get('num_edges_with_replicated_excess')} ({icaart_meta.get('frac_edges_with_replicated_excess', 0.0):.4%})")
-    print(f"Weighted Coverage:          {icaart_meta.get('weighted_replicated_coverage', 0.0):.4%}")
-    print(f"Single-Half Disagreement:   {icaart_meta.get('frac_single_half_disagreement', 0.0):.4%}")
+    print(f"Edges with score > 0:       {icaart_meta.get('num_edges_with_positive_evidence')} ({icaart_meta.get('frac_edges_with_positive_evidence', 0.0):.4%})")
+    print(f"Weighted Coverage:          {icaart_meta.get('weighted_evidence_coverage', 0.0):.4%}")
+    disagreement = icaart_meta.get("frac_single_half_disagreement")
+    print("Single-Half Disagreement:   " + ("N/A (full activity)" if disagreement is None else f"{disagreement:.4%}"))
     print(f"Endpoint Contrast (Eq 10):  mean={icaart_meta.get('endpoint_contrast_mean', 0.0):.6f}, std={icaart_meta.get('endpoint_contrast_std', 0.0):.6f}")
     print(f"Operator Relative Dose:     {icaart_meta.get('relative_operator_dose', 0.0):.6f}")
     print(f"Polynomial Dose (Eq 11):    {icaart_meta.get('relative_polynomial_dose', 0.0):.6f}")
@@ -293,18 +327,33 @@ def main():
     print("=" * 80 + "\n", flush=True)
 
     if cfg.preprocess_only:
-        print("[STAIR-REEC] Preprocessing completed; no training/evaluation executed.", flush=True)
+        print("[ICAART] Preprocessing completed; no training/evaluation executed.", flush=True)
+        atomic_json(artifact / "run_status.json", {"status": "PREPROCESSED", "training": "NOT_RUN"})
         return
 
-    coach = CoachForSTAIR5_v8(
-        dataset=dataset,
-        model=model,
-        cfg=cfg,
-        trainpipe=model.sure_trainpipe(cfg.batch_size),
-        validpipe=model.sure_validpipe(cfg.ranking),
-        testpipe=model.sure_testpipe(cfg.ranking),
-    )
-    coach.fit()
+    # A resumed attempt must not expose a selected receipt from its earlier run.
+    (artifact / "selected_metrics.json").unlink(missing_ok=True)
+    atomic_json(artifact / "run_status.json", {"status": "RUNNING", "seed": cfg.seed})
+    try:
+        coach = CoachForSTAIRICAART(
+            dataset=dataset,
+            model=model,
+            cfg=cfg,
+            trainpipe=model.sure_trainpipe(cfg.batch_size),
+            validpipe=model.sure_validpipe(cfg.ranking),
+            testpipe=model.sure_testpipe(cfg.ranking),
+        )
+        coach.fit()
+        selected_path = artifact / "selected_metrics.json"
+        if not selected_path.is_file():
+            raise RuntimeError("Training ended without a measured selected-checkpoint TEST receipt")
+        validate_selected_receipt(json.loads(selected_path.read_text(encoding="utf-8")))
+    except BaseException as exc:
+        atomic_json(artifact / "run_status.json", {
+            "status": "FAILED", "error_type": type(exc).__name__, "error": str(exc),
+        })
+        raise
+    atomic_json(artifact / "run_status.json", {"status": "COMPLETED", "seed": cfg.seed})
 
 
 if __name__ == "__main__":

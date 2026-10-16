@@ -1,0 +1,68 @@
+# STAIR-PEEC (versionICAART) Configuration: Amazon Baby
+description: STAIR-PEEC-versionICAART-R2
+root: data
+dataset: Amazon2014Baby_550_MMRec
+
+embedding_dim: 64
+num_layers: 3
+mfiles: textual_modality.pkl,visual_modality.pkl
+num_neighbors: 5-1
+gamma: 0.1
+
+optimizer: adamwsevo
+lr: 0.001
+weight_decay: 0.3
+batch_size: 1024
+epochs: 500
+eval_freq: 5
+seed: 1
+
+which4best: NDCG@20
+monitors: ['LOSS', 'Recall@10', 'Recall@20', 'NDCG@10', 'NDCG@20']
+
+# Inherited V4 CSE and NLGCL parameters
+lambda_nlgcl: 0.01
+nlgcl_tau: 0.2
+nlgcl_G: 1
+nlgcl_alpha: 0.5
+eta: 0.1
+k_cf: 5
+c_min: 2
+t_shrinkage: 5.0
+cl_chunk_size: 1024
+
+# STAIR5-v8 (WMSG-core) backbone parameters
+v8_arm: WMSG-core
+semantic_mode: weighted
+edge_power: 2.0
+edge_floor: 0.05
+semantic_mix: 1.0
+alignment: "off"
+anchor_seed: 2718
+anchor_per_stratum: 1024
+relation_gate: "off"
+relation_strength: 0.0
+relation_threshold: 0.7
+relation_temperature: 0.1
+bsc_residual: 0.0
+lambda_dirichlet: 0.0
+
+# Exact preprocessing and backward memory budgets
+knn_device: cpu
+knn_chunk_size: 1024
+cf_block_size: 64
+cf_memory_budget_mib: 128.0
+eval_valid: true
+eval_test: false
+ranking: full
+
+# STAIR-PEEC (versionICAART) evidence parameters
+evidence_mode: pooled_activity_excess
+evidence_activity_bins: log2
+evidence_halves: 0
+# evidence_seed is inactive for full-activity PEEC (no user partition).
+evidence_tau: 2.0
+evidence_delta: 1.0
+evidence_delta_grid: [0.0, 0.5, 1.0, 2.0]
+evidence_candidate_block: 8192
+evidence_placebo_seed: 20261016

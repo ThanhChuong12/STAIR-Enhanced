@@ -1,8 +1,8 @@
-"""Dependency-free configuration contracts for STAIR-REEC (versionICAART).
+"""Versioned, dependency-free contracts for PEEC and legacy REEC controls.
 
 Platform: STAIR5-v8 / WMSG-core (64-dimensional primary).
-Calibrates pre-BSC semantic graph weights using replicated excess co-interaction evidence
-under user activity conditioning.
+Calibrates pre-BSC semantic graph weights using pooled-full evidence or historical
+half-conditioned controls; all use binary TRAIN presence.
 """
 
 from collections.abc import Mapping
@@ -32,7 +32,33 @@ ALLOWED_EVIDENCE_MODES: Tuple[str, ...] = (
     "replicated_count",
     "degree_stratified_shuffle",
     "uniform_multiplier",
+    "pooled_activity_excess",
+    "pooled_activity_count",
+    "pooled_activity_shuffle",
 )
+
+FULL_ACTIVITY_MODES = frozenset((
+    "pooled_activity_excess", "pooled_activity_count", "pooled_activity_shuffle",
+))
+EVIDENCE_CONTRACT_VERSION = 2
+
+
+def evidence_identity(values: Mapping) -> Dict[str, Any]:
+    """Describe the active estimator, without mislabeling pooled scores as replication."""
+    mode = values["evidence_mode"]
+    full = mode in FULL_ACTIVITY_MODES
+    return {
+        "contract_version": EVIDENCE_CONTRACT_VERSION,
+        "architecture": "STAIR-PEEC-versionICAART-R2" if full else "STAIR-REEC-versionICAART",
+        "null_scope": "full_activity" if full else (
+            "unstratified_halves" if mode == "unstratified_replication" else "half_activity"
+        ),
+        "active_partition": not full,
+        "active_halves": 0 if full else 2,
+        "score_kind": mode,
+        "pooled_regularizer": 2.0 * values["evidence_tau"] if full or mode == "pooled_excess" else None,
+        "normalization": "actual_degree",
+    }
 
 
 def _get(config: Any, name: str, default: Any = None) -> Any:
@@ -41,7 +67,7 @@ def _get(config: Any, name: str, default: Any = None) -> Any:
 
 
 def validate_icaart_config(config: Any) -> Dict[str, Any]:
-    """Validate all configuration parameters for STAIR-REEC before model execution.
+    """Validate PEEC and legacy-control contracts before model execution.
 
     Enforces strict mathematical bounds on evidence estimation and preserves
     the unchanged STAIR5-v8 WMSG-core backbone contracts.
@@ -56,10 +82,16 @@ def validate_icaart_config(config: Any) -> Dict[str, Any]:
         raise ValueError("evidence_activity_bins must be 'log2'")
 
     halves = values["evidence_halves"]
-    if isinstance(halves, bool) or not isinstance(halves, int) or halves != 2:
-        raise ValueError("evidence_halves must be exactly 2 for disjoint half replication")
+    full = mode in FULL_ACTIVITY_MODES
+    expected_halves = 0 if full else 2
+    if isinstance(halves, bool) or not isinstance(halves, int) or halves != expected_halves:
+        raise ValueError(f"{mode} requires evidence_halves={expected_halves}")
 
     for int_field in ("evidence_seed", "evidence_placebo_seed", "evidence_candidate_block"):
+        if int_field == "evidence_seed" and full:
+            # No hashing, partition or graph identity depends on this inactive seed.
+            values[int_field] = None
+            continue
         val = values[int_field]
         if isinstance(val, bool) or not isinstance(val, int) or val < 0:
             raise ValueError(f"{int_field} must be a non-negative integer")
@@ -69,7 +101,7 @@ def validate_icaart_config(config: Any) -> Dict[str, Any]:
     if isinstance(values["evidence_tau"], bool) or isinstance(values["evidence_delta"], bool):
         raise ValueError("evidence_tau and evidence_delta must be numeric, not boolean")
     tau = float(values["evidence_tau"])
-    if not math.isfinite(tau) or tau <= 0:
+    if not math.isfinite(tau) or not math.isfinite(2.0 * tau) or tau <= 0:
         raise ValueError(f"evidence_tau must be finite and > 0; got {tau}")
     values["evidence_tau"] = tau
 
@@ -118,7 +150,7 @@ def validate_icaart_config(config: Any) -> Dict[str, Any]:
     return values
 
 
-def analytical_icaart_payload(n_items: int, n_edges: int) -> Dict[str, Any]:
+def analytical_icaart_payload(n_items: int, n_edges: int, *, pooled: bool = False) -> Dict[str, Any]:
     """Analytical memory footprint of graph and temporary evidence structures."""
     if n_items <= 0 or n_edges < 0:
         raise ValueError("Require positive item count and non-negative edge count")
@@ -126,8 +158,8 @@ def analytical_icaart_payload(n_items: int, n_edges: int) -> Dict[str, Any]:
         "semantic_directed_csr_bytes": 8 * (n_items + 1) + 24 * n_edges,
         "edge_count_convention": "n_edges counts undirected semantic pairs; final CF union is additional",
         "evidence_pairs_int64_bytes": 16 * n_edges,
-        "evidence_counts_int64_bytes": 16 * n_edges,
-        "evidence_mu_fp64_bytes": 16 * n_edges,
+        "evidence_counts_int64_bytes": (8 if pooled else 16) * n_edges,
+        "evidence_mu_fp64_bytes": (8 if pooled else 16) * n_edges,
         "evidence_score_fp64_bytes": 8 * n_edges,
         "evidence_weight_fp64_bytes": 8 * n_edges,
         "additional_trainable_parameters": 0,

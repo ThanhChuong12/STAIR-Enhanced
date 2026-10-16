@@ -323,3 +323,32 @@ def test_empty_cf_and_invalid_graph_inputs():
         calibrate_semantic_operator(raw, pairs, np.array([.1, np.nan, .2]), 1.)
     with pytest.raises(ValueError):
         normalize_degree_isolated(sp.csr_matrix([[0., 1.], [1. + 1e-12, 0.]]))
+
+
+@pytest.mark.parametrize("delta", [0., 1.])
+def test_peec_diagnostics_have_no_replication_labels_and_probe_full_schedule(delta):
+    raw = sp.csr_matrix([[0.,1.,2.], [1.,0.,1.], [2.,1.,0.]])
+    pairs = np.array([[0,1], [0,2], [1,2]])
+    _, audit = calibrate_semantic_operator(
+        raw, pairs, np.array([.1,.3,.2]), delta,
+        evidence_mode="pooled_activity_excess",
+        c_counts=np.array([2,3,1]), mu_expectations=np.array([1.,1.,.5]),
+    )
+    assert audit["frac_single_half_disagreement"] is None
+    assert "weighted_replicated_coverage" not in audit
+    assert audit["num_edges_with_positive_evidence"] == 3
+    assert set(audit["polynomial_dose_by_coordinate"]) == {"0","16","32","48","63"}
+    if delta == 0.:
+        assert all(value == 0. for value in audit["polynomial_dose_by_coordinate"].values())
+
+
+def test_peec_empty_support_has_not_applicable_half_diagnostics():
+    raw = sp.csr_matrix((3,3), dtype=np.float64)
+    operator, audit = calibrate_semantic_operator(
+        raw, np.empty((0,2), dtype=np.int64), np.empty(0), 1.,
+        evidence_mode="pooled_activity_excess",
+    )
+    assert audit["frac_single_half_disagreement"] is None
+    assert "weighted_replicated_coverage" not in audit
+    assert audit["inactive_reason"] == "no_positive_excess"
+    np.testing.assert_array_equal(operator.toarray(), np.eye(3, dtype=np.float32))

@@ -1,4 +1,4 @@
-"""models/stair_icaart_graph.py — Replicated Excess-Evidence Calibration (STAIR-REEC).
+"""models/stair_icaart_graph.py — Pooled / Replicated Excess-Evidence Calibration (PEEC / REEC).
 ========================================================================================
 Implements:
 1. Recovery of exact native STAIR5-v8 raw semantic graph W^8 and degree normalization N(W).
@@ -33,11 +33,16 @@ from models.stair5_v4_graph import (
     scipy_to_tensor,
 )
 from models.stair5_v4_utils import atomic_torch_save, file_sha256
-from stair_icaart_config import validate_icaart_config
+from stair_icaart_config import (
+    FULL_ACTIVITY_MODES, analytical_icaart_payload, evidence_identity, validate_icaart_config,
+)
 from models.stair_icaart_evidence import (
     build_activity_replication,
     candidate_excess_statistics,
     replicated_excess_score,
+    build_activity_strata,
+    candidate_pooled_statistics,
+    pooled_activity_score,
 )
 
 
@@ -148,6 +153,7 @@ def compute_mechanism_diagnostics(
     embedding_dim: int = 64,
     probe_dim: int = 8,
     probe_seed: int = 20261016,
+    evidence_mode: str = "replicated_excess",
 ) -> Dict[str, Any]:
     """Computes comprehensive offline mechanism diagnostics before expensive GPU training.
 
@@ -164,11 +170,18 @@ def compute_mechanism_diagnostics(
     diag: Dict[str, Any] = {}
 
     if E == 0:
-        return {"empty_support": True, "num_candidate_edges": 0,
-                "num_edges_with_replicated_excess": 0,
-                "frac_edges_with_replicated_excess": 0.0,
-                "weighted_replicated_coverage": 0.0,
-                "relative_operator_dose": 0.0, "relative_polynomial_dose": 0.0}
+        empty = {"empty_support": True, "num_candidate_edges": 0,
+                 "num_edges_with_positive_evidence": 0,
+                 "frac_edges_with_positive_evidence": 0.0,
+                 "weighted_evidence_coverage": 0.0,
+                 "frac_single_half_disagreement": None,
+                 "relative_operator_dose": 0.0, "relative_polynomial_dose": 0.0,
+                 "polynomial_dose_by_coordinate": {}}
+        if evidence_mode not in FULL_ACTIVITY_MODES:
+            empty.update(num_edges_with_replicated_excess=0,
+                         frac_edges_with_replicated_excess=0.0,
+                         weighted_replicated_coverage=0.0)
+        return empty
 
     # 1. Replicated coverage
     r_pos = r > 0.0
@@ -178,15 +191,23 @@ def compute_mechanism_diagnostics(
     weighted_pos = float(np.sum(w8_values[r_pos]) / max(1e-12, total_w8))
 
     diag["num_candidate_edges"] = E
-    diag["num_edges_with_replicated_excess"] = num_pos
-    diag["frac_edges_with_replicated_excess"] = frac_pos
-    diag["weighted_replicated_coverage"] = weighted_pos
+    diag["num_edges_with_positive_evidence"] = num_pos
+    diag["frac_edges_with_positive_evidence"] = frac_pos
+    diag["weighted_evidence_coverage"] = weighted_pos
+    if evidence_mode not in FULL_ACTIVITY_MODES:
+        # Read-compatible aliases for legacy manifests only; PEEC is not replication.
+        diag["num_edges_with_replicated_excess"] = num_pos
+        diag["frac_edges_with_replicated_excess"] = frac_pos
+        diag["weighted_replicated_coverage"] = weighted_pos
     diag["r_mean"] = float(np.mean(r))
     diag["r_max"] = float(np.max(r)) if E > 0 else 0.0
     diag["r_positive_mean"] = float(np.mean(r[r_pos])) if num_pos > 0 else 0.0
 
     # 2. Single-half disagreement
-    if c.shape[0] == E and mu.shape[0] == E:
+    diag["frac_single_half_disagreement"] = None
+    diag["num_single_half_disagreement"] = None
+    diag["num_both_halves_positive"] = None
+    if c is not None and mu is not None and c.shape == mu.shape == (E, 2):
         e0_pos = (c[:, 0] - mu[:, 0]) > 0.0
         e1_pos = (c[:, 1] - mu[:, 1]) > 0.0
         disagreement = e0_pos ^ e1_pos
@@ -196,11 +217,9 @@ def compute_mechanism_diagnostics(
 
     # 3. Endpoint contrast (Eq 10): r_ij - 0.5 * rbar_i - 0.5 * rbar_j
     # rbar_i = sum_j W8_ij * r_ij / d8_i
-    # Build symmetric r matrix
-    r_mat = sp.csr_matrix((r, (E_sem[:, 0], E_sem[:, 1])), shape=(N, N))
-    r_mat = r_mat + r_mat.T
-    weighted_r = W8_csr.multiply(r_mat)
-    weighted_r_sum = np.asarray(weighted_r.sum(axis=1)).ravel()
+    weighted_scores = w8_values * r
+    weighted_r_sum = (np.bincount(E_sem[:, 0], weights=weighted_scores, minlength=N)
+                      + np.bincount(E_sem[:, 1], weights=weighted_scores, minlength=N))
 
     rbar = np.zeros(N, dtype=np.float64)
     pos_deg = d8 > 0.0
@@ -230,32 +249,32 @@ def compute_mechanism_diagnostics(
     rng = np.random.default_rng(probe_seed)
     Z = rng.choice([-1.0, 1.0], size=(N, probe_dim)).astype(np.float64)
 
-    # Evaluate L=3 polynomial for representative middle coordinate k = d // 2
-    k_mid = embedding_dim // 2
-    b_k = 0.1 + 0.9 * (k_mid / embedding_dim) ** gamma
-    omega = np.array([1.0, b_k, b_k**2, b_k**3], dtype=np.float64)
-    omega = omega / np.sum(omega)
-
-    def eval_poly(S_mat: sp.csr_matrix, X: np.ndarray) -> np.ndarray:
-        # P(S) X = omega_0 X + omega_1 S X + omega_2 S^2 X + omega_3 S^3 X
-        res = omega[0] * X
-        cur = X
-        for l_idx in range(1, 4):
-            cur = S_mat @ cur
-            res = res + omega[l_idx] * cur
-        return res
-
-    P_s8_Z = eval_poly(S_8, Z)
-    P_sica_Z = eval_poly(S_ICA, Z)
-    diff_P = P_sica_Z - P_s8_Z
-    fro_diff_P = float(np.linalg.norm(diff_P))
-    fro_s8_P = float(np.linalg.norm(P_s8_Z))
-    rel_poly_dose = fro_diff_P / max(1e-12, fro_s8_P)
-    diag["relative_polynomial_dose"] = rel_poly_dose
-    diag["polynomial_probe_coordinate"] = int(k_mid)
+    # Reuse three SpMM powers per operator across all five probe coordinates.
+    coordinates = sorted({0, embedding_dim // 4, embedding_dim // 2,
+                          3 * embedding_dim // 4, embedding_dim - 1})
+    doses = {}
+    if not diff_S.nnz:
+        doses = {str(k): 0.0 for k in coordinates}
+    else:
+        powers8, powers_ica = [Z], [Z]
+        for _ in range(3):
+            powers8.append(S_8 @ powers8[-1])
+            powers_ica.append(S_ICA @ powers_ica[-1])
+        for coordinate in coordinates:
+            beta = .1 + .9 * (coordinate / embedding_dim) ** gamma
+            omega = beta ** np.arange(4, dtype=np.float64)
+            omega /= omega.sum()
+            reference = sum(w * x for w, x in zip(omega, powers8))
+            calibrated = sum(w * x for w, x in zip(omega, powers_ica))
+            doses[str(coordinate)] = float(
+                np.linalg.norm(calibrated - reference) / max(1e-12, np.linalg.norm(reference))
+            )
+    diag["polynomial_dose_by_coordinate"] = doses
+    diag["relative_polynomial_dose"] = doses[str(embedding_dim // 2)]
+    diag["polynomial_probe_coordinate"] = embedding_dim // 2
     diag["polynomial_probe_dim"] = int(probe_dim)
     diag["polynomial_probe_seed"] = int(probe_seed)
-    diag["polynomial_probe_scope"] = "middle-coordinate L3 response on fixed Rademacher probes"
+    diag["polynomial_probe_scope"] = "fixed Rademacher L3 probes; per-coordinate ratios, not actual Adam directions"
 
     row_delta = np.asarray(abs(diff_S).sum(axis=1)).ravel()
     row_base = np.asarray(abs(S_8).sum(axis=1)).ravel()
@@ -296,6 +315,7 @@ def calibrate_semantic_operator(
     embedding_dim: int = 64,
     c_counts: Optional[np.ndarray] = None,
     mu_expectations: Optional[np.ndarray] = None,
+    evidence_mode: str = "replicated_excess",
 ) -> Tuple[sp.csr_matrix, Dict[str, Any]]:
     """Calibrates semantic operator with exponential reweighting and returns S_ICA (Eq 6).
 
@@ -337,7 +357,10 @@ def calibrate_semantic_operator(
         raise ValueError("E_sem must contain each raw semantic edge exactly once")
     # Explicit indexing binds weights to caller pair order; triu storage order is
     # not an API contract and must never silently permute evidence assignments.
-    w8_values = np.asarray(W8_csr[E_sem[:, 0], E_sem[:, 1]]).ravel().astype(np.float64)
+    if E == 0:
+        w8_values = np.empty(0, dtype=np.float64)
+    else:
+        w8_values = np.asarray(W8_csr[E_sem[:, 0], E_sem[:, 1]]).ravel().astype(np.float64)
     d8 = np.asarray(W8_csr.astype(np.float64).sum(axis=1)).ravel()
     if SCF_csr is not None:
         if (SCF_csr.shape != (N, N) or not np.isfinite(SCF_csr.data).all()
@@ -348,8 +371,10 @@ def calibrate_semantic_operator(
             raise ValueError("Normalized CF graph must be symmetric within FP32 tolerance")
     effective_eta = float(eta if SCF_csr is not None and SCF_csr.nnz and eta > 0 else 0)
     if V8_operator_cached is not None:
-        if V8_operator_cached.shape != (N, N):
-            raise ValueError("Cached V8 operator shape mismatch")
+        if (V8_operator_cached.shape != (N, N)
+                or not np.isfinite(V8_operator_cached.data).all()
+                or np.any(V8_operator_cached.data < 0)):
+            raise ValueError("Cached V8 operator must be finite, nonnegative and shape-compatible")
         S_8 = V8_operator_cached
     else:
         semantic = normalize_degree_isolated(W8_csr)
@@ -363,7 +388,9 @@ def calibrate_semantic_operator(
              "exact_v8_bypass": False, "inactive_reason": None}
     d_delta = d8
     if delta == 0 or E == 0 or not np.any(r):
-        reason = "delta_zero" if delta == 0 else "no_replicated_excess"
+        reason = "delta_zero" if delta == 0 else (
+            "no_positive_excess" if evidence_mode in FULL_ACTIVITY_MODES else "no_replicated_excess"
+        )
         audit.update(exact_v8_bypass=True, inactive_reason=reason)
         S_ICA = S_8
     else:
@@ -394,9 +421,9 @@ def calibrate_semantic_operator(
             S_ICA.sort_indices()
     audit.update(compute_mechanism_diagnostics(
         W8_csr, E_sem, w8_values, r,
-        c_counts if c_counts is not None else np.zeros((E, 2), dtype=np.int64),
-        mu_expectations if mu_expectations is not None else np.zeros((E, 2), dtype=np.float64),
+        c_counts, mu_expectations,
         S_8, S_ICA, d8, d_delta, gamma, embedding_dim,
+        evidence_mode=evidence_mode,
     ))
     audit["s_ica_nnz"] = int(S_ICA.nnz)
     audit["s_ica_fingerprint"] = sparse_fingerprint(S_ICA)
@@ -459,21 +486,23 @@ def build_stair_icaart_graph(
     Pipeline:
     1. Recover exact native V8 raw semantic graph W^8.
     2. Extract deduplicated binary train-presence matrix R.
-    3. Deterministic user activity stratification and 2-half splitting.
+    3. Full activity strata for PEEC, or original two-half strata for legacy controls.
     4. Candidate-only co-interaction counting c and activity-null expectation mu.
-    5. Replicated excess scoring r.
+    5. Explicitly versioned pooled-full or replicated/pooled-half scoring.
     6. Exponential calibration and actual-degree normalization S_ICA.
     7. Generate comprehensive audit manifest.
     """
     started = time.perf_counter()
 
-    validate_icaart_config(cfg)
-    evidence_mode = getattr(cfg, "evidence_mode", "replicated_excess")
-    evidence_seed = int(getattr(cfg, "evidence_seed", 20261016))
-    evidence_tau = float(getattr(cfg, "evidence_tau", 2.0))
-    evidence_delta = float(getattr(cfg, "evidence_delta", 1.0))
-    candidate_block = int(getattr(cfg, "evidence_candidate_block", 8192))
-    placebo_seed = int(getattr(cfg, "evidence_placebo_seed", 20261016))
+    settings = validate_icaart_config(cfg)
+    identity = evidence_identity(settings)
+    evidence_mode = settings["evidence_mode"]
+    full = evidence_mode in FULL_ACTIVITY_MODES
+    evidence_seed = settings["evidence_seed"]
+    evidence_tau = settings["evidence_tau"]
+    evidence_delta = settings["evidence_delta"]
+    candidate_block = settings["evidence_candidate_block"]
+    placebo_seed = settings["evidence_placebo_seed"]
     eta = float(getattr(cfg, "eta", 0.1))
     gamma = float(getattr(cfg, "gamma", 0.2))
     embedding_dim = int(getattr(cfg, "embedding_dim", 64))
@@ -504,34 +533,27 @@ def build_stair_icaart_graph(
     _digest_array(presence_digest, unique_keys)
     presence_hash = presence_digest.hexdigest()
 
-    # 3. Activity stratification and user splitting
-    user_bin, half, group_sizes = build_activity_replication(
-        R_csr=R_csr,
-        evidence_seed=evidence_seed,
-    )
-
-    # 4. Candidate co-interactions and null expectations
-    c, mu = candidate_excess_statistics(
-        R_csc=R_csc,
-        E_sem=E_sem,
-        half=half,
-        user_bin=user_bin,
-        group_sizes=group_sizes,
-        candidate_block=candidate_block,
-        mode=evidence_mode,
-    )
-
-    # 5. Replicated excess scoring
     degrees = np.diff(R_csc.indptr).astype(np.int64)
-    r = replicated_excess_score(
-        c=c,
-        mu=mu,
-        tau=evidence_tau,
-        mode=evidence_mode,
-        placebo_seed=placebo_seed,
-        degrees=degrees,
-        E_sem=E_sem,
-    )
+    if full:
+        # No half assignment or seeded hashing in the full-activity estimator.
+        user_bin, group_sizes = build_activity_strata(R_csr)
+        half = None
+        c, mu = candidate_pooled_statistics(
+            R_csc, E_sem, user_bin, group_sizes, candidate_block,
+        )
+        r = pooled_activity_score(
+            c, mu, evidence_tau, evidence_mode, degrees=degrees,
+            E_sem=E_sem, placebo_seed=placebo_seed,
+        )
+    else:
+        # Preserve R1 and pooled-half arithmetic and assignment semantics.
+        user_bin, half, group_sizes = build_activity_replication(R_csr, evidence_seed)
+        c, mu = candidate_excess_statistics(
+            R_csc, E_sem, half, user_bin, group_sizes, candidate_block, evidence_mode,
+        )
+        r = replicated_excess_score(
+            c, mu, evidence_tau, evidence_mode, placebo_seed, degrees, E_sem,
+        )
 
     # 6. Load or build CF operator S_CF
     cf_audit = {}
@@ -562,45 +584,64 @@ def build_stair_icaart_graph(
         embedding_dim=embedding_dim,
         c_counts=c,
         mu_expectations=mu,
+        evidence_mode=evidence_mode,
     )
+
+    pooled_counts = c if full else c.sum(axis=1)
+    pooled_null = mu if full else mu.sum(axis=1)
+    quantiles = [0, .1, .5, .9, .95, .99, 1]
+    cal_audit["evidence_quantile_levels"] = quantiles
+    cal_audit["candidate_count_quantiles"] = np.quantile(pooled_counts, quantiles).tolist() if len(c) else []
+    cal_audit["candidate_null_quantiles"] = np.quantile(pooled_null, quantiles).tolist() if len(mu) else []
+    cal_audit["evidence_score_quantiles"] = np.quantile(r, quantiles).tolist() if len(r) else []
 
     elapsed = time.perf_counter() - started
 
     # 8. Compile comprehensive manifest
     manifest = {
-        "architecture": "STAIR-REEC-versionICAART",
+        **identity,
         "evidence_mode": evidence_mode,
         "evidence_seed": evidence_seed,
         "evidence_tau": evidence_tau,
         "evidence_delta": evidence_delta,
         "evidence_candidate_block": candidate_block,
         "evidence_activity_bins": "log2",
-        "evidence_halves": 2,
+        "evidence_halves": identity["active_halves"],
         "evidence_placebo_seed": placebo_seed,
         "training_seed": int(getattr(cfg, "seed", 1)),
         "evidence_dtype": "float64",
         "operator_dtype": "float32",
         "raw_semantic_fingerprint": sparse_fingerprint(W8_csr),
         "baseline_v8_fingerprint": sparse_fingerprint(V8_operator_cached) if V8_operator_cached is not None else None,
-        "assignment_hash": hashlib.sha256(user_bin.astype("<i8").tobytes() + half.astype("<i8").tobytes()).hexdigest(),
+        "assignment_hash": hashlib.sha256(
+            user_bin.astype("<i8").tobytes()
+            + (b"" if half is None else half.astype("<i8").tobytes())
+        ).hexdigest(),
         "group_sizes": group_sizes.tolist(),
         "evidence_score_hash": hashlib.sha256(r.astype("<f8").tobytes()).hexdigest(),
-        "evidence_config": validate_icaart_config(cfg),
+        "evidence_config": settings,
+        "counts_shape": list(c.shape),
+        "null_expectation_shape": list(mu.shape),
+        "counts_hash": hashlib.sha256(c.astype("<i8").tobytes()).hexdigest(),
+        "null_expectation_hash": hashlib.sha256(mu.astype("<f8").tobytes()).hexdigest(),
         "cf": {k: v for k, v in cf_audit.items() if k != "native_cf_cache_hit"},
         "num_raw_train_interactions": num_raw_interactions,
         "num_deduplicated_train_interactions": num_unique_interactions,
         "train_presence_hash": presence_hash,
         "num_users": n_users,
         "num_items": n_items,
-        "num_activity_strata": int(group_sizes.shape[1]),
-        "user_half_counts": [int(np.sum(half == 0)), int(np.sum(half == 1))],
+        "num_activity_strata": int(group_sizes.shape[-1]),
+        "user_half_counts": None if half is None else [int(np.sum(half == 0)), int(np.sum(half == 1))],
         "graph_fingerprint": cal_audit["s_ica_fingerprint"],
     }
 
-    metadata = {**w8_audit, **cal_audit, **cf_audit, **manifest, "build_elapsed_seconds": elapsed}
+    metadata = {**w8_audit, **cal_audit, **cf_audit, **manifest,
+                "build_elapsed_seconds": elapsed,
+                "analytical_candidate_payload": analytical_icaart_payload(n_items, len(E_sem), pooled=full)}
 
-    device = train_edges.device
-    operator_tensor = scipy_to_tensor(S_ICA).to(device)
+    # Preparation is CPU-only regardless of where caller edge IDs were stored.
+    # The native coach moves the finished model and its single final CSR graph.
+    operator_tensor = scipy_to_tensor(S_ICA)
 
     return GraphStateICAART(operator=operator_tensor, metadata=metadata, manifest=manifest)
 

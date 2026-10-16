@@ -1,712 +1,771 @@
-# versionICAART — STAIR-REEC: Replicated Excess-Evidence Calibration
+# versionICAART R2 — STAIR-PEEC: Pooled Excess-Evidence Calibration
 
-**Canonical architecture specification — 16 October 2026**  
-**Nền:** STAIR5-v8 / WMSG-core, 64 dimensions.  
-**Phán quyết:** **REDESIGN** bản v9 BSC-SBE; **IMPLEMENT WITH MODIFICATIONS** theo đặc tả REEC dưới đây, với pilot có quyền bác bỏ hoàn toàn giả thuyết.  
-**Phạm vi deliverable:** nghiên cứu, phản biện và kế hoạch triển khai; chưa triển khai model hoặc chạy training của kiến trúc mới. `versionICAART` là tên nhánh nghiên cứu, không phải xác nhận đủ điều kiện nộp hay sẽ được ICAART nhận.
+**Canonical research and implementation specification — 16 October 2026.**
+**Backbone:** STAIR5-v8 WMSG-core, primary embedding dimension 64.
+**Decision:** **REVISE** the replicated estimator; retain the optimizer-only, fixed-support intervention.
+**Status:** R1/REEC has two completed seed-1 runs. R2/PEEC is now implemented as a research candidate, **not a trained or validated improvement**. Source, configuration, notebook and test definitions were updated on 16 October 2026. Only text/AST/JSON checks were performed; no project tests, graph-construction experiment or training was run. See the [implementation audit](STAIR_versionICAART_Implementation_Audit.md).
 
-## 1. Executive summary
+The original specification is preserved in [the R1 archive](archive/STAIR_versionICAART_Report_REEC_20261016.md). Historical `replicated_excess` logs and checkpoints must keep their original names. They must never be relabeled as PEEC results.
 
-**Đề xuất cuối cùng: STAIR with Replicated Excess-Evidence Calibration — STAIR-REEC.** Chỉ hiệu chỉnh trọng số semantic graph đã có của V8, trước optimizer-side BSC. Không tạo auxiliary consensus graph, không residual vào first-layer item state, không learned consensus gate, không đổi NLGCL, không thêm loss, không mở rộng support, không nâng dimension trong primary experiment.
+> **Tóm tắt quyết định nghiên cứu:** Bản REEC hiện tại chưa vượt V8.1; lợi ích tăng thêm so với V8 còn rất nhỏ và mới có một seed. Không có cơ sở để tuyên bố giả thuyết replication đã thành công. Hướng tinh chỉnh chính là **PEEC — bằng chứng vượt kỳ vọng được tính gộp trên toàn bộ từng tầng người dùng**, bỏ điều kiện cứng phải dương ở cả hai nửa. Giữ nguyên V8, loss và đường BSC để kiểm tra riêng chất lượng estimator.
+>
+> **Điểm phát hiện mới:** `pooled_excess` đã có trong code vẫn cộng kỳ vọng tính theo hai nửa, nên chưa phải null tính trên toàn bộ từng tầng. Cần phân biệt ba arm: REEC cũ, pooled-half để kiểm tra việc bỏ `min`, và pooled-full để kiểm tra ảnh hưởng của cách tính null. Phương án giữ bậc bằng tối ưu KL chỉ là đối chứng có điều kiện; nó có thể giúp kiểm soát thay đổi chuẩn hóa nhưng cũng có thể triệt tiêu tín hiệu hữu ích. Chưa đưa vào primary trước ablation.
+>
+> **Phạm vi kết luận:** Bản tinh chỉnh đã được cập nhật mã nguồn; chưa chạy kiểm thử hoặc huấn luyện. Khả năng tăng Recall/NDCG phải được xác minh bằng đối chứng count, shuffle, CF-dose và nhiều seed thật. Các p-value sinh từ mẫu Gaussian trong notebook cũ không được sử dụng; pipeline mới đã bỏ phần sinh mẫu giả. Electronics chưa có kết quả REEC.
 
-**Core hypothesis [HYPOTHESIS]:** trong các semantic edges sẵn có, *đồng tương tác vượt mức kỳ vọng theo độ hoạt động người dùng và lặp lại trên hai tập người dùng tách biệt* có thể phân biệt nơi đáng tăng trao đổi hướng cập nhật, tốt hơn raw co-occurrence hoặc semantic similarity đơn thuần. Chưa có dữ liệu chứng minh đây là bottleneck lớn nhất của V8.
+## 1. Executive decision
 
-Các quyết định chính:
+The strongest immediate research direction is **not** a larger consensus network. It is to determine whether the current evidence estimator discards useful but sparsely observed associations before they can influence BSC.
 
-1. Giữ nguyên MI/FSC/BPR/NLGCL/scorer/CF branch của **V8 WMSG-core**, không kế thừa nhánh auxiliary của V8.1/CoGate.
-2. Đo **excess association**, không gọi là causal preference, substitute/complement label, hay calibrated probability.
-3. Phân tầng users theo train-history length; tính expected overlap trong từng tầng. Tách **users**, không tách item pairs của cùng user thành hai mẫu được gọi là độc lập.
-4. Chỉ tăng trọng số khi hai user halves đều có observed overlap lớn hơn conditional-null expectation. Không có bằng chứng → raw multiplier bằng 1; không hard-prune, không coi zero interaction là negative preference.
-5. Symmetric reweighting → **actual-degree normalization** → giữ nguyên `.9/.1` normalized CF blend. Bỏ row-budget restoration, Sinkhorn, power-rescaling và sigmoid thresholds của draft.
-6. Đo **normalized operator dose và thay đổi BSC direction**, không dùng nominal gate amplitude để tuyên bố đã giải quyết dosage paradox.
-7. Nếu không đủ evidence/contrast hoặc matched placebo cũng tốt tương đương, giữ V8; không bù bằng hàng loạt module mới.
+**Primary hypothesis [HYPOTHESIS]:** requiring positive excess in both user halves is an unnecessarily severe selection rule for the existing semantic support. A pooled, activity-conditioned, count-regularized estimator may improve useful coverage and ranking at the same online cost. This is the best-supported *next test*, not a demonstrated explanation of the current performance gap.
 
-Khác biệt với CoGate là **đối tượng và vị trí can thiệp**: REEC kiểm tra độ lặp lại của bằng chứng để điều chỉnh *optimization geometry*; CoGate tạo *auxiliary representation view* và CL supervision. Đây là khác biệt kỹ thuật thực chất, nhưng không tự chứng minh substantial independent publication contribution. Nghiên cứu liên quan đã có behavior-guided graph denoising; không claim phát minh behavioral–semantic consensus.
+**Final R2 candidate: STAIR with Pooled Excess-Evidence Calibration — STAIR-PEEC.**
 
-## 2. Phạm vi đọc, provenance và mức chắc chắn
+1. Preserve exact V8 MI, semantic candidates, WMSG weights, CF branch, FSC, BPR, NLGCL, optimizer schedule, scorer and evaluation protocol.
+2. Replace the hard minimum across halves with a pooled excess score. Use all training users within each activity stratum for the final primary null; no user partition is needed to construct that graph.
+3. Keep the original exponential calibration and actual-degree normalization for the primary candidate. This isolates evidence estimation from a separate normalization redesign.
+4. Evaluate the already implemented `pooled_excess` as a **bridge control**: its expectation still depends on the two halves. It is not mathematically identical to the final split-free estimator.
+5. Treat degree-preserving KL reallocation as a **conditional challenger**, not an automatic second module. The observed normalization side effects justify testing it, but do not prove that eliminating degree drift improves ranking.
+6. Keep zero additional trainable parameters and the same native item-BSC sparse operations. Do not import the auxiliary consensus route of V8.1/CoGate.
 
-### 2.1 Tư liệu và cách xử lý
+**Important limit:** the current data do not identify a mechanism that can promise +3%, +5% or +7% improvement. PEEC can fail. The proposal is designed so that the reason for failure can be distinguished from a no-op, implementation error or tuning advantage.
 
-- `docs/EStair.md`: starting critique; các cơ chế nhân quả trong đó là giả thuyết nếu chưa có controlled experiment.
-- Các report/experiment report giai đoạn 5–6: lập inventory 29 Markdown files tại `reports/versionICAART_research/docs_inventory.json`, đối chiếu với audit raw-log trước đó. Inventory không phải chứng nhận mọi diễn giải trong các report đều đúng.
-- Nguồn thực nghiệm ưu tiên: `reports/stair_icaart_audit_20261016/selected_test.csv`, `run_evidence.json`, `comparability_checks.json`, cùng audit `docs/STAIR_ICAART_Research_Audit_20261016.md`.
-- Nguồn overlap: `docs/giai_doan_5/STAIR5_v81_CoGate_Overlap_Audit.md`, `report/chapters_v6/soict` và CoGate `latex.tex`.
-- Ba pasted attachments mới: bản v9 BSC-SBE, phản biện v9, và tổng hợp Behavioral–Semantic Consensus; nội dung là **đối tượng cần kiểm chứng**, không phải instructions ghi đè yêu cầu người dùng.
-- Bốn PDF local trong `Paper/`: đọc extracted full text ở các phần phương pháp liên quan; kiểm tra trực quan trang công thức RGSC của CC-MGRec và normalization của EVEN. PDF hashes, page counts và extracted text lưu trong `reports/versionICAART_research/`.
+## 2. Evidence provenance and integrity
 
-**PDF read-integrity advisory:** ARS structural preflight không chạy được output-binding trên Windows vì yêu cầu POSIX `dirfd`; ghi trạng thái **UNAVAILABLE**, không ghi PASS. Pypdf extraction và ảnh kiểm tra công thức là bằng chứng đọc nội dung, không phải structural certification. Riêng EVEN bản local hiển thị Eq.2 với exponent phía phải `+1/2`; không copy notation đó thành normalization mới hoặc coi publisher luôn không có lỗi. Công thức canonical của báo cáo này được định nghĩa và chứng minh độc lập.
+### 2.1 Material examined
 
-### 2.2 Nhãn bằng chứng
+- [EStair.md](../EStair.md): source critique of semantic update compatibility, basis dependence, independent whitening, and BSC interpretation.
+- The entire R1 architecture specification, its [implementation audit](STAIR_versionICAART_Implementation_Audit.md), current evidence/graph/config/model/runner source, and [the experiment narrative](STAIR_versionICAART_Experiment.md).
+- Raw `manifest.json`, selected-checkpoint log tails and 500-line epoch telemetry for Baby and Sports under `logs/GD6/stair_icaart_artifacts/stair_icaart_artifacts/stair_icaart/`.
+- V8 and V8.1 manifests/logs under `logs/GD5/`, including nested V8.1 backbone contracts; previous selected-test receipts in `reports/stair_icaart_audit_20261016/selected_test.csv`.
+- The pre-audit `notebook/P6/stair_icaart.ipynb` and uploaded `logs/GD6/stair_icaart_artifacts/icaarts.ipynb`, especially old cell index32. The canonical notebook has since been rewritten; the uploaded raw artifact remains unchanged.
+- Primary-source literature in §6. Reading depth is disclosed there. This is a targeted mechanism review, not an exhaustive systematic review or a novelty certificate.
 
-| Nhãn | Ý nghĩa |
+The current REEC run uses commit `3a3cc39dd6b5fe1210c5759710b6c9dcb1f71027`, Python 3.13.15, PyTorch 2.11.0+cu128, FreeRec 0.9.7, Tesla T4, seed 1, and validation NDCG@20 selection. Compared V8/V8.1 runs have matching split/feature/candidate identities and common backbone source hashes. Environment equivalence is strong evidence of comparability, not a measurement of nondeterministic variance.
+
+### 2.2 Evidence labels
+
+| Label | Meaning |
 |---|---|
-| FACT | Nguồn/implementation hoặc experiment artifact trực tiếp xác nhận trong phạm vi nêu rõ |
-| OBSERVATION | Đại lượng đo được; không tự xác định nguyên nhân |
-| INTERPRETATION | Cách giải thích phù hợp evidence, còn alternative explanations |
-| HYPOTHESIS | Cần experiment để chấp nhận/bác bỏ |
-| SPECULATION | Chưa đủ hỗ trợ; không đưa vào contribution statement |
+| FACT | Direct source/code/artifact fact within its stated scope |
+| OBSERVATION | Measured result; no causal explanation implied |
+| INTERPRETATION | Plausible explanation with alternatives |
+| HYPOTHESIS | Requires a discriminating experiment |
+| SPECULATION | Insufficient support for adoption or a contribution claim |
 
-Các proof chỉ chứng minh thuộc tính toán tử dưới assumptions, không chứng minh ranking gain. Review methodology và publication fit được thực hiện trong **cùng một ngữ cảnh**, không phải hai reviewer độc lập hoặc calibrated acceptance predictor. Tiêu chí: correct estimand, no leakage, valid algebra, attribution, controls, uncertainty, feasible computation và genuine contribution beyond CoGate.
+The methodology review and research synthesis were performed inline in a shared context. They are **not independent reviewer replications**, and reviewer calibration status is **NOT_CALIBRATED**. Criteria are correct estimands, valid algebra, controls, no leakage, reproducibility, empirical attribution, and feasible cost. No venue acceptance score is inferred.
 
-## 3. Research history: điều gì đã thực sự cải thiện?
+### 2.3 Results that must not enter the evidence base
 
-### 3.1 Đối chiếu selected TEST ở 64D
+**FACT (historical notebook):** cell index32, labeled `Cell 9b`, generates `sample_reec` and `sample_v8` with `rng.normal(...)` around aggregate metrics, then computes t-tests, Wilcoxon, bootstrap intervals and effect sizes. These are simulated samples, not measured runs, user metrics or folds. The same cell substitutes V8 results when REEC results are missing.
 
-Các số dưới đây lấy từ selected TEST receipt, **seed 1**, checkpoint chọn theo validation NDCG@20. Giá trị log làm tròn bốn chữ số; không dùng để tính p-value hoặc phát hiện hiệu ứng nhỏ hơn precision của log.
+Consequences for all subsequent research and papers:
 
-| Architecture | Baby R@20 / N@20 | Sports R@20 / N@20 | Electronics R@20 / N@20 |
-|---|---:|---:|---:|
-| V8 WMSG-core | .1054 / .0462 | .1142 / .0518 | .0680 / .0317 |
-| V8.1 BSCV | .1054 / .0463 | .1149 / .0521 | .0683 / .0318 |
-| G6-v1 LCAE | .1050 / .0462 | .1142 / .0519 | .0680 / .0317 |
-| G6-v2 AKP | .1054 / .0463 | .1141 / .0518 | .0678 / .0317 |
+- `stair_icaart_statistical_significance.csv` is **invalid empirical inference**; do not cite its p-values, intervals or effect sizes.
+- `stair_icaart_paper_table.tex` requires regeneration from measured records. In particular, Electronics is **NOT RUN** for REEC; fallback values are not results.
+- Recall@1 was not monitored in the two REEC logs. Report it as **NOT MEASURED**, not zero and not a V8 copy.
+- Do not interpret `p > .05` as equivalence, even when a future test uses real observations. An equivalence claim requires a justified margin and an appropriate design.
+- These findings invalidate the synthetic statistical layer, **not** the logged Baby/Sports training metrics.
 
-V8.1 tăng relative N@20 so V8 khoảng **0.22%, 0.58%, 0.32%**. Đây là tốt nhất trong bảng local gần nhất theo N@20, **không phải bằng chứng superiority thống kê hay SOTA quốc tế**. V8 là control phù hợp cho hướng mới vì route của V8.1 trùng CoGate đáng kể.
+The source audit removed synthetic inference and missing-result substitution from the canonical notebook. Native unrounded selected-checkpoint receipts are exported for future runs. Raw artifacts and historical results remain unchanged; no replacement empirical results are invented.
 
-V4 historical reported N@20 là `.0461/.0517/.0316`; V8 hơn rất ít trên metric này. V4 Baby R@20 `.1056` còn cao hơn V8 `.1054`. Không viết “V8 tăng tất cả metric trên cả ba tập”. Các baseline published và rerun local phải tách nguồn, split, seed và precision.
+## 3. What the experiments actually establish
 
-### 3.2 Chuỗi bài học và những kết luận chưa được phép
+### 3.1 Selected TEST, seed 1, 64D
 
-| Giai đoạn | Evidence/observation | Lesson | Không được kết luận |
+Each row uses the checkpoint selected by validation NDCG@20. Values are printed to four decimal places. Equal printed values are not proof of exact equality.
+
+| Dataset | Model | Selected epoch | R@10 | R@20 | N@10 | N@20 |
+|---|---|---:|---:|---:|---:|---:|
+| Baby | V8 | 430 | .0675 | .1054 | .0365 | .0462 |
+| Baby | V8.1 | 430 | .0679 | .1054 | .0366 | .0463 |
+| Baby | R1/REEC | 430 | .0674 | .1054 | .0365 | .0462 |
+| Sports | V8 | 500 | .0762 | .1142 | .0420 | .0518 |
+| Sports | V8.1 | 500 | .0767 | .1149 | .0423 | .0521 |
+| Sports | R1/REEC | 500 | .0764 | .1142 | .0421 | .0519 |
+| Electronics | V8 | 500 | .0460 | .0680 | .0260 | .0317 |
+| Electronics | V8.1 | 500 | .0462 | .0683 | .0261 | .0318 |
+| Electronics | R1/REEC | — | NOT RUN | NOT RUN | NOT RUN | NOT RUN |
+
+Receipts: Baby REEC selected TEST is log line 1897; Sports REEC selected TEST is line 1904 in their respective `*_replicated_excess_d1.0_seed1.log` files. Baby's six-decimal summary before loading the best model describes the last checkpoint, not the selected epoch 430. Do not mix the two.
+
+**OBSERVATION:** REEC is slightly better than V8 on Sports N@20, approximately +0.19% using rounded values, and approximately tied on Baby N@20. It does not surpass V8.1 on these runs. The roughly +3.8% Sports N@20 versus original STAIR includes gains inherited from the V8 pipeline; it is not REEC's isolated contribution.
+
+**OBSERVATION:** Baby selected VALID N@20 is .044328 for REEC, .044067 for V8, and .044213 for V8.1. Better validation performance did not translate into better printed TEST N@20. This rules out selecting new variants from their historical test gap and calling that generalization evidence.
+
+### 3.2 Mechanism measurements
+
+| Quantity | Baby | Sports | Scope |
+|---|---:|---:|---|
+| Undirected semantic candidates | 29,926 | 78,872 | E, not directed sparse nnz |
+| Positive replicated score | 563 | 1,232 | Both halves have positive excess |
+| Positive edge fraction | 1.8813% | 1.5620% | Score eligibility |
+| Positive raw-weight coverage | 2.3131% | 1.9330% | Fraction of W8 mass, before normalization |
+| Mean positive score | .32352 | .35199 | Conditional on r>0 |
+| One-half sign disagreement | 8.5511% | 8.4479% | Does not identify false edges |
+| Relative operator Frobenius dose | 4.7241% | 4.5328% | Final operator relative to V8 |
+| Relative polynomial probe dose | 1.5053% | 1.3457% | Coordinate 32, 8 fixed Rademacher probes, L=3 |
+| Median row-relative L1 dose | .0970% | 0% | Distribution is highly localized |
+| Minimum r=0 semantic coefficient ratio | .79801 | .76005 | Extreme indirect attenuation; median ratio is 1 |
+
+**INTERPRETATION:** the implementation is active; it is not the earlier V6 case of effectively zero graph perturbation. However, the intervention is localized and the stored polynomial probe changes less than the raw graph. Neither observation proves insufficient dose or harmful over-smoothing. The probe is not the whole-coordinate BSC map on actual Adam directions.
+
+### 3.3 Runtime and memory
+
+| Dataset | Model | Fit minutes | Mean train seconds/epoch | Peak allocated MiB |
+|---|---|---:|---:|---:|
+| Baby | V8 | 19.31 | 2.199 | 145.17 |
+| Baby | REEC | 19.50 | 2.232 | 145.17 |
+| Baby | V8.1 | 21.94 | 2.513 | 148.23 |
+| Sports | V8 | 41.66 | 4.678 | 223.71 |
+| Sports | REEC | 40.91 | 4.614 | 223.71 |
+| Sports | V8.1 | 48.64 | 5.512 | 224.61 |
+
+Total REEC preprocessing is 24.014 s / 30.172 s. The nested REEC graph-builder timers are .674 s / 1.698 s. The total timer includes parent preparation and must not be attributed entirely to the new estimator. Cache state matters. Epoch allocator measurements do not certify whole-process GPU usage or OOM freedom. Same online sparse work does not mean zero extra wall time.
+
+## 4. Methodology-focused post-mortem
+
+| Suspected cause | Evidence | Mechanism | Confidence in causal explanation | Alternative / discriminating test |
+|---|---|---|---|---|
+| Hard replication rejects useful sparse evidence | Only 1.56–1.88% of semantic edges eligible | One weak half zeros an otherwise informative association | Medium; eligibility fact is high confidence | One-half edges may really be unreliable. Compare legacy pooled vs replicated at fixed null and matched dose |
+| Minimum conflates strength with reproducibility | Code uses min(e0,e1) | It is a conservative selector, not an estimator with a calibrated uncertainty guarantee | Medium | A useful regularizer may intentionally shrink. Compare score distributions, third-user predictivity and ranking |
+| Indirect normalization suppresses useful edges | r=0 coefficient minima .798/.760 | Endpoint degree growth reduces neighboring normalized coefficients | Medium-low for ranking harm | These could be appropriately suppressed edges. Conditional degree-budget challenger and head/tail margin diagnostics |
+| User partition is a nuisance for pooled inference | Existing pooled sums half-conditioned expectations | Arbitrary split changes the null even with identical full counts | Low-medium; algebraic dependence is certain | Its effect could be negligible. Separate pooled-half from pooled-full, measure across partition seeds |
+| Behavior already represented by FSC/CSE | Same train R and native CF are retained | Reweighting may be redundant with existing information | Medium-low | Placement might still matter. Measure supported-edge overlap and compare an equal-budget eta search |
+| Statistical association does not predict update utility | No actual-direction/margin evidence yet | Exposure or broad popularity can repeat across users | Unknown | Test shared-state directions and validation margins; never infer utility from coverage alone |
+| Underpowered tuning | Only delta=1 current primary | A useful estimator could need a different bounded intervention | Unknown | Shared {0,.5,1,2} grid for estimators; compare after dose matching |
+| Over-smoothing / popularity amplification | Not directly measured | Stronger effective exchanges can blur distinctions | Low | Effective rank, normalized energy, head/tail metrics and actual margins |
+| Optimization bug / stalled BPR | No direct evidence; final BPR close to V8 | Would create systematic loss or parameter mismatch | Low on current artifacts | Delta0 parity, gradients before step, evaluator identity and checkpoint contracts |
+| Seed/selection variance | One training seed, rounded output | Small outcome differences may vary across runs | High as limitation; unknown magnitude | Real paired seeds and unrounded per-user metrics |
+
+**Methodology verdict:** major revision of the evidence claim is required. Current runs establish feasibility and small point-estimate changes; they do not validate replication as denoising, equivalence to V8.1, causal compatibility, or international SOTA.
+
+### 4.1 Socratic stress test
+
+**Nếu một cạnh không lặp lại trên hai nửa, tại sao gọi nó là nhiễu?** Không có bằng chứng đủ để gọi như vậy. Thiếu lực thống kê, phân khúc người dùng và exposure khác nhau đều tạo ra bất đồng. Do đó, replication chuyển thành tiêu chí chẩn đoán thay vì điều kiện bắt buộc của estimator chính.
+
+**Nếu một cạnh lặp lại, tại sao hướng cập nhật của hai item phải tương thích?** Không suy ra được. Cùng exposure hoặc đồng mua có thể tồn tại trong cả hai nửa. Phải đo hướng Adam và margin; không đổi tên association thành compatibility.
+
+**Có phải chỉ cần tăng delta để vượt V8.1?** Không. Eq.13 cho thấy chuẩn hóa loại phần biến thiên đồng đều và có thể làm giảm hệ số ở cạnh khác. Delta lớn hơn còn có nguy cơ khuếch đại sai bằng chứng.
+
+**Bỏ min có làm mất đóng góp về replication?** Có thể. Nếu pooled tốt hơn thì phải bỏ tuyên bố replication là đóng góp hiệu quả. Chọn một estimator đơn giản tốt hơn là giữ một đóng góp yếu để bảo vệ tên phương pháp.
+
+**Vì sao không thêm consensus residual hoặc nâng lên256D?** Hai thay đổi này kiểm tra giả thuyết khác, tăng confounding và có thể quay lại vùng đóng góp của CoGate. Chúng không chứng minh estimator mới có ích. Giữ support V8 cũng có giới hạn: phương pháp không thể tạo ra quan hệ hữu ích nằm ngoài candidate support; nếu đây mới là bottleneck thì PEEC sẽ thất bại và cần một nghiên cứu topology riêng.
+
+## 5. Revisit EStair without treating its hypotheses as facts
+
+| EStair issue | Current conclusion | R2 action |
+|---|---|---|
+| Semantic similarity does not ensure compatible updates | Foundational concern remains; association is still only a proxy | Measure actual update/margin utility; do not rename co-occurrence as compatibility |
+| Coordinate-dependent FSC/BSC | Mathematical dependence exists; harm is unmeasured | Keep schedule fixed for attribution; separate rotation/permutation diagnostics |
+| Independently whitened modalities may be misaligned | Fusion cross-terms can depend on signs/bases | Do not insert Procrustes into a graph-estimator experiment without a controlled MI result |
+| BSC changes optimization geometry | Smoothing is not a hard modality reconstruction constraint | Preserve native optimizer and state exactly; do not claim permanent information preservation |
+| Entropy/uncertainty is not incremental utility | No local held-out utility study identifies this bottleneck | Avoid uncertainty MLPs whose target cannot be validated |
+| Dense preprocessing and hardware limits | Sparse training does not eliminate preprocessing costs | Candidate-only CPU statistics, native chunked retrieval, no new dense item-pair matrix |
+
+An invariant scalar edge score does not make the complete model rotation invariant: coordinate schedules and Adam's elementwise second moment remain basis-dependent. Cross-modal alignment and rotation equivariance solve different problems.
+
+## 6. Targeted literature review: what to borrow, and what not to infer
+
+Search/reverification date: **16 October 2026**. Sources are publisher proceedings, author papers/arXiv, and official technical documentation. Search families: behavior-guided semantic denoising; graph calibration and marginal budgets; uncertainty/diffusion; spectral-filter mismatch; bipartite nulls; sparse matrix scaling. Paper gains on different splits/backbones are not forecasts for this project.
+
+### 6.1 Verified references
+
+| ID | Exact work, authors and status | Relevant mechanism and decision |
+|---|---|---|
+| R1 | **STAIR: Manipulating Collaborative and Multimodal Information for E-Commerce Recommendation** — Cong Xu, Yunhang He, Jun Wang, Wei Zhang; AAAI 2025; DOI 10.1609/aaai.v39i12.33407. [Official](https://ojs.aaai.org/index.php/AAAI/article/view/33407) | Preserve MI/FSC/BSC; distinguish source architecture from local NLGCL/CSE additions |
+| R2 | **A Tale of Two Graphs: Freezing and Denoising Graph Structures for Multimodal Recommendation** — Xin Zhou, Zhiqi Shen; ACM MM 2023; DOI 10.1145/3581783.3611943. [Author paper](https://arxiv.org/abs/2211.06924) | FREEDOM supports competitive frozen graphs and degree-sensitive denoising; does not imply all static graph estimators work |
+| R3 | **Multi-View Graph Convolutional Network for Multimedia Recommendation** — Penghang Yu, Zhiyi Tan, Guanming Lu, Bing-Kun Bao; ACM MM 2023; DOI 10.1145/3581783.3613915. [Author paper](https://arxiv.org/abs/2308.03588) | MGCN uses behavior-guided purification/fusion. Behavioral conditioning is established prior art; do not claim it as a new principle |
+| R4 | **Seeing Beyond Noise: Joint Graph Structure Evaluation and Denoising for Multimodal Recommendation** — Yuxin Qi, Quan Zhang, Xi Lin, Xiu Su, Jiani Zhu, Jingyu Wang, Jianhua Li; AAAI 2025; DOI 10.1609/aaai.v39i12.33358. [Official](https://ojs.aaai.org/index.php/AAAI/article/view/33358) | EVEN evaluates semantic structure with behavior-driven confidence, also denoises interactions and aligns modalities. Motivates a confidence challenger, not REEC's specific min rule |
+| R5 | **Rethinking Evidence Modeling: Context-Coupled Graph Learning for Multimodal Recommendation** — Mingqiao Zhang, Qiyao Peng, Yumeng Wang, Wenzhe Dong, Hongtao Liu, Jian Yang; arXiv preprint, 11 Oct 2026, venue unverified. [Methods](https://arxiv.org/html/2610.15523v1) | CC-MGRec calibrates semantic weights from smoothed context-target log-lift and restores destination budgets. This motivates separating evidence from normalization; its shared forward graph is different from item-BSC-only calibration |
+| R6 | **One Graph, Multiple Gains: Single High-Quality Item-Item Graph for Multimodal Recommendation** — Jinfeng Xu, Zheyu Chen, Ziyue Peng, Shuo Yang, Jinze Li, Zewei Liu, Shujie Li, Yipeng Du, Edith C. H. Ngai; 2026, author metadata states ACM MM acceptance. [Paper](https://arxiv.org/abs/2607.24607) | IIMRec fuses semantic/co-occurrence information, uses NCER and multiple graph applications. Close comparator; its BPR augmentation is not optimizer-gradient smoothing |
+| R7 | **IGDMRec: Behavior Conditioned Item Graph Diffusion for Multimodal Recommendation** — Ziyuan Guo, Jie Guo, Zhenghao Chen, Bin Song, Fei Richard Yu; arXiv 2025, author metadata states IEEE TMM acceptance, final publisher DOI not verified here. [Paper](https://arxiv.org/abs/2512.19983) | Behavior-conditioned diffusion is a stronger learned graph challenger, but adds denoising/augmentation computation and confounds the minimal estimator test |
+| R8 | **Teach Me How to Denoise: A Universal Framework for Denoising Multi-modal Recommender Systems via Guided Calibration** — Hongji Li, Hanwen Du, Youhua Li, Junchen Fu, Chunxiao Li, Ziyi Zhuang, Jiakang Li, Yongxin Ni; author metadata states WSDM 2025 acceptance. [Paper](https://arxiv.org/abs/2504.14214) | GUIDER changes feedback treatment, BPR and alignment through OT distillation. Useful alternative hypothesis; no evidence yet that feedback denoising is the local bottleneck |
+| R9 | **MURAL: Multimodal Uncertainty-aware Recommendation via Adaptive edge Learning** — Ahmad Mousavi, Majid Alikhani, Yeon-Chang Lee, Roberto Corizzo, Yeganeh Abdollahinejad; arXiv preprint, 4 Sep 2026, venue unverified. [Paper](https://arxiv.org/abs/2609.04574) | Adaptive retrieval, uncertainty fusion and teacher-student alignment. Retain as external alternative, not a reason to import a stack |
+| R10 | **Collaborative Filtering Meets Spectrum Shift: Connecting User-Item Interaction with Graph-Structured Side Information** — Yunhang He, Cong Xu, Jun Wang, Wei Zhang; author metadata states KDD 2025 acceptance. [Paper](https://arxiv.org/abs/2502.08071) | SSC addresses spectral changes when side information augments UI propagation. Our UI FSC graph is unchanged; its motivation does not automatically transfer to the separate item optimizer graph |
+| R11 | **GSPRec: On Improving Item Representations in Graph Signal Processing for Collaborative Filtering** — Ahmad Bin Rabiah, Julian McAuley; arXiv v3, 21 Jul 2026, venue unverified here. [Versioned paper](https://arxiv.org/abs/2505.11552v3) | Studies coupling of item proximity and band/low-pass filters. A different graph and filter can interact; importing a bandpass without an actual-direction diagnosis is not justified |
+| R12 | **Statistically Validated Networks in Bipartite Complex Systems** — Michele Tumminello, Salvatore Miccichè, Fabrizio Lillo, Jyrki Piilo, Rosario N. Mantegna; PLoS ONE 2011; DOI 10.1371/journal.pone.0017994. [Official](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0017994) | Heterogeneity-conditioned projection nulls are foundational. Borrow the principle of checking overlap against marginals; our shrinkage score is not its validated-edge test |
+| R13 | **A review of matrix scaling and Sinkhorn's normal form for matrices and positive maps** — Martin Idel; arXiv 2016. [Paper](https://arxiv.org/abs/1609.06349) | Scaling feasibility and marginal constraints matter. Relevant to the optional KL challenger, not a guarantee for arbitrary finite Sinkhorn iterations |
+| R14 | **Sinkhorn Distances: Lightspeed Computation of Optimal Transport** — Marco Cuturi; NeurIPS 2013. [Official](https://papers.neurips.cc/paper_files/paper/2013/hash/af21d0c97db2e27e13572cbf59eb343d-Abstract.html) | Entropic optimization is standard machinery. Neither entropic projection nor its application to STAIR alone constitutes a new component |
+
+Reading scope: R1 and R4 are source/publisher-verified with relevant local method extracts from the prior audit; R5's calibration equations were reread directly; R2/R3/R6–R11 were checked against current author abstracts and metadata for this revision; R12–R14 supply foundational scope, with proofs of our own constructions supplied below. No claim that all reported experiments or all repository implementations were independently reproduced.
+
+**Version correction:** GSPRec v3 has a different title and revised abstract from its older temporal-filtering draft. Do not use the earlier 6.77% headline as a current result or a forecast. The name also collides with other graph-sequence papers; use title, authors and arXiv version together.
+
+### 6.2 Mechanism-to-shortcoming map
+
+| Local issue | Relevant sources | Specific lesson adopted | Unsupported leap rejected |
 |---|---|---|---|
-| STAIR → NLGCL/CSE V4 | Thêm local CL và CF support mang lại bước cải thiện đáng kể trong historical reports | Giữ backbone mạnh làm comparator | Mọi graph expansion đều tốt |
-| V5.1 KPE | Known-positive exclusion chủ yếu parity/nhẹ regression | Không ưu tiên thêm false-negative stack khi chưa có evidence mới | False negatives không tồn tại |
-| V5.2 BPE | Two-hop expansion làm giảm metric khoảng .39–.87% theo đối soát lịch sử | Không thêm higher-order support vào primary | Đã chứng minh semantic dilution/oversmoothing là nguyên nhân duy nhất |
-| V6 BCSR | Heuristic under-support cực nhỏ, graph mass delta khoảng .02–.06% | Đo realized dose; thiếu overlap không phải dislike | Degree preservation tự nâng metric |
-| V7 UCR-D | Dynamic update monitoring tốn tài nguyên; một số headline trong report cũ cao hơn selected log chính xác | Không đưa online EMA/snapshot edge scorer vào primary | V7 `.0520/.0318` là fair selected comparator |
-| V8 | Continuous semantic weights + fixed CF blend; sparse training khả thi | Nền ổn định, support sẵn có đủ cho controlled reweighting | Đã xác định và chữa hoàn toàn hub saturation |
-| V8.1 | Small gains, gate gần saturation; ~14–18% training overhead | Auxiliary consensus có tín hiệu nhưng cần fixed-dose/placebo controls | Learned gate đã học reliability; gain đủ làm bài độc lập |
-| G6-v1 | Latent category module thực sự active nhưng metric gần parity | Coarse pooling có thể thiếu discriminative evidence | Metadata thiếu làm module không chạy |
-| G6-v2 | Adaptive-K module active, full blended support vẫn như V8; metric gần parity | KKT đúng chưa chứng minh edge utility | Chỉ cần tune K là vượt V8 |
+| Sparse replicated eligibility | R4, R12 | Use behavior with a stated null and bounded count regularization; test all-data estimation | More co-occurrence always means safer propagation |
+| Degree/normalization side effects | R5, R13, R14 | Separate calibration from marginal constraints; optional symmetric KL challenger | Row-normalize then symmetrize preserves old degrees |
+| Association versus recommendation utility | R3–R8 | Evaluate ranking-linked evidence and compare task-driven alternatives | Edge significance or semantic agreement proves useful Adam transfer |
+| Stronger graph might over-smooth | R1, R10, R11 | Measure polynomial response, actual directions and margins together | Spectral shift correction or high-pass filtering must improve this backbone |
+| Cost and reproducibility | R1, R2 | Keep a frozen sparse primary; report actual preprocessing/runtime | Static means free; extra accuracy is guaranteed by a larger learned graph |
 
-**INTERPRETATION:** các thử nghiệm chưa xác định bottleneck còn lại với confidence cao. Cả can thiệp quá nhỏ và can thiệp đủ lớn nhưng sai tín hiệu đều có thể thất bại. REEC đặt phép kiểm định khác: *signal có vượt null hợp lý và lặp lại trên người dùng khác hay không*, trước khi dùng nó để sửa exchange weights.
+R5's context-target opportunity counts and popularity prior are a different sample space from user-presence counts. Do not replace its conditional probability with Ochiai divided by popularity and call it lift. Its destination-budget restoration on a directed block also cannot simply be symmetrized and normalized with stale degrees to obtain our spectral guarantee.
 
-### 3.3 Vì sao không quay lại category/price hoặc dimension ngay?
+## 7. Alternative architectures and selection
 
-Amazon category/ASIN mapping chưa được xác nhận có sẵn; latent clusters không phải taxonomy. Price ratio không nhận dạng substitute/complement. Ví dụ “laptop và smartphone là substitutes” cũng không phải fact. Không xây primary trên các label/causal relations chưa có.
+| Candidate | Hypothesis / explicit mechanism | Why V8 cannot already do it | Principal risk | Falsification / disposition |
+|---|---|---|---|---|
+| **A. Pooled excess, actual-degree normalization** | Hard two-half selection wastes usable evidence; r=[c-mu]+/(c+mu+kappa), W'=W8 exp(delta r) | V8 does not apply conditional excess on semantic support | More low-count noise; collateral degree effects persist | Must beat replicated and placement controls. **PRIMARY** |
+| **B. Pooled excess plus reference-degree KL allocation** | Degree drift, rather than score quality, cancels gains; minimize KL(W||W') with W1=d8 and symmetry | V8 has no evidence-conditioned fixed-budget allocation | Constraints can erase useful changes; preprocessing solver overhead | Cross with A in a controlled normalization study. **CONDITIONAL BACKUP** |
+| C. Adaptive update-compatible gate | Actual D_i and D_j identify transfer quality better than counts | V8 has no task-direction edge gate | Noisy mini-batch directions, V7 cost, differentiating through optimizer needs unrolling | Diagnose first; no dynamic gate in R2 |
+| D. Aligned MI/shared-private modality representation | Initialization interference is the real bottleneck | Independent SVD fusion is unchanged in V8 | Changes a different mechanism without local failure evidence | Separate sign/rotation/alignment controls first; defer |
+| E. Bandpass / affine SSC-modified BSC | Native filter suppresses useful modes despite a good graph | Native polynomial is fixed | Filter and graph tuning confounded; SSC's motivating UI change is absent | Requires actual spectral/direction evidence and equal-budget V8 filter controls; defer |
+| F. Signed relation/category gate | Substitute/complement labels are missing | No relation-type propagation in V8 | Relations not identifiable from absent co-occurrence, price or taxonomy alone | Reject as primary without valid labels/exposure design |
 
-256D là capacity experiment riêng: cần V8-64/V8-256 và REEC-64/REEC-256 factorial. CoGate đã có matched-dimension table; tăng chiều không phải novelty độc lập, không được dùng để che incremental graph effect ở64D.
-
-## 4. Critical review của v9 draft và phản biện gửi kèm
-
-### 4.1 Những điểm nên giữ
-
-- Optimizer-side static graph intervention phù hợp budget và khác auxiliary CL route của CoGate.
-- Semantic similarity không đảm bảo preference-compatible exchange: câu hỏi đúng từ EStair.
-- Hành vi train có thể bổ sung content evidence, nhưng cần estimator đúng và kiểm tra selection/popularity effects.
-- Sparse support, contraction proof, exact V8 recovery và placebo controls là yêu cầu đúng.
-
-### 4.2 Adjudication: không mặc định draft hoặc critique đúng
-
-| Vấn đề | Phán quyết và sửa |
-|---|---|
-| `L=q_shrunk_Ochiai/(p_j+eps)` được gọi lift/CC-MGRec formula | **Sai estimand.** Ochiai không phải conditional target probability; source prior/denominator phải cùng sample space. CC-MGRec dùng context–target counts/opportunities, không lấy Ochiai chia item-mass prior. REEC bỏ estimator này |
-| Critique gọi `c*M/(n_i*n_j)` là “PMI chính xác” | Đó là **lift** nếu M là số users trong Bernoulli-presence space; **PMI = log(lift)**. Nếu M là tổng interaction rows thì sai sample space |
-| Critique suy `c²/(sqrt(n_i)*n_j^1.5)` | Bỏ mất shrinkage denominator `(c+t)`, tổng interaction mass và epsilon. Không dùng approximation này để báo numeric bounds |
-| Reallocate row → average sym → dùng D0 | **Không bảo toàn degree** sau sym. D0 không còn degree thật, norm guarantee không suy ra. REEC normalize bằng degree của W mới |
-| “Không thể đồng thời symmetric và giữ row sums” | Quá mạnh. V6 đã có diagonal compensation. Marginal-constrained symmetric scaling có điều kiện feasibility; không cần dùng nó cho primary |
-| “10 Sinkhorn iterations đảm bảo degree/symmetry” | Sai bảo đảm. Ordinary alternating row/column scaling chưa chắc giữ symmetry ở iterate hữu hạn; prescribed d0 không phải doubly stochastic trừ target đặc biệt. Sparse support feasibility, convergence và residual phải kiểm tra |
-| Symmetric nonnegative ⇒ PSD | **Sai**: adjacency [[0,1],[1,0]] có eigenvalues ±1. PSD của normalized Laplacian khác PSD adjacency |
-| Five power iterations ⇒ certified upper bound | **Sai**. Finite estimate có thể underestimate; arbitrary initial vector có thể orthogonal với dominant mode. Với true degree normalization, proof bound trực tiếp đủ |
-| Critique “negative eigenvalue có thể vượt Perron value” | Không áp dụng cho entrywise nonnegative symmetric S: Perron eigenvalue bằng spectral radius. Vấn đề thực là stale degree và uncertified finite estimator, không phải phản ví dụ đã đưa |
-| Gate saturation chắc chắn trên mọi dataset | Chỉ là nguy cơ cho đến khi đo score distribution. Threshold .15/temp .1 không được transfer giữa scores khác scale |
-| Normalize loglift bằng global maximum | Rất nhạy outlier, không phải calibration probability; không giải quyết sparse-evidence uncertainty |
-| Chọn median/std từ validation interactions để build graph | Không chấp nhận. Chỉ dùng TRAIN cho evidence/statistics; validation metrics được dùng chọn preregistered strength, không tham gia graph statistics |
-| CF xuất hiện trong calibration lẫn CSE là lỗi đại số | Không tự động là bug. Có nguy cơ redundant evidence/behavior dominance; giữ CF branch fixed và làm placement controls để kiểm tra |
-| Zero co-occurrence ⇒ substitute/noisy semantic edge | Không nhận dạng từ implicit positive-only feedback. Có thể do exposure, sparsity, timestamp hoặc sở thích tương tự nhưng chưa mua cả hai |
-| Draft thay V8 bằng square của fused cosine và hard floor | Không còn exact V8: actual V8 floor trong mỗi modality, sum rồi max-sym. Không đổi control ngầm |
-| “Zero ms/zero MB”, “100% stable Adam”, predicted +5–8% | Loại bỏ. Offline overhead thật; norm bound scoped; không có result của kiến trúc mới |
-| Critique “category/relation propagation chắc ROI cao hơn” | Chưa có matched experiments, metadata và relation labels. Không dùng bảng sao/forecast làm evidence |
-
-**Reviewer verdict:** reject triển khai nguyên trạng v9. Bảo vệ research question, thay estimator và normalization. Không thêm dynamic consensus, FNF, spectral noise hoặc learned edge MLP để cứu draft.
-
-## 5. Targeted deep literature review
-
-Search date: 16/10/2026. Tra exact titles của các attachment, kiểm tra arXiv/publisher, đọc local methods, snowball sang closest graph calibration và bipartite-null work. Đây là targeted mechanism review, **không phải PRISMA systematic review hoặc exhaustive novelty certificate**. Không chuyển relative gains trong paper khác thành forecast cho REEC.
-
-### 5.1 Verified literature và cơ chế liên quan
-
-| Ref | Exact title; authors; venue/status | Source và implication |
-|---|---|---|
-| R1 | **STAIR: Manipulating Collaborative and Multimodal Information for E-Commerce Recommendation**; Cong Xu, Yunhang He, Jun Wang, Wei Zhang; AAAI2025 | [Publisher](https://ojs.aaai.org/index.php/AAAI/article/view/33407), DOI10.1609/aaai.v39i12.33407. MI/FSC/BSC là borrowed backbone. Original STAIR không có NLGCL local |
-| R2 | **A Tale of Two Graphs: Freezing and Denoising Graph Structures for Multimodal Recommendation**; Xin Zhou, Zhiqi Shen; ACM MM2023 | [arXiv](https://arxiv.org/abs/2211.06924). FREEDOM tạo tiền lệ frozen graph và degree-sensitive denoising; static là trade-off có cơ sở |
-| R3 | **Multi-View Graph Convolutional Network for Multimedia Recommendation**; Penghang Yu, Zhiyi Tan, Guanming Lu, Bing-Kun Bao; ACM MM2023 | [arXiv](https://arxiv.org/abs/2308.03588), DOI10.1145/3581783.3613915. Behavior-guided purification/fusion đã có; behavioral conditioning không mới riêng lẻ |
-| R4 | **Seeing Beyond Noise: Joint Graph Structure Evaluation and Denoising for Multimodal Recommendation**; Yuxin Qi, Quan Zhang, Xi Lin, Xiu Su, Jiani Zhu, Jingyu Wang, Jianhua Li; AAAI2025 | [Official PDF](https://ojs.aaai.org/index.php/AAAI/article/download/33358/35513), DOI10.1609/aaai.v39i12.33358. EVEN dùng co-occurrence để điều chỉnh semantic priors; còn interaction pruning và alignment. Không phải Bayesian calibrated edge probability |
-| R5 | **Semantic Item Graph Enhancement for Multimodal Recommendation**; Xiaoxiong Zhang, Xin Zhou, Zhiwei Zeng, Dusit Niyato, Zhiqi Shen; arXiv2025 | [arXiv2508.06154](https://arxiv.org/abs/2508.06154). SIGER trộn collaborative/semantic graphs, modulus perturbation và dual alignment. PDF local có copyright AAAI2026; publisher venue/DOI chưa xác minh, không tự gọi AAAI2026 accepted |
-| R6 | **Multi-view information fusion based graph collaborative filtering recommendation**; Ruihui Mu, Xin Li, Jiying Zhang; Journal of King Saud University Computer and Information Sciences38,46 (2026); online27/12/2025, version of record02/02/2026 | [Publisher](https://link.springer.com/article/10.1007/s44443-025-00408-5). MVIF nhiều view/social information và CL. Không phải cùng experimental setting nếu thiếu social data |
-| R7 | **Rethinking Evidence Modeling: Context-Coupled Graph Learning for Multimodal Recommendation**; Mingqiao Zhang, Qiyao Peng, Yumeng Wang, Wenzhe Dong, Hongtao Liu, Jian Yang; arXiv preprint11/10/2026 | [arXiv2610.15523](https://arxiv.org/abs/2610.15523), [method](https://arxiv.org/html/2610.15523v1). CC-MGRec dùng context–target smoothed log-lift, incoming semantic-budget reallocation, joint UI/semantic normalization và shared-state forward propagation. Close prior art cho calibration, không phải chứng minh REEC sẽ tốt |
-| R8 | **Cross-modal local interest contrast with Dual-graph denoising for multimodal recommendation**; Yuxin Qi, Quangui Zhang, Xinqiang Ma, Xie Feng, Qiang Li, Yi Huang; Signal, Image and Video Processing20,42,2026 | [Publisher](https://link.springer.com/article/10.1007/s11760-025-05066-8). Dual-graph/local-interest contrast là precedent khác; không đồng nhất với optimizer-side graph estimator |
-| R9 | **One Graph, Multiple Gains: Single High-Quality Item-Item Graph for Multimodal Recommendation**; Jinfeng Xu, Zheyu Chen, Ziyue Peng, Shuo Yang, Jinze Li, Zewei Liu, Shujie Li, Yipeng Du, Edith C.H. Ngai; arXiv2026, metadata ghi ACM MM2026 accepted | [arXiv](https://arxiv.org/abs/2607.24607), [author code](https://github.com/Jinfeng-Xu/IIMRec). IIMRec semantic/co-occurrence, NCER, residual gating và graph/BPR augmentation: comparator gần, không mô tả nó như chỉ CF graph |
-| R10 | **MURAL: Multimodal Uncertainty-aware Recommendation via Adaptive edge Learning**; Ahmad Mousavi, Majid Alikhani, Yeon-Chang Lee, Roberto Corizzo, Yeganeh Abdollahinejad; arXiv04/09/2026 | [arXiv](https://arxiv.org/abs/2609.04574). Dynamic retrieval/uncertainty fusion/teacher–student; venue peer review chưa xác nhận. Không nhập cả stack vì trend |
-| R11 | **Statistically Validated Networks in Bipartite Complex Systems**; Michele Tumminello, Salvatore Miccichè, Fabrizio Lillo, Jyrki Piilo, Rosario N. Mantegna; PLoS ONE6(3),e17994,2011 | [Publisher](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0017994). Degree-conditioned bipartite overlap null và multiple-testing principles là foundational prior; REEC mượn tư duy null, **không** claim statistical-validation theorem cho heuristic của mình |
-
-### 5.2 Công thức gốc CC-MGRec không phải công thức draft
-
-Trong source R7, dùng context–target opportunity `nu_i`, count `n_i→j`, prior `p_j`, pseudocount `mu`:
-
-\[
-\ell_{i\to j}=\log\frac{n_{i\to j}+\mu p_j}{(\nu_i+\mu)p_j}.
-\]
-
-Sau directional combination/confidence transform, source dùng exponential reweighting và **destination incoming budget** restoration. Không được thay `n/nu` bằng shrunk Ochiai rồi giữ nguyên interpretation. REEC dùng **user-presence sample space khác**, định nghĩa đầy đủ ở §8; không gán estimator mới là RGSC nguyên bản.
-
-### 5.3 Citation corrections và unverified relationships
-
-- DOI `10.1609/aaai.v39i12.33407` là **STAIR**, không phải SIGER.
-- `arXiv2508.06154` là **SIGER**, không phải MVIF.
-- Springer `s44443-025-00408-5` là **MVIF**, không phải EVEN.
-- ML Anthology link `qi2025aaai-seeing` là **EVEN**, không phải Cross-modal local interest contrast.
-- CC-MGRec tồn tại và submission date11/10/2026 trước ngày audit; **không** tự gán SIGIR/WWW/AAAI acceptance.
-- Không dùng tên chưa xác minh như “The Edge Spectrum”, “CoGNN2026” hoặc một mức gain được attachment gán cho paper làm nền proof. Không khẳng định chúng không tồn tại; chỉ không đưa vào verified evidence khi chưa truy nguyên exact source.
-- Code CoGate là unpublished same-group material. Các ý tưởng mượn từ đó phải công khai quan hệ, không tạo anonymous citation giả hoặc phát tán manuscript riêng tư để kiểm tra similarity.
-
-## 6. Remaining research gap và alternatives
-
-**Gap có thể kiểm định:** semantic support của V8 được content chọn, CF branch chỉ bổ sung độc lập. Chưa biết **một lượng nhỏ reallocation có cấu trúc theo replicable behavioral excess** trên chính semantic support có giúp optimization tốt hơn additive CF blend hay không. Missing evidence được giữ neutral; route hoàn toàn optimizer-side.
-
-Không viết gap là “chưa ai kết hợp semantics và behavior”: R3–R9 và CoGate đã làm nhiều dạng.
-
-| Candidate | Hypothesis / toán học rút gọn | Vì sao khác V8; risk; falsification |
-|---|---|---|
-| A. Naive consensus-product BSC | `W'=W8*(eps+(1-eps)*q*s)` | Thay semantic edge weights; nhưng q/s khác scale, zeros punish sparse items, gần consensus prior. Reject nếu constant/shuffled weights ngang primary |
-| **B. REEC — primary** | `r=min_f ([c_f-mu_f]_+/(c_f+mu_f+tau)); W'=W8*exp(delta*r)` | V8 không có replicated activity-conditioned evidence; không thêm topology/loss. Risk evidence quá thưa hoặc association không liên hệ utility. Reject nếu replica control/placebo bằng nhau hoặc dose≈0 |
-| C. Single-sample excess calibration — backup/control | `r=[c-mu]_+/(c+mu+2tau)` | Cùng sample space, nhiều coverage hơn; không bảo vệ replicability. Nếu C≥B và replica diagnostics không hữu ích, bỏ replication claim, cân nhắc simpler estimator với novelty yếu hơn |
-| D. Update-compatible static/online retention | `g_ij=h(cos(D_i,D_j)); W'=W8*g` | Đo gần optimization hơn; đã gần V7, noisy BPR directions và snapshot cost. Không primary do hardware/history, không gọi cosine update là causal utility |
-| E. Alignment-only MI / shared-private encoder | Procrustes `Q=argmin ||Zv Q-Zt||²`, hoặc new encoder | Giải quyết basis/misalignment khác hypothesis; chưa có sign/rotation diagnostic chỉ ra gain. Extra confound, không kết hợp B |
-
-### 6.1 Decision matrix — qualitative, không giả làm measured gain probabilities
+**Decision matrix:** relative judgments below are design assessments, not measured probabilities of beating V8.1.
 
 | Criterion | A | B | C | D | E |
 |---|---|---|---|---|---|
-| Correct, explicit estimand | Weak | Strong under scoped null | Strong under scoped null | Direction proxy only | Alignment objective clear |
-| Historical empirical support | Limited | Indirect; not yet tested | Indirect | Mixed, expensive | Not established locally |
-| Potential to test a different CoGate contribution | Low | Highest among these, conditional | Moderate | Moderate; overlaps V7 | Moderate |
-| Falsifiability/ablation clarity | Moderate | Strong | Strong | Difficult dynamic attribution | Strong if isolated |
-| Training efficiency | Strong | Strong | Strong | Weakest | Depends encoder |
-| Principal failure | Scale/coverage collapse | Insufficient replicated evidence | Spurious single-sample peaks | Cost/noisy directions | Irrelevant alignment |
-| Decision | Reject primary | **Select diagnostic-first** | Backup / mandatory challenger | Defer | Defer |
+| Connection to observed artifacts | Strong: sparse eligibility | Moderate: degree side effects measured, harm unmeasured | Indirect | Theoretical issue only | Indirect |
+| Mathematical specificity | Strong | Strong if solved/validated | Proxy and optimizer path need care | Alignment objective can be explicit | Requires a new filter derivation |
+| Online efficiency | Same as V8 | Same as V8 | Worse / unmeasured | Architecture-dependent | Potentially similar, unmeasured |
+| Ablation clarity | Strong | Strong only if crossed separately | Difficult | Strong in a separate study | Requires graph/filter factorial |
+| Implementation burden | Lowest | Moderate offline | Highest online | Moderate | Moderate |
+| Component novelty | Low | Low: standard constrained projection | Established family | Established family | Established family |
+| Current choice | First | Conditional | Diagnostic only | Defer | Defer |
 
-Không có dữ liệu để chấm “xác suất tăng NDCG 9/10”. Scientific upside của B đến từ phép kiểm định cụ thể, không từ cam kết effect size. Nếu B fail, không tự chuyển C rồi giữ nguyên claim về replication.
+No candidate currently merits a claim of high-probability >5% growth. Choose A for the next experiment because it asks the most direct question with the smallest confounding change. Choose B only if normalization evidence supports its additional constraint. Neither is selected because it sounds more novel.
 
-## 7. Final architecture overview
+## 8. Final primary architecture: STAIR-PEEC
+
+### 8.1 Hypothesis and boundaries
+
+**One-sentence hypothesis [HYPOTHESIS]:** sparse evidence loss caused by hard split-wise acceptance, rather than a lack of model capacity, is a plausible remaining limitation of REEC's calibration of V8 semantic update exchange.
+
+R2 separates **estimation** from **validation**: estimate a bounded association with all train data; use disjoint-user diagnostics to evaluate reliability. A diagnostic split does not become a hard graph-construction requirement.
+
+The graph remains train-only and static. No new item pairs, latent categories, online snapshots, teacher, auxiliary graph, projector, consensus residual, changed denominator, negative mask, additional loss or dimension increase enters the primary.
+
+### 8.2 Data flow
 
 ```mermaid
 flowchart TD
-  subgraph OFFLINE[Offline CPU: TRAIN only, deterministic]
-    R[Binary TRAIN presence R] --> F[Activity strata + disjoint user halves]
-    T[Raw text features] --> K[Frozen V8 text5 / vision1 candidates]
-    V[Raw image features] --> K
-    K --> W[Native V8 weighted semantic W8]
-    F --> E[Candidate-only observed and expected overlaps]
-    K --> E
-    E --> Q[Replicated positive-excess r]
-    Q --> CAL[Wdelta = W8 elementwise exp delta r]
-    W --> CAL
-    CAL --> N[Normalize with actual new degrees]
-    R --> CF[Unchanged V8 normalized CF branch]
-    N --> S[SICA = .9 Sdelta + .1 SCF]
+  subgraph OFFLINE[OFFLINE CPU: frozen content and TRAIN only]
+    TXT[Raw text features] --> K[Native V8 text top5 / vision top1]
+    IMG[Raw image features] --> K
+    K --> W[Exact V8 raw WMSG W8]
+    R[Binary TRAIN presence R] --> B[Full activity strata: no user halves]
+    B --> C[Candidate-only full counts c and full-stratum expectation mu]
+    K --> C
+    C --> E[Pooled positive excess with count regularizer kappa]
+    W --> EXP[Wtilde = W8 * exp delta r]
+    E --> EXP
+    EXP --> N[Actual-degree symmetric normalization]
+    R --> CF[Unchanged native V8 CF branch]
+    N --> S[Replace final item operator with .9 Ssem + .1 SCF]
     CF --> S
-    T --> MI[Unchanged V8 SVD MI]
-    V --> MI
+    TXT --> MI[Unchanged V8 MI]
+    IMG --> MI
+    C --> AUDIT[Coverage / null / normalized dose diagnostics]
   end
-  subgraph TRAIN[Training GPU]
-    MI --> UV[Ego user/item tables]
-    UV --> FSC[Unchanged UI FSC]
-    FSC --> LOSS[BPR + unchanged local NLGCL]
-    LOSS --> ADAM[Adam moments and preconditioned directions]
-    ADAM --> BSC[Item-only native L3 BSC]
+  subgraph TRAIN[TRAIN GPU: native computation]
+    MI --> UV[Ego embedding tables]
+    UV --> FSC[Unchanged bipartite FSC]
+    FSC --> LOSS[BPR + .01 native NLGCL]
+    LOSS --> ADAM[Native Adam moments and direction D_t]
+    ADAM --> BSC[Native item-only L3 BSC]
     S --> BSC
     BSC --> UV
   end
-  subgraph INFERENCE[Inference]
-    FSC --> SCORE[Dot-product full ranking, native seen masking]
+  subgraph EVAL[INFERENCE]
+    FSC --> SCORE[Native dot-product full ranking and seen masking]
   end
 ```
 
-**Why each new part exists:** activity-conditioned null challenges raw popularity evidence; independent user halves challenge chance peaks; bounded positive excess avoids unsupported negative labels and unbounded lift; actual-degree normalization restores valid contraction. Exponential multiplier is a standard smooth positive reweighting, not a new neural module. Only `delta` is the primary validation-selected architectural strength.
+The optional degree-budget challenger replaces only the normalization/calibration box and is **not** part of this primary flow.
 
-## 8. Mathematical specification
+### 8.3 Symbol table
 
-### 8.1 Symbols and baseline contracts
-
-| Symbol | Meaning |
+| Symbol | Definition |
 |---|---|
-| M, N, d | TRAIN user count, item count, embedding dimension (primary64) |
-| R in {0,1}^(M×N) | Deduplicated train-presence matrix **for new evidence only** |
-| h_u=sum_i R_ui; n_i=sum_u R_ui | User activity / item train-presence degree |
-| X_t, X_v | Raw catalog features, shapes N×d_t and N×d_v |
-| K_t(i), K_v(i) | Frozen native V8 candidate IDs, text5/image1 |
-| E_sem | Unique undirected positive off-diagonal support of native weighted W8 |
-| W8, d8, Ssem8 | Raw symmetric semantic adjacency, its true degrees, normalized semantic operator |
-| SCF | Existing V8 normalized CF operator with native isolate convention |
-| f in {0,1}; b in {0,…,B-1} | Disjoint user half / activity stratum |
-| M_fb, n_ifb, c_ijf | Group user count, item group incidence count, common-user count in half f |
-| mu_ijf | Expected overlap under within-stratum independent user-set null |
-| tau | Count-scale regularizer, fixed2 per half in primary; not Bayesian confidence |
-| r_ij in [0,1) | Replicated excess score, not calibrated probability |
-| delta >=0 | Reweight strength, primary grid {0,.5,1,2} |
-| SICA | Final static operator supplied only to item BSC |
+| M,N,d | User count, item count, embedding dimension; primary d=64 |
+| R in {0,1}^(M×N) | Canonical deduplicated TRAIN presence for new evidence; parent training multiplicity is unchanged |
+| h_u,n_i | Train user history length and item presence degree |
+| X_t,X_v | Raw features of shapes N×d_t and N×d_v |
+| K_m(i), E | Frozen modality candidate IDs; E is unique undirected positive off-diagonal support of W8 |
+| W8,d8,Ssem8 | Native raw symmetric semantic weights, row degrees, normalized semantic operator |
+| b(u), M_b, n_ib | Activity stratum, number of active users in stratum, item incidences within it |
+| c_ij, mu^F_ij | Full observed candidate overlap and full-stratum expected overlap |
+| c_ijf, mu_ijf | Legacy half-specific counts and expectations, f=0,1 |
+| tau,kappa | Legacy per-half count regularizer tau=2; pooled kappa=2tau=4 for controlled comparison |
+| r_ij, delta | Bounded excess score; shared strength grid {0,.5,1,2} |
+| SCF, eta | Exact native normalized CF graph; eta=.10 when CF is globally nonempty |
+| S_R2 | Final static item optimizer graph, not UI FSC adjacency |
+| A_UI,H0 | Unchanged normalized bipartite adjacency and stacked ego tables [U0;V0] |
+| D_t | Total-loss Adam-preconditioned item update direction before BSC |
 
-Retain native training multiplicity rules, MI/Adj construction, losses and sampler. New evidence uses unique `(user,item)` pairs; a deduplication count/hash receipt is mandatory, not a silent change to V8 training data.
+## 9. Mathematical specification
 
-### 8.2 Recover exact V8 raw semantic graph
+### 9.1 Preserve exact V8 graph and initialization
 
-For modality m, selected raw-feature cosine a^m_ij in [-1,1], using native zero-vector rule:
+On cached native candidates, use the raw-feature cosine a^m_ij and native zero-vector convention:
 
 \[
-f(a)=.05+.95[\max(0,a)]^2,
-\quad B_{ij}=\sum_{m\in\{t,v\}}\mathbf1[j\in K_m(i)]f(a^m_{ij}),
+f(a)=0.05+0.95[\max(0,a)]^2,\qquad
+B_{ij}=\sum_{m\in\{t,v\}}\mathbf1[j\in K_m(i)]f(a^m_{ij}),
 \]
 \[
-W^8_{ij}=\max(B_{ij},B_{ji}),\quad W^8_{ii}=0.
+W^8_{ij}=\max(B_{ij},B_{ji}),\qquad W^8_{ii}=0.
 \tag{1}
 \]
 
-Modality contributions are occurrences, **not** `(5/6)*cos_t+(1/6)*cos_v` inserted into a new formula. MI5:1 weights and candidate budgets are distinct design quantities. Preserve semantic mix1, RPG off, SAP off and BSC residual0 for WMSG-core.
+Text5/image1 are candidate budgets. Do not replace the occurrence sum with a 5:1 weighted average of cosines. Preserve semantic_mix=1, SAP off, relation gate off, residual off. Keep the original MI weighted sum of independently whitened features; its limitations are isolated in §5, not silently fixed here.
 
-Define normalization for symmetric nonnegative W:
+For any symmetric nonnegative W:
 
 \[
 \mathcal N(W)=D^{-1/2}WD^{-1/2}+\operatorname{diag}(\mathbf1[d_i=0]),
-\quad d=W\mathbf1,
+\qquad d=W\mathbf1.
 \tag{2}
 \]
 
-where inverse degree is0 on isolates. Identity isolates preserve the native self-update convention; zero isolate blocks would also satisfy contraction, so identity is not a mathematical necessity for the norm bound.
+Inverse degrees are zero on isolates. Identity isolate blocks preserve the native convention; zero blocks would also satisfy the norm bound. Use native CF construction and cached arithmetic, with c_min=2, top5 and shrinkage5, instead of reimplementing it. A globally empty CF branch uses the native eta=0 fallback for both V8 and R2.
 
-CF is unchanged: `c/(c+5) * c/sqrt(n_i*n_j)`, c_min2, row top5, native union/max symmetry, normalization/identity isolates. Reuse existing native builder/cache instead of rewriting its precision or tie policy. **Wholly empty CF** follows the current V8 global-empty fallback: disable CF blend (effective eta0), rather than introducing an artificial `.1*I`. Eq.6 uses eta.1 for the nonempty benchmark CF case; with empty CF apply eta0 to both REEC and V8. Exact bypass/provenance must cover this boundary.
+### 9.2 Split-free, full-activity null
 
-### 8.3 Deterministic activity strata and user replication
-
-Create strata from train activity only:
+For active users only, with h_u=sum_i R_ui>0:
 
 \[
-b(u)=\lfloor\log_2\max(1,h_u)\rfloor.
+b(u)=\lfloor\log_2 h_u\rfloor,\qquad
+M_b=|\{u:b(u)=b\}|,\qquad
+n_{ib}=\sum_{u:b(u)=b}R_{ui}.
 \tag{3}
 \]
 
-Zero-history users are excluded from evidence strata/group sizes and receive group ID−1; they do not enlarge the null sample space. Within each nonempty stratum, order users by a stable seeded hash `(evidence_seed,user_id)` with user-ID tie-break, then alternate f=0/1. `evidence_seed=20261016` is independent of optimizer seeds; no Python process-randomized `hash()`.
-
-Each user and their entire train history appear in **exactly one half**. A singleton stratum is deterministic in half0; empty cells are skipped. Store the assignments and counts. This creates disjoint user evidence, **not a guarantee** that real users or their interests are independent. Because final scoring uses both halves, call it replicated evidence, **not cross-fitting of a prediction model**.
+Zero-history users receive bin -1 and do not enter M_b. Compute only for {i,j} in E:
 
 \[
-M_{fb}=|\{u:f(u)=f,b(u)=b\}|,
-\quad n_{ifb}=\sum_{u:f(u)=f,b(u)=b}R_{ui},
-\]
-\[
-c_{ijf}=\sum_{u:f(u)=f}R_{ui}R_{uj},
-\quad
-\mu_{ijf}=\sum_{b:M_{fb}>0}\frac{n_{ifb}n_{jfb}}{M_{fb}}.
+c_{ij}=\sum_uR_{ui}R_{uj},\qquad
+\mu^F_{ij}=\sum_{b:M_b>0}\frac{n_{ib}n_{jb}}{M_b}.
 \tag{4}
 \]
 
-Only compute pairs in E_sem. Do not build full `R.T@R`, full `N×N` expectation, or enumerate every pair in long user histories. With positive observed count, its same-stratum marginals imply mu>0; `c>0,mu=0` is an input/numeric bug, not a “very strong tail edge”.
+**DERIVATION:** if the n_ib and n_jb user sets are selected independently and uniformly within stratum b, expected intersection is n_ib*n_jb/M_b. Sum across disjoint strata. This null approximates activity heterogeneity; it does not model all exposure, exact user-degree constraints, temporal intent or causal preference.
 
-**DERIVATION:** given n_ifb and n_jfb users selected independently and uniformly among M_fb users, expected intersection is their product/M_fb. Summing disjoint strata gives Eq.4. Real exposure/interests violate uniformity; log residuals/ratios are associational proxies, not causal preference estimates. Log2 bins approximate activity conditioning, not exact degree-preserving configuration-model inference.
+Use CPU integer counts and FP64 products/expectations; cast before multiplying marginals. Positive observed overlap implies positive expectation under these correctly formed groups. `c>0,mu=0` indicates invalid input or arithmetic, not an infinite-strength edge.
 
-### 8.4 Bounded excess evidence and replication
-
-For tau=2:
+### 9.3 Primary score: pooled excess with controlled shrinkage
 
 \[
-e_{ijf}=\frac{[c_{ijf}-\mu_{ijf}]_+}{c_{ijf}+\mu_{ijf}+\tau},
-\quad
-r_{ij}=\min(e_{ij0},e_{ij1}),\quad r_{ii}=0.
+\kappa=2\tau=4,\qquad
+r^F_{ij}=\frac{[c_{ij}-\mu^F_{ij}]_+}{c_{ij}+\mu^F_{ij}+\kappa},\qquad r^F_{ii}=0.
 \tag{5}
 \]
 
-No division by tiny popularity prior, no gate temperature, no global-max normalization. `0<=e<1`; `c=0` gives0. Minimum requires *positive excess in both disjoint halves*; a single rare co-occurrence in one half cannot trigger calibration. Tau is an explicit heuristic count regularizer; do not describe it as a Bayesian posterior variance, p-value or type-I error guarantee.
+Kappa is a count-scale regularizer, not an estimated Bayesian variance or an edge-significance threshold. Fixing it at4 keeps the same total regularizer as the existing pooled control. Only delta is searched in the primary comparison.
 
-**Design trade-off:** min reduces sensitivity to one-half peaks but loses coverage. It can also preserve systematic exposure bias in both halves. If almost all r=0, this is a legitimate NO-GO, not permission to rank-normalize numerical noise into a full-strength signal.
+**PROPOSITION:** 0<=r<1, and c=0 gives r=0. For c=1, r<1/5; for delta<=2, that edge's raw boost is less than exp(.4), approximately1.492. Thus one count is allowed to contribute weakly without being promoted to a certified reliable edge. These are magnitude bounds, not noise-rejection guarantees.
 
-### 8.5 Symmetric semantic calibration and native CF blend
+No quantile/rank normalization is used to inflate tiny scores. No negative score is assigned to an unobserved pair. Replication is measured by diagnostics rather than enforced by min aggregation.
+
+### 9.4 The bridge estimator is different
+
+Retain exact legacy semantics for historical comparisons:
 
 \[
-W^\delta_{ij}=W^8_{ij}\exp(\delta r_{ij}),\quad
-S_\delta=\mathcal N(W^\delta),
-\quad S_{\mathrm{ICA}}=.9S_\delta+.1S_{CF}.
+r^{R}_{ij}=\min_f\frac{[c_{ijf}-\mu_{ijf}]_+}{c_{ijf}+\mu_{ijf}+\tau},
+\]
+\[
+r^{H}_{ij}=\frac{[c_{ij0}+c_{ij1}-\mu_{ij0}-\mu_{ij1}]_+}
+{c_{ij0}+c_{ij1}+\mu_{ij0}+\mu_{ij1}+2\tau}.
 \tag{6}
 \]
 
-Evaluate unique i<j pairs once in FP64, mirror exactly. Recompute **actual d_delta=W_delta*1**. No restoration to d8, no symmetrization after independent row scaling, no power-iteration rescale, no second insertion of raw CF q into W_delta.
+`replicated_excess` implements rR; existing `pooled_excess` implements rH. The new primary mode `pooled_activity_excess` must implement rF. **It is implemented in the revised source, but remains untested and untrained.**
 
-At delta=0 return the existing **exact cached V8 final operator** directly; do not recompute a numerically almost equal V8 graph and call it bitwise recovery. If all r=0, same bypass with explicit `inactive_reason=no_replicated_excess`. If constant r over each connected component, normalized semantic operator is unchanged mathematically; record neutral calibration instead of claiming large raw dose.
+**PROPOSITION — removing the hard minimum:** rH>=rR for every candidate. If either half's excess is nonpositive, rR=0 and the result follows. Otherwise let d_f=c_f+mu_f+tau and e_f=(c_f-mu_f)/d_f. Then rH=(d_0 e_0+d_1 e_1)/(d_0+d_1), a weighted average at least min(e0,e1). Consequently positive eligibility cannot decrease for this bridge estimator. This does **not** imply its normalized dose, utility or ranking must increase.
 
-Missing evidence means raw edge multiplier1. It does **not** guarantee its final normalized coefficient stays unchanged: increased incident degrees can attenuate unsupported neighboring edges. The final dose and head/tail diagnostics must measure this indirect effect.
-
-### 8.6 Unchanged training and inference equations
-
-Let A_UI be native V8 normalized bipartite adjacency, H0=[U0;V0]. For coordinate k=0,…,d-1:
+**DERIVATION — a pooled count is not a pooled null:** within a stratum containing both halves, write M=M0+M1 and p_if=n_if/M_f. Then
 
 \[
-b_k=.1+.9(k/d)^{\gamma},\quad a_k=1-b_k,
-\quad
-\bar H_{:,k}=\frac{1-a_k}{1-a_k^{L+1}}\sum_{\ell=0}^L a_k^\ell A_{UI}^{\ell}H^0_{:,k},\ L=3.
+\mu^H_{ij,b}-\mu^F_{ij,b}
+=\frac{M_0M_1}{M}(p_{i0}-p_{i1})(p_{j0}-p_{j1}).
 \tag{7}
 \]
 
-Initial U0,V0 come from **unchanged V8 MI**, not aligned/clustering features of REEC. Intermediate states used by local NLGCL retain exact native definition and normalization. Loss:
+Therefore sum(mu_half) is not generally the full-stratum expectation. The difference can have either sign. A stratum with only one nonempty half contributes zero difference. No monotonicity claim between rF and rR is warranted after changing the null. R1→bridge isolates acceptance/aggregation; bridge→primary isolates null scope.
+
+### 9.5 Calibration, normalization and fusion
 
 \[
-\mathcal L=\mathcal L^{native}_{BPR}+.01\mathcal L^{native}_{NLGCL},
-\quad \tau_{CL}=.2,\ \alpha_{dir}=.5.
+\widetilde W_{ij}=W^8_{ij}\exp(\delta r^F_{ij}),\qquad
+S_{\mathrm{sem},R2}=\mathcal N(\widetilde W),
+\]
+\[
+S_{R2}=(1-\eta)S_{\mathrm{sem},R2}+\eta S_{CF},\qquad \eta=.10.
 \tag{8}
 \]
 
-Do not add duplicate filtering, known-positive masking, target detach, new regularizers or change native decay semantics under this version. Native BPR compares positive and sampled-negative dot products; preserve actual helper reduction/regularization behavior.
+Score each unique i<j once and mirror exactly. Recompute actual degrees of Wtilde. Never substitute d8 after simple symmetrization. Delta0, all-zero score, or mathematically neutral component-constant reweighting must use a documented V8 bypass where applicable; delta0 and all-zero must return the exact cached operator.
 
-After backward and native Adam moment/bias correction, let D_t be the **total-loss** Adam-preconditioned item direction (not raw BPR gradient). Item update:
+**Known limitation, retained deliberately:** raw r=0 edges have multiplier1, but their normalized coefficients can change through endpoint degrees. Eq.8 is not a guarantee of local neutrality. The optional challenger in §11 tests whether controlling those degrees helps.
+
+### 9.6 Exact native training and inference
+
+For coordinate k=0,...,d-1, define native b_k=.1+.9(k/d)^gamma and a_k=1-b_k. With L=3:
 
 \[
-P_k(S)=\sum_{\ell=0}^{L}\omega_{k\ell}S^\ell,
-\quad \omega_{k\ell}=\frac{b_k^\ell}{\sum_{q=0}^{L}b_k^q},
-\]
-\[
-V^{t+1}_{:,k}=(1-\alpha_t\lambda_{wd})V^t_{:,k}
--\alpha_t P_k(S_{\mathrm{ICA}})D_{t,:,k}.
+\bar H_{:,k}=\frac{1-a_k}{1-a_k^{L+1}}
+\sum_{\ell=0}^{L}a_k^\ell A_{UI}^{\ell}H^0_{:,k}.
 \tag{9}
 \]
 
-Use existing implementation arithmetic for equality tests. User optimizer unchanged, smoother=None. Final score `y_ui=bar U_u^T bar V_i`; native full ranking, seen masking and validation checkpoint selection unchanged. REEC has **no inference branch**.
-
-## 9. Theoretical analysis and scoped guarantees
-
-### 9.1 PROPOSITION — support, symmetry, positivity and contraction
-
-For finite delta>=0, symmetric r in [0,1), W_delta is symmetric/nonnegative and has exactly the off-diagonal support of W8. Degrees can change; components and isolated-node set do not.
-
-For any real x on positive-degree nodes, set y_i=x_i/sqrt(d_i). Then
+Keep native intermediate FSC states supplied to NLGCL. Preserve the exact helpers and reductions:
 
 \[
-|x^T\mathcal N(W)x|
-\le\sum_{ij}W_{ij}|y_i y_j|
-\le\frac12\sum_{ij}W_{ij}(y_i^2+y_j^2)=\|x\|_2^2.
-\]
-
-Identity isolated blocks also have norm1. Symmetry gives real eigenvalues in [-1,1], hence norm<=1. Triangle inequality with same-property SCF yields `||SICA||2<=.9+.1=1`. SICA need not be row-stochastic or PSD; I−SICA is PSD. Finite precision needs symmetry/nonfinite/degree checks; a numerical eigenvalue estimate is a diagnostic, not the proof.
-
-### 9.2 PROPOSITION — finite BSC direction bound
-
-For each coordinate k, omega>=0 and sum omega=1; therefore `||P_k(S)z||2 <= ||z||2` when `||S||2<=1`. Summing squared column bounds gives `||P(S)D||F <= ||D||F`.
-
-This bounds smoothing relative to its **input direction**. It does not bound Adam moments/D_t, gradient Jacobians, cumulative parameter norms or training convergence. L=3 is a finite polynomial and needs no infinite-series convergence claim. If discussing the infinite Neumann series separately, require `b_k*||S||<1`; native b_k<1 supplies it for fixed finite d.
-
-### 9.3 DERIVATION — why uniform weight changes cannot solve dosage
-
-Let rbar_i=`sum_j W8_ij*r_ij/d8_i`. On existing edges at delta0:
-
-\[
-\left.\frac{\partial(S_\delta)_{ij}}{\partial\delta}\right|_0
-=(S_{sem8})_{ij}\left(r_{ij}-\tfrac12\bar r_i-\tfrac12\bar r_j\right).
+\mathcal L=\mathcal L^{V8}_{BPR}+.01\mathcal L^{V8}_{NLGCL},\qquad
+\tau_{CL}=.2,\quad \alpha_{dir}=.5.
 \tag{10}
 \]
 
-This follows by differentiating both degrees and numerator in symmetric normalization. Only evidence contrast beyond endpoint averages changes the normalized graph at first order. If r constant per component, the operator is unchanged for all delta. Thus a nonzero r mean/raw multiplier is **insufficient**.
-
-With Delta=SICA−S8, exact zero-delta recovery and a bounded polynomial perturbation follow:
+After total-loss backward and native Adam bias correction:
 
 \[
-\|P_k(SICA)-P_k(S8)\|_2
-\le C_k\|\Delta\|_2,
-\quad C_k=\sum_{\ell=1}^L\ell\omega_{k\ell}\le L.
+D_t=\widehat m_t/(\sqrt{\widehat v_t}+\epsilon),\qquad
+P_k(S)=\sum_{\ell=0}^{3}\omega_{k\ell}S^\ell,\quad
+\omega_{k\ell}=\frac{b_k^\ell}{\sum_{q=0}^{3}b_k^q},
+\]
+\[
+V^{t+1}_{:,k}=(1-\alpha_t\lambda_{wd})V^t_{:,k}
+-\alpha_t P_k(S_{R2})D_{t,:,k}.
 \tag{11}
 \]
 
-Proof uses `A^ell−B^ell=sum_{q=0}^{ell-1}A^q(A−B)B^(ell−1−q)` for contractions. A small dose can imply small direction change; a nonzero upper bound does not establish a useful lower bound or gain.
+Use native arithmetic for parity. User smoother remains None; decay is separate; no graph parameters are optimized. All existing parameters occur in exactly one native optimizer group. Final score is y_ui=bar U_u^T bar V_i. Full ranking, seen masking, monitor selection and checkpoint loading remain unchanged. The new graph has no inference branch.
 
-**Executed algebra check — limited evidence:** 24 synthetic FP64 sparse-pattern fixtures (9 nodes) give maximum normalized spectral norm `1.0000000000000009` (roundoff), maximum Eq.10 finite-difference absolute error `2.33e−8`, no positive Eq.11 bound violation, and uniform-reweight operator change at most `2.23e−16`. A three-node stale-degree counterexample using raw weights `[[0,100,1],[100,0,1],[1,1,0]]`, row-restored to degrees `[2,2,2]` then symmetrized, has actual degrees `[2.490099,2.490099,1.019802]` and stale-normalized norm **1.1074819683**. Receipt: `reports/versionICAART_research/algebra_checks.json`. These checks are not training, real-dataset diagnostics or a substitute for the proofs. No REEC ranking result exists yet.
+## 10. Theoretical guarantees and their limits
 
-### 9.4 Basis dependence, uncertainty and causal limits
+### 10.1 PROPOSITION — support and contraction
 
-- **PROPOSITION:** r uses train counts and within-modal Gram/candidate support; it is independent of learned embedding-coordinate rotations. Fixed scalar item operator satisfies `S(XQ)=(SX)Q`.
-- **LIMITATION:** whole STAIR remains basis-dependent through per-coordinate FSC/BSC schedules and Adam elementwise second moments. REEC does not solve independent SVD misalignment. No claim an MLP would solve it.
-- **INTUITION:** requiring disjoint user replication may reduce chance-driven association; real users, selection and exposure are not exchangeable iid samples.
-- **HYPOTHESIS:** excess edges permit more useful update exchange. Association still does not identify same preference, complementarity or beneficial gradient transfer.
-- **LIMITATION:** larger positive adjacency weights can worsen smoothing. No theorem that continuous weights prevent oversmoothing or preserve ranking margins.
-
-## 10. Why might it improve ranking over V8?
-
-For a validation triplet `(u,i,j)`, margin m=`bar U_u^T(bar V_i−bar V_j)`. At a fixed shared parameter/optimizer state, the item-only difference in one step is `Delta V=−alpha [P(SICA)−P(S8)]D`. First-order change in margin is
+Finite delta and finite r preserve W8's positive off-diagonal support, symmetry, nonnegativity, components and isolates. For any real x on positive-degree nodes, set z_i=x_i/sqrt(d_i). Then
 
 \[
-\Delta m\approx\langle\nabla_{V_0}m,\Delta V\rangle_F.
+|x^T\mathcal N(W)x|
+\le\sum_{ij}W_{ij}|z_i z_j|
+\le\tfrac12\sum_{ij}W_{ij}(z_i^2+z_j^2)=\|x\|_2^2.
 \tag{12}
 \]
 
-It can have **either sign**. This is why graph proofs alone are insufficient.
+Isolate identity blocks also have norm1. Symmetry implies spectrum in[-1,1] and norm<=1. The native CF branch has the same property; triangle inequality gives ||S_R2||2<=1.
 
-| Chain | Observable mechanism | Operation | Ranking implication and refutation |
+This operator need not be row-stochastic or positive semidefinite. A finite power iteration is not a certified upper bound. Neither this result nor a flat epoch VRAM trace proves stable Adam moments, bounded trajectories, statistical generalization or absence of OOM.
+
+### 10.2 PROPOSITION — finite polynomial bound
+
+Because omega>=0 and sum omega=1, ||P_k(S)z||2<=||z||2 for a contraction S. Sum squared column norms to obtain ||P(S)D||F<=||D||F. This bound is relative to the input D, which may itself be large.
+
+The L3 polynomial is finite and needs no infinite-series convergence claim. For a separate infinite Neumann series, require b_k||S||<1. Native finite-d schedules have b_k<1.
+
+### 10.3 DERIVATION — realized dose depends on endpoint contrast
+
+For raw W8 with weighted row mean rbar_i=sum_j W8_ij*r_ij/d8_i:
+
+\[
+\left.\frac{\partial S_{\delta,ij}}{\partial\delta}\right|_{0}
+=S_{\mathrm{sem},8,ij}
+\left(r_{ij}-\tfrac12\bar r_i-\tfrac12\bar r_j\right).
+\tag{13}
+\]
+
+Uniform/component-constant raw boosts cancel under normalization. Greater score mean or eligibility does not guarantee a greater normalized perturbation. For an r=0 edge the exact coefficient ratio is
+
+\[
+\frac{S_{\delta,ij}}{S_{\mathrm{sem},8,ij}}
+=\sqrt{\frac{d^8_i d^8_j}{d^\delta_i d^\delta_j}}.
+\tag{14}
+\]
+
+For contractions A,B, telescoping noncommuting matrix products gives
+
+\[
+\|P_k(A)-P_k(B)\|_2\le
+\left(\sum_{\ell=1}^{3}\ell\omega_{k\ell}\right)\|A-B\|_2\le3\|A-B\|_2.
+\tag{15}
+\]
+
+This is an upper bound, not a positive lower bound or a ranking theorem. The empirical Rademacher ratio is not the same norm as Eq.15.
+
+### 10.4 PROPOSITION / LIMITATION — invariance and stationary points
+
+The graph estimator is invariant to learned embedding rotations; a fixed scalar item operator obeys S(XQ)=(SX)Q. The complete method retains coordinate-dependent FSC/BSC and elementwise Adam, hence is not generally rotation equivariant.
+
+For fixed S, native P_k(lambda) is strictly positive for lambda in[-1,1] and b_k<1: sum_l=0^3 (b_k lambda)^l=(1-(b_k lambda)^4)/(1-b_k lambda)>0. Thus P_k is invertible. In a simplified fixed-preconditioner gradient update, it does not create a new set of unconstrained stationary points. Finite optimization, implicit bias, decay and full Adam dynamics can differ; no convergence or ranking equivalence is asserted.
+
+## 11. Conditional backup: reference-degree evidence reallocation
+
+### 11.1 Why it is conditional
+
+Observed coefficient attenuation is not sufficient evidence that degree preservation improves recommendation. Preserving every original degree can also preserve harmful hub influence and erase a useful perturbation. Therefore this module is not bundled into PEEC-full before comparison with Eq.8.
+
+Its purpose is to test a separate hypothesis: **the useful quantity is allocation among neighbors at a fixed semantic budget, rather than a change in per-item semantic degree.** R5 motivates the question; R13/R14 provide standard optimization machinery. This is not a new Sinkhorn theorem.
+
+### 11.2 Complete constrained problem
+
+Let q_e=W8_e exp(delta*r_e)>0 for each undirected edge e={i,j}, and let A_E be the unsigned vertex-edge incidence matrix: each column has1 at i and j. Define the unique optimizer
+
+\[
+w^*=\arg\min_{w\ge0}\sum_{e\in E}
+\left[w_e\log(w_e/q_e)-w_e+q_e\right]
+\quad\text{subject to }A_Ew=d^8.
+\tag{16}
+\]
+
+Mirror w* into W*. No new self-loops or off-support edges are allowed. Baseline W8 is a strictly positive feasible point on E. The feasible set is compact since each edge weight is bounded by its endpoint degrees. The objective is continuous on the nonnegative domain and strictly convex; therefore the minimizing edge weights exist and are unique. The optimum is positive on E: a zero-weight edge admits a feasible direction toward W8 with a negative-infinite one-sided KL derivative.
+
+**PROPOSITION:** equality constraints preserve the reference degree vector at the exact solution. KKT conditions give w*_ij=q_ij exp(a_i+a_j) for suitable multipliers a. Multipliers need not be unique on bipartite components, although W* is unique.
+
+An implementable sparse dual is
+
+\[
+F(a)=\sum_{e=\{i,j\}}q_e e^{a_i+a_j}-\sum_i d^8_i a_i,
+\qquad \nabla F(a)=W(a)\mathbf1-d^8.
+\tag{17}
+\]
+
+Evaluate F/gradient by edge-array exponentiation and scatter-add, O(E+N) per evaluation. The incidence matrix is conceptual; never materialize a dense N-by-E array. Use a deterministic CPU FP64 convex solver with line search, a=0 initialization, component/gauge handling, max200 iterations and a separate reported preprocessing time budget. Never form a dense Hessian. Stop only if max_(i:d8_i>0) |d*_i-d8_i|/d8_i<=1e-6 and finite/symmetry checks pass; isolates retain raw degree0. Iterations alone are not convergence certification. Solver failure is a failed challenger, not a silently relabeled primary fallback.
+
+For numerical safety, even an accepted approximate solution is normalized with its **measured actual degrees** via N(W*), not stale d8. Thus the contraction proof still applies, while degree preservation is stated only within the measured tolerance. Blend the same native CF branch. Delta0 returns cached V8 exactly.
+
+**LIMITATION:** this preserves row budgets, not individual r=0 coefficients. Gains to selected neighbors require reallocation from other neighbors. On a tree component its edge weights are uniquely fixed by degrees, so the challenger is necessarily neutral there. Evidence resembling a diagonal rescaling can also disappear. Log realized dose after solving; do not claim this module resolves dosage automatically.
+
+### 11.3 Required comparison
+
+After the primary score is screened, use a small crossed comparison: replicated versus pooled-full evidence, each with actual-degree normalization versus reference-degree allocation. Hold tau/delta/CF/backbone fixed or disclose any explicit dose matching. Do not claim a normalization benefit from comparing only old REEC with pooled-plus-KL.
+
+## 12. Causal chain to recommendation metrics
+
+| Operation | Measured starting point | Hypothesized causal chain | Refutation |
 |---|---|---|---|
-| Relative exchange | High raw semantic weights sometimes have weak behavioral residual after activity control | Boost only replicated-excess edges before true normalization | Could align borrowed updates with preference distinctions; if negative or no margin shift vs placebo, hypothesis fails |
-| Evidence repeatability | High single-sample excess may disappear in another user half | Minimum across halves | Could reduce chance-driven reinforcement; if pooled score is equally repeatable/useful and performs better, replication is unnecessary |
-| Effective dose | V6 under-support caused tiny operator changes | Directly measure Eq.10 contrast, operator and BSC change for shared delta grid | Identifies inactive intervention before costly runs; does not create utility if evidence is wrong |
+| Remove hard min | Very low eligible edge fraction | More supported associations contribute → changed useful exchanges → better positive-vs-negative margins → higher R/N | Greater coverage but placebo-level/harmful margins or no reproducible ranking gain |
+| Full-stratum null | Pooled-half still depends on arbitrary partition | Remove nuisance partition dependence → more stable graph estimator → less seed-sensitive optimization → better generalization | Null difference negligible or full null worse on independent-user predictivity and validation |
+| Optional fixed-budget allocation | Some unsupported coefficients attenuate substantially | Prevent degree drift while reallocating evidence → avoid harmful collateral exchanges → protect tail/positive margins | No metric/group benefit, lost useful dose, or simpler eta/delta tuning matches it |
 
-V8 additive CF can carry evidence on CF edges, but does not redistribute the **semantic branch** by repeated excess. Nevertheless CSE may already transmit the same useful directions. Placement controls in §14 explicitly test redundancy. No statement that REEC necessarily beats V8, CoGate or external SOTA is warranted.
+At a shared parameter and Adam state, let DeltaV=-alpha[P(S_R2)-P(S8)]D. For validation margin m_uiq=bar U_u^T(bar V_i-bar V_q), the first-order item contribution is
 
-## 11. Engineering specification
+\[
+\Delta m_{uiq}\approx\langle\nabla_{V_0}m_{uiq},\Delta V\rangle_F.
+\tag{18}
+\]
 
-### 11.1 Module contracts
+Include FSC's Jacobian in this derivative; an ego-item dot product is not the complete scorer. The sign can be negative. These shared-state probes are local diagnostics, not causal evidence about the complete independently trained trajectories.
 
-| Module | Input → output | Trainable / initialization / gradient |
+## 13. Engineering and minimal implementation delta
+
+### 13.1 Exact module contracts
+
+| Module | Input → output | Placement / gradient / initialization |
 |---|---|---|
-| `build_activity_replication` | binary CPU CSR R[M,N], stable IDs → user_bin[M], half[M], group_sizes[2,B] int64 | No params; deterministic seed; no gradients |
-| `candidate_excess_statistics` | CPU CSC posting lists, E_sem[E,2] int64, assignments → c[E,2] int64, mu[E,2] FP64 | CPU; exact candidate intersections; no dense NxN; no gradients |
-| `replicated_excess_score` | c,mu,tau → r[E] FP64 | Eq.5; no sigmoid/MLP; no gradients |
-| `calibrate_semantic_operator` | native W8 CPU CSR, r,delta, native SCF → final SICA[N,N] CSR FP32 + audit | Eq.6; no learned params; delta0 exact V8 bypass |
-| Existing item smoother | detached D_t[N,d] FP32 → filtered direction[N,d] FP32 | Reuse native V8 L3 @no_grad recurrence |
-| Existing model/loss/eval | Native V8 tensors/protocol | All original gradient paths preserved |
+| Full activity statistics | Binary CPU CSR/CSC R[M,N] → bins[M], M_b[B], n_ib[N,B] int64 | Static CPU; no RNG for primary, no gradients |
+| Candidate pooled statistics | Sorted CSC postings and pairs[E,2] int64 → c[E] int64, muF[E] FP64 | CPU candidate intersections and bounded blocks; no dense NxN |
+| Pooled score | c,muF,kappa → r[E] FP64 | Eq.5; no trainable parameters |
+| Actual-degree calibration | Native W8 CSR, r,delta, native SCF → S_R2 CSR FP32 plus metadata | CPU FP64 assembly, then final FP32; exact V8 bypass |
+| Optional budget solver | Same raw q and d8 → w*, solver status/residuals | CPU only, separately timed, not active by default |
+| Native model/loss/smoother | Existing tensors and detached D_t[N,d] | Reuse native autograd paths and @no_grad item-BSC |
 
-`n_ifb` is small **dense item×2×B**, permitted; not item×item. Use compact int64 counters, cast products to FP64 before multiplication. Pair counts are exact integers. E counts undirected pairs; graph nnz counts directed storage entries. Never confuse the two.
+No new auxiliary embedding tensor is retained on GPU. Only the final graph replaces mAdj. Intermediate c/mu/r, raw graphs, solver vectors and independent-user diagnostic tables remain CPU artifacts or are released.
 
-CPU evidence algorithm: intersect sorted CSC user lists for each frozen candidate pair; increment c by user half, and precompute n_ifb by a streaming pass over train incidence. Use compiled/vectorized bounded routines; avoid an uncompiled Python loop over all user-history pair combinations. Candidate block size8192 is an engineering default with bounded temporary memory, not a new graph hyperparameter. Existing V8 CF build stays separately cached and sparse.
+### 13.2 Implemented source delta — runtime verification pending
 
-### 11.2 Sparse, checkpoint and cache contracts
+| File | Necessary change | Must preserve |
+|---|---|---|
+| `models/stair_icaart_evidence.py` | Add pure full-activity aggregation and candidate pooled-count/null functions; add Eq.5; retain all legacy modes byte-for-byte in semantics | Old `pooled_excess` remains Eq.6, not silently redirected |
+| `models/stair_icaart_graph.py` | Route estimator from versioned config; reuse native W8/CF and calibrator; add null-scope, score and normalization diagnostics | Cached V8 return at delta0; pair-order alignment; no new support |
+| `models/stair_icaart.py` | Reuse preparation wrapper, bind new evidence contract to checkpoint | Native fit/encode/eval/loss unchanged |
+| `stair_icaart_config.py` | Add mode `pooled_activity_excess`; conditional validation for active halves0; add versioned normalization enum if backup is implemented | Historical modes still require two halves; no ambiguous tau reinterpretation |
+| `main_stair_icaart.py` | Extend manifest/CLI declarations, unrounded selected metrics and honest NOT_RUN/NOT_MEASURED export | Native coach/evaluator/selection and param groups |
+| Dataset YAMLs | Create distinct R2 configs with explicit mode and artifact namespace; retain R1 configs | Native dataset-specific hyperparameters |
+| `notebook/P6/stair_icaart.ipynb` | Define separate arms/output directories; remove synthetic inference and missing-result substitution before more runs | No hidden baseline overwrite; nonzero return code is failure |
+| Existing ICAART tests | Add equations/null-scope fixtures, inherited parity and provenance checks | Do not mark tests passed before execution |
 
-- Construct W8 and W_delta offline on CPU; no tensors with grad_fn in prepare(). Transfer **only final SICA** to GPU; training must not retain CPU statistics as CUDA buffers.
-- Reuse final CSR indices/support, one graph tensor, native `torch.sparse.mm` callback. No new per-step graph construction, refresh, EMA, snapshot or edge features on GPU.
-- Manifest includes source revision, train-presence hash, original training multiplicity counts, user/item mapping, candidate/raw-feature hashes, W8/SCF hashes, evidence assignments, tau/delta, arithmetic dtype and final graph hash.
-- Training seed and evidence seed are separate fields. Checkpoint stores final manifest identity; resume rejects graph mismatch. No regenerating a new graph from shuffled users on resume.
-- Delta0 must recover parameter groups, learning-rate schedule, sampler stream, loss and evaluator of V8. Offline evidence build must not consume global model RNG; use local RNG/hash.
-- Count/no-evidence/neutral-component conditions are logged. Do not silently fall back and label inactive graph as successful REEC.
+No new optimizer or smoother is needed. Do not mutate V8/CoGate or alter existing R1 caches/checkpoints in place. A new contract version must prevent loading an old graph under the PEEC name.
 
-### 11.3 Planned files — new files only
-
-```text
-stair_icaart_config.py
-models/stair_icaart_evidence.py       # strata, user halves, candidate counts/null/score
-models/stair_icaart_graph.py          # exact native W8, calibrated weights, N(W), manifest
-models/stair_icaart.py                # inherit V8 model; override graph preparation only
-main_stair_icaart.py                  # native coach reuse, new config/metadata/diagnostics
-configs/Amazon2014Baby_STAIR_ICAART.yaml
-configs/Amazon2014Sports_STAIR_ICAART.yaml
-configs/Amazon2014Electronics_STAIR_ICAART.yaml
-tests/test_stair_icaart_evidence.py
-tests/test_stair_icaart_graph.py
-tests/test_stair_icaart_pipeline.py
-notebook/P6/stair_icaart.ipynb         # after CLI/tests, all datasets selectable
-```
-
-No new smoother implementation is scientifically required; import `STAIR5V8Smoother`. No baseline/V8/CoGate mutation. Inheritance requires inspecting current model prepare API before coding; do not change inheritance solely to fit a guessed function signature.
-
-### 11.4 Frozen primary configuration
+### 13.3 Primary configuration — implemented, execution pending
 
 ```yaml
-# Inherit exact dataset-specific V8 WMSG-core baseline config.
+description: STAIR-PEEC-versionICAART-R2
 embedding_dim: 64
-evidence_mode: replicated_excess
+evidence_mode: pooled_activity_excess   # NEW full-activity estimator
 evidence_activity_bins: log2
-evidence_halves: 2
-evidence_seed: 20261016
-evidence_tau: 2.0
-evidence_delta: 1.0        # provisional primary; select from common grid using VALID only
-evidence_delta_grid: [0.0, 0.5, 1.0, 2.0]
+evidence_halves: 0                     # NEW mode has no active partition
+evidence_tau: 2.0                      # pooled kappa = 2 * evidence_tau = 4
+evidence_delta: 1.0                    # initial value, not a measured optimum
 evidence_candidate_block: 8192
-# Native constants: semantic_power2, floor.05, eta_cf.10, k_cf5, cmin2, shrink5.
-# No consensus residual, alignment, RPG, adaptive-K or Dirichlet objective.
+# No extra primary hyperparameters. Normalization is actual-degree.
+# Inherit exact V8 data, MI/FSC/BPR/NLGCL, optimizer and evaluation settings.
 ```
 
-Only delta is primary search. Tau sensitivity `{1,2,5}` and activity-null ablation are secondary on the shortlisted dose, not a crossed search across all variants. CLI rejects nonfinite scores/negative tau, delta outside preregistered [0,2], invalid mappings, asymmetric raw W, or evidence using validation/test pairs.
+For the new mode, `evidence_seed` is inactive and must not affect graph construction; record `active_partition: false` and `active_halves: 0`. A placebo uses its own local RNG. Reject silently ignored mode combinations and nonfinite/negative parameters. Keep the legacy seed20261016/two-half contracts intact for R1 and bridge controls.
 
-## 12. Complexity, speed and memory
+Primary grid delta={0,.5,1,2}; tau=2 stays fixed. Count-regularization sensitivity is secondary and receives a matched search budget. The optional solver adds numerical tolerance/iteration limits, not learned parameters or a new ranking-strength grid.
 
-Let E be semantic undirected candidates, K=nnz(S8), T=unique train pairs, B the number of log2 activity bins.
+### 13.4 Complexity and practical resource boundaries
 
-| Cost | V8 | REEC incremental |
+Let T=nnz(R), E=undirected semantic candidates, K=nnz(final operator), B=activity bins. Full-stratum pooling takes O(T) incidence aggregation, O(E*B) expectation work, and at most O(sum_(i,j in E)(n_i+n_j)) sorted-posting intersection work. Compile/vectorize bounded hot paths; do not enumerate all pairs in long user histories. Native CF construction remains separately cached.
+
+Persistent additional CPU arrays are approximately: pairs16E bytes, c8E, mu8E, r8E, calibrated raw weights8E, and group counts8NB plus M-user bin storage. Streaming can reduce simultaneous buffers. Feature storage, Python overhead, native CF workspace and CSR conversion are additional.
+
+Online cost remains O(L*K*d), L=3, exactly the native BSC operation count, with one final CSR graph. Additional trainable parameters=0; inference operation count is unchanged. Optional budget solving adds O(J*E) offline evaluations, where J is measured solver work, not a guaranteed fixed iteration count.
+
+Current measured final graph nnz for REEC is84,138 Baby and206,296 Sports; native V8 Electronics graph nnz739,381. With int64 indices and FP32 values, CSR payload is approximately12K+8(N+1) bytes, roughly1.02/2.50/8.94 MiB respectively. These are graph payloads, not total VRAM and not additional graph allocations. Transfer/conversion temporarily duplicates memory unless released.
+
+No dense N×N matrix is permitted. Existing blockwise native candidate retrieval is retained; new evidence and calibration use only E. No claim of guaranteed sub800MiB Electronics usage is made: historical V8 is already around800.67MiB in its measurement scope. Dimension256 is a separate capacity study with matched controls, not a rescue switch for this experiment.
+
+## 14. Diagnostics that can falsify the mechanism
+
+All construction statistics are TRAIN-only. Diagnostics may evaluate validation ranking, but cannot feed held-out interactions into c,mu,W or score fitting.
+
+| Diagnostic | Definition | Supporting pattern | Falsifying / adverse pattern |
+|---|---|---|---|
+| Eligible evidence | |{e:r_e>0}|/E and sum W8_e 1[r>0]/sum W8_e, by degree bins | Pooled obtains useful extra coverage | Coverage increases but no independent-user utility |
+| Null-scope sensitivity | Distribution of muH-muF, score changes and graph fingerprints over legacy partition seeds | Full null removes a material nuisance | Difference negligible; do not sell it as the main gain |
+| Unseen-user association | Repeated diagnostic train-user partitions: fit scores on one user group, measure excess on a disjoint group with its own null | Score predicts held-out-user association beyond degree/rawcos controls | Replication/pooled both only reflect selection or popularity |
+| Null adequacy | Compare muF with within-bin column-permutation overlap on sampled candidate pairs; optionally degree-preserving swaps | Expectation matches the stated approximate null | Systematic mismatch; no calibrated inference claim |
+| Endpoint contrast | Eq.13 distribution, not raw r alone | Evidence has usable normalized contrast | High score but nearzero normalized perturbation |
+| Operator perturbation | ||S-S8||F/||S8||F; per-row L1 ratio quantiles | Active intervention above measured numeric noise | No-op or strongly concentrated harm |
+| Polynomial probe | Fixed probes Z and native weights at k in{0,16,32,48,63}; report each coordinate | Effect survives native polynomial | Dose evaporates or concentrates in one coordinate |
+| Actual-direction dose | At a frozen shared state, ||P(S)D-P(S8)D||F/||P(S8)D||F, with denominator and absolute norm | Changed graph affects real directions | Probe dose is unrelated to actual update |
+| Direction agreement | Weighted cos(D_i,D_j), only rows above a registered magnitude/noise floor | High-r exchange is more compatible than matched controls | High-r selects conflicting or nearzero/noisy directions |
+| Validation margin | Eq.18 on fixed validation users/positive/negative IDs, before/after local shared-state update | Positive margin shift versus matched perturbations | Better association but negative margin utility |
+| Collateral coefficients | Ratio in Eq.14 on r=0 edges; distribution and item degree strata | No disproportionate harmful subgroup effect | Tail-associated margins/recall deteriorate |
+| Redundancy | Weight fraction of r>0 semantic edges also supported by native CF, and conditional utility | Useful residual effect beyond CF | Gain disappears under eta control |
+| Smoothing/rank | tr(V^T(I-S)V)/||V||F², effective rank and pairwise similarity, alongside ranking | Useful ranking without collapse | Lower energy with reduced rank and worse ranking |
+| Recommendation popularity | Mean log(1+train-degree) of recommended items, tail R20 and catalog coverage | Gains not entirely head-concentrated | Metric improvement purchased by unacceptable tail suppression |
+
+For the rank diagnostic, define p_l=sigma_l/sum_q sigma_q and effective_rank(V)=exp(-sum_l p_l log p_l), with zero singular values contributing0 and an explicit zero-matrix case. Compute from a d-by-d Gram matrix or a bounded fixed sample; never form an item-by-item Gram matrix.
+
+For direction probes, never assign score1 to zero-norm vectors. Report excluded mass and magnitude distribution. Use a small fixed epoch set, e.g.30/100/300/500, with diagnostics separately timed. Do not add CUDA synchronization, graph copies or edge loops to every training step. If alternate-operator probes need extra buffers, evaluate after exporting the frozen direction to CPU or in a separate diagnostic pass, and report their cost outside the primary training footprint. A frozen-state alternate-operator probe is not the difference between two fully trained models.
+
+Independent-user predictivity is a necessary check of the *association* story, not sufficient proof of ranking value. Test the complete chain, including actual margins and controlled training.
+
+## 15. Experimental design and fair search
+
+### 15.1 Locked protocol
+
+Same train/valid/test files and IDs, features, MI initialization, optimizer seed, sampler stream, learning rate/decay, batch size, epoch budget500, evaluation every5, full-ranking implementation, masking and validation N@20 checkpoint selection as the V8 control. Primary64D, FP32 and TF32 settings matched. Preserve native dataset-specific gamma/WD and Electronics chunked loss settings from frozen configs/manifests.
+
+Primary metrics: R@20 and N@20; secondary R@10 and N@10. Export unrounded aggregate and per-user metrics at the selected checkpoint. Missing metrics stay null/NOT_MEASURED, unrun datasets stay NOT_RUN. Do not compare Baby last-epoch six-decimal summaries with selected-checkpoint values from another model.
+
+### 15.2 Minimal first-round arms
+
+| Arm | Evidence / normalization | Single research question |
 |---|---|---|
-| Candidate retrieval / feature cosine | Existing native CPU/chunked preprocessing | Reused; do not recompute full similarity |
-| Train preprocessing | Native MI/UI/CF | O(T) assignments and item-group counts |
-| Candidate overlap | Existing CF builder separate | O(sum_(i,j in E)(n_i+n_j)) sorted-list upper bound; O(E*B) null evaluation |
-| Persistent CPU evidence | None extra | O(2NB+E+M), plus R CSR/CSC; no NxN |
-| BSC / step | 3 sparse SpMM of K×d cost | **Same SpMM count and same support K** |
-| Extra trainable parameters | None for graph | **0** |
-| Extra persistent graph VRAM | One final graph | **0 asymptotic extra graph allocation** if SICA replaces S8 and artifacts remain CPU |
-| Inference | Native FSC and full ranking | Same operation count |
+| A0 | Exact V8 | Does scaffolding preserve the baseline? |
+| R1 | Existing replicated_excess, actual-degree | Historical mechanism anchor; current delta1 exists |
+| P0 | Existing pooled_excess, actual-degree | Does removing hard min help under the same half-conditioned null? |
+| **P1** | **New pooled_activity_excess, actual-degree** | Does a split-free null improve/simplify the pooled estimator? |
+| C0 | Pooled count c/(c+kappa), actual-degree | Is excess conditioning better than merely changing shrinkage/coverage? |
+| Q1 | Degree-stratified symmetric shuffle of P1 scores | Does evidence placement matter? |
 
-Same operation count is not a wall-time guarantee: sparse values, library kernels, allocator and diagnostics can change cost. Report peak allocated and reserved memory and whole-process CUDA footprint separately. No guarantee of OOM freedom or `<800MiB`: historical V8 Electronics already reports roughly800.67MiB allocated and full ranking may peak differently.
+Run strength pilots with the same grid and budget for R1/P0/P1. Placebo is generated from the shortlisted primary score at the same delta, with score distribution preserved and degree strata recorded. Existing shuffle mode shuffles R1 scores; it is **not** a P1 placebo without modification. Report realized-dose mismatch; any additional matching search is disclosed. Do not silently compare a larger P1 perturbation with a weaker placebo.
 
-Upper candidate bounds with text5+image1 are `E<=6N` undirected, directed semantic nnz<=12N; original symmetric top5 CF contributes <=10N, isolates <=N. Thus final graph `K<=23N` is a conservative support bound. CSR with int64 indices/rowptr and FP32 values uses approximately `12K+8(N+1)` bytes, excluding conversion workspace. For N=7050/18357/63001 this bound is approximately1.91/4.97/17.06MiB. Actual overlap reduces K; measure actual values. REEC preserves support, so these are total graph-storage bounds, not added VRAM claims.
+Use native V8 eta in{.05,.10,.20} as an equal-budget simple challenger in final attribution. R2 must add useful information beyond a modest retuning of the CF blend. Limit secondary tau searches; publish every attempted configuration, including failed ones.
 
-For CPU working buffers with E<=6N: pairs int64[E,2]16E, counts int64[E,2]16E, expectations FP64[E,2]16E, score8E, weights8E →64E bytes if all retained. Item-group counts add16NB bytes. Stream/release intermediates; no need move them to GPU. Graph conversion can temporarily duplicate CSR/COO; profile preprocessing RSS. This does not include raw feature RAM, native CF workspace or Python-object overhead.
+### 15.3 Conditional second-round arms
 
-Electronics256 embeddings+grads+two Adam moments alone are about `16*(192403+63001)*256` bytes≈997.67MiB; do not reuse64D memory claims for capacity experiments.
+Only if useful evidence survives but degree effects remain a credible concern, compare R1/P1 × actual-degree/reference-budget normalization (§11). Select the normalization by validation and mechanism diagnostics, then freeze it. Do not append dynamic gates, alignment or bandpass filters to whichever variant lost.
 
-## 13. Mechanism diagnostics before expensive training
+V8.1 and full-original CoGate are reference methods, not interchangeable controls. If comparing a CoGate-style auxiliary bridge, keep it separately labeled and do not use it in the primary PEEC claim. Higher64D/256D capacity must be a separate factorial with matched V8 controls.
 
-All catalog statistics use TRAIN. VALID outcomes can evaluate a frozen score but cannot feed back into graph evidence.
+## 16. Statistics, selection and reproducibility
 
-| Diagnostic | Definition | Supports / falsifies |
+1. Use real paired training seeds at least{1,2,3}, preferably5. An unchanged graph is shared across primary training seeds. Full-null P1 has no evidence partition seed; permutation seeds are placebo randomness, not training replications.
+2. For R1/P0, report additional evidence-partition sensitivity separately. A different partition is not an independent training seed.
+3. Report mean±SD, every seed result, paired differences, and intervals appropriate to the sampling unit. Per-user paired bootstrap conditional on trained models does not replace training-seed uncertainty.
+4. With three/five pairs, exact two-sided sign-flip minima are .25/.0625. Do not promise significance from a handful of runs or force a t-test when assumptions are implausible.
+5. Do not treat epochs or correlated checkpoints as independent replicates. Never create Gaussian samples around aggregate scores to obtain p-values.
+6. Fix primary endpoints and disclose multiple datasets/metrics/configurations. Any family-wise testing correction is stated explicitly; an exploratory result is not relabeled confirmatory.
+7. Historical TEST has already been inspected repeatedly. A new preregistration can constrain future decisions, but cannot retroactively make this benchmark untouched. Select variants using VALID only; freeze the shortlist before reading its new TEST outcomes.
+8. Statistical nonsignificance is not equivalence, and a tiny significant effect is not automatically practically important. Define the practical margin using real V8 variance, cost and subgroup impact; that variance has not yet been estimated here.
+
+Official test semantics: [SciPy paired t-test documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.ttest_rel.html). This source defines the test, not permission to use synthetic data or a guarantee of its assumptions.
+
+## 17. Staged execution, Electronics and stopping rules
+
+| Stage | Work | GO / NO-GO |
 |---|---|---|
-| Replicated coverage | frac(E with r>0), weighted fraction sum(W8*1[r>0])/sum(W8), item coverage by train-degree bins | Determines eligible scope; near-zero coverage explains no-op, not model success |
-| Single-half disagreement | frac((e0>0) xor (e1>0)); correlation of nonzero e0/e1 with zero mass reported separately | Large one-half peaks motivate replication; no stability advantage weakens it |
-| Actual cross-user predictive validity | Repeated **diagnostic-only** three-way user splits: two thirds construct scores, third measures excess, without outer held-out data | High-r candidates should predict excess in independent users better than q/rawcos degree-matched controls; failure rejects evidence interpretation |
-| Activity-null adequacy | Compare mu with average pair overlap under train-only within-bin item-column permutations; diagnostic challenger also uses degree-preserving bipartite swaps on a bounded pair sample | Identifies model mismatch; not a proof exchangeability holds |
-| Endpoint contrast | distribution `r_ij−.5*rbar_i−.5*rbar_j` (Eq.10) | r mean high with contrast≈0 means normalization cancels dosage |
-| Operator dose | F=`||SICA−S8||F/||S8||F`; rowwise L1 changes with denominator and quantiles; nnz/hash/symmetry | Distinguishes exact no-op from meaningful operator change |
-| Polynomial dose | `||[P(SICA)−P(S8)]Z||F/||P(S8)Z||F` on fixed Rademacher probes; later on sampled actual D_t | Nonzero graph delta with negligible direction delta still may be ineffective |
-| Degree side effect | d_delta/d8 by item group; normalized coefficient changes on r=0 edges | Detects indirect suppression and head/tail imbalance |
-| Update compatibility, secondary | weighted cosine of pre-BSC Adam directions at edges, ignoring near-zero rows; inspect sampled epochs only | Proxy mechanism; no assumption cosine>0 always good |
-| Ranking margin | Eq.12/frozen shared-state one-step probe and fixed validation negative IDs; later per-user deltaR20/deltaN20 | Must agree with claimed utility; high-r but harmful margins refute transfer story |
-| Representation behavior | effective rank, normalized Dirichlet energy, pairwise similarity/eval metrics jointly | Higher smoothness alone is not success |
+| 0 | Remove invalid statistical exports from the future pipeline; freeze provenance; implement missing score/null contracts and parity checks | Any leakage, false fallback result or graph mismatch blocks new runs |
+| 1 | Offline P0/P1 score and dose diagnostics on Baby/Sports; optionally Electronics preprocessing only | Finite/symmetric/support-correct, active above numerical noise; coverage is not an accuracy pass |
+| 2 | Same-budget Sports pilots, e.g.150 epochs, with V8 and R1 anchors; retain full validation trajectories | Large consistent regression or cost fault can stop; lack of early gain is inconclusive because current best is epoch500 |
+| 3 | Full500 for at most two validation-shortlisted candidates; confirm on Baby | Positive repeatable trend and mechanism evidence; no test-guided winner selection |
+| 4 | Real paired seeds on frozen finalists and necessary count/placebo/eta controls | GO if gain persists and the claimed evidence mechanism survives; otherwise simplify/stop |
+| 5 | Full Electronics for the frozen method, followed by essential final controls | Complete the benchmark honestly, including regressions and failures |
 
-Do not report p-values for heuristic r as if it were a statistical significance test. If formal edge hypothesis testing is added later, define exact null and multiple-testing correction as a **different estimator**, not an interpretation upgrade of Eq.5.
+**Current recommendation:** do not prioritize another full Electronics run of an unchanged R1 configuration merely because the catalog is larger. Two other datasets do not determine its outcome, but neither provides evidence of an imminent large gain. Preprocessing can establish its score coverage, null sensitivity and normalized dose before committing a roughly9-hour-class run. No Electronics metric or probability of beating V8.1 is predicted.
 
-## 14. Fair experiments and ablation matrix
+**Budget rules:** online median epoch overhead target<=5% versus V8 at the same scope; >10% steady unexplained overhead triggers engineering inspection. These are engineering targets, not performance guarantees. Optional solver time is reported separately, with no hidden dense fallback. There is no universal optimal operator-dose percentage.
 
-### 14.1 Locked protocol
+**Stopping rule:** if pooled estimators with valid nonzero dose do not improve reproducibly, or if matched count/shuffle/eta challengers explain the gain, reject the claimed excess-evidence contribution. Do not continue adding modules until a favorable test number appears.
 
-Same splits/features/IDs, MI seed, original sampler, LR/WD, optimizer, full-ranking implementation, seen masking, validationN20 selection, eval every5 epochs and500-epoch budget as V8. Primary64D; FP32/TF32 setting identical. Batch Baby/Sports1024, Electronics4096 and native chunked CL1024/1024/128 must be checked against frozen manifests. Dataset-specific gamma `.1/.2/.4`, WD `.3/.1/.1`, LR`.001` remain control values unless a **matched** tuning study is declared for both methods.
+## 18. Reviewer #2 attack on the revised proposal
 
-Primary outcomes: R@20 and N@20; secondary R@10/N@10. Export unrounded per-user metrics/seed values at checkpoint. Do not switch to R@1 after inspecting outcomes. Native checkpoint is selected only by VALID; TEST read once for frozen finalists.
+| Risk | Why it can happen | Diagnostic / mitigation | Severity |
+|---|---|---|---|
+| Pooled adds chance peaks | Removing min trades conservatism for coverage | Third-user predictivity, count and shuffle controls, fixed kappa | HIGH |
+| Null is wrong for exposure | Activity strata are coarse and item marginals are estimated | Null adequacy checks; never claim causal debiasing | HIGH |
+| More degree drift | More positive scores can increase endpoint degrees | Coefficient/margin groups; bounded delta; conditional budget challenger | HIGH |
+| Full null barely differs | Large strata make split fluctuations negligible | Report difference magnitude; drop a null-scope contribution if immaterial | MEDIUM |
+| Reweighting redundant with CSE | Same behavior already influences CF | Support overlap and eta controls | HIGH |
+| Positive association gives harmful updates | Users can co-buy items for unrelated reasons | Actual D and local-margin probes; no substitute/complement interpretation | HIGH |
+| Tail evidence weak | Sparse items still have small or zero overlaps | Coverage and tail metrics with denominators; retain baseline edges | HIGH |
+| Fixed-budget variant is a no-op | Degree constraints remove useful edge variation | Post-solver dose and component diagnostics; do not force nonzero weights | HIGH |
+| Solver arithmetic invalid | Finite iterations do not ensure marginals | Residual checks and actual-degree normalization; fail closed | CRITICAL |
+| Larger dose creates over-propagation | Native polynomial compounds strong exchanges | Rank/energy/margin and matched-dose controls | HIGH |
+| Gain is tuning | Extra variants get more trials than baseline | Fixed search budget and complete attempted-run ledger | HIGH |
+| Statistical illusion recurs | Notebook fills missing outputs or simulates replications | Null results, raw receipts and real seed/user vectors only | CRITICAL |
+| Weak novelty | Behavior calibration and pooling are established | Closest-method controls and modest contribution wording | HIGH |
+| CoGate overlap still substantive | Same group, backbone, data and broad consensus narrative | Factual contribution disclosure; assess actual manuscripts, not renamed modules | HIGH |
 
-### 14.2 Scientific controls
+## 19. Novelty, CoGate boundary and publication claims
 
-| Arm | Single question | Expected if hypothesis true / interpretation if not |
+| Aspect | CoGate / V8.1 family | PEEC primary |
 |---|---|---|
-| V8 exact delta0 | Does scaffolding preserve control? | Exact graph/training parity within explicit numerical tolerance; any unexplained difference blocks experiments |
-| **REEC** | Does replicated excess improve existing semantic exchange? | Positive paired gain; parity/regression after nonzero dose rejects practical value |
-| Pooled excess | Is replication necessary? Compute pooled c, sum mu, denominator c+mu+2tau | REEC better/stabler; if pooled equal/better, simplify and drop replication contribution |
-| Unstratified replication | Is activity conditioning useful? Use mu_f=n_if*n_jf/M_f | REEC better group utility/null fit; if same, activity stratification may be unnecessary |
-| Replicated count score | Is excess beyond popularity needed? r=min_f c_f/(c_f+tau), same support/reweight/delta grid | REEC better than just repeated counts; otherwise reject null-specific benefit |
-| Symmetric degree-stratified r shuffle | Is evidence placement useful beyond weight distribution/degree? | Primary better; if equal, gain may be generic graph perturbation |
-| Uniform multiplier | Does normalization cancel global dose as derived? | Mathematically same graph; numerical correctness control, not competitive learner |
-| CSE dosage control | Is gain merely more CF? Native V8 eta grid{.05,.10,.20}, same number of trials | REEC must add value beyond retuning eta; otherwise report simpler control |
-| BCSR on V8 bridge | Is this just rebranding V6 retention on a stronger graph? | Compare existing negative-under-support/diagonal compensation using V8 WMSG parent; separate dose matching |
-| RGSC-like evidence on V8 | Can published context–target score match REEC at same insertion point? | Mechanism challenger; credit R7 and preserve its count/opportunity sample space |
+| Scientific object | Auxiliary consensus representation and contrastive learning | Conditional association estimator for optimizer exchange |
+| Graph path | Extra consensus message into first-layer auxiliary state/query | Reweight only existing V8 semantic support before BSC |
+| Learnable gate | Channel gate / scalar MLP | None |
+| Objective | Changed auxiliary representation or contrastive path | Native V8 objective unchanged |
+| Online added message path | Present | Absent |
+| Main new falsifiable question | Does auxiliary consensus supervision help? | Does pooled excess, beyond counts and CF tuning, identify useful fixed-support optimization exchanges? |
 
-Shuffles act on unique undirected pairs and mirror; never shuffle two directions separately. Match multiplier distribution and degree strata; if matching **realized** normalized dose by scaling, report mismatch/tuning policy. Exact per-row matching may be infeasible; do not fabricate it.
+**STANDARD/BORROWED:** MI/FSC/BSC, NLGCL, co-occurrence, activity conditioning, count regularization, positive excess, exponential reweighting, symmetric normalization, sparse storage, optional KL projection and its solver.
 
-Historical reference rows: original STAIR, V4, V5.1, V5.2, G6-v1/v2 and V8.1 clearly labeled historical if not rerun. External relevant controls: FREEDOM, MGCN, EVEN, SIGER/IIMRec where code/data available, plus item-kNN/LightGCN. Same split/evaluator required for fair superiority claims; published incompatible numbers go in separate reference columns.
+**ADAPTED:** split-free pooled association on the frozen semantic candidate support, applied specifically to item optimizer geometry, with direct normalized-dose and margin diagnostics.
 
-### 14.3 CoGate bridge comparison
+**CANDIDATE problem/combination contribution:** distinguish sparse-evidence selection from exchange utility and normalized budget effects, and establish a reproducible optimizer-only benefit through controlled estimator/null/normalization comparisons. This contribution exists only if the experiments support it.
 
-For reviewer-facing attribution, use a small 2×2 bridge: graph V8 vs REEC, auxiliary CoGate-style branch off vs on, same dimension/backbone/loss implementation and parameters where relevant. This tests whether the new graph effect persists without auxiliary consensus and whether it adds beyond it. Do not bundle CoGate augmentation/noise/negative sampling in just one arm and attribute gain solely to graph evidence.
+**NOT CLAIMED:** a new consensus principle; a new estimator theory solely because min was removed; proof of denoising or ranking gain; first use of behavior to calibrate semantics; automatic eligibility as a separate concurrent paper; SOTA from local V8 comparisons.
 
-Primary REEC remains **aux-off**. CoGate full-original should also be reported as separate method if used as comparator; bridge is not silently relabeled as a faithful CoGate rerun.
+The CoGate manuscript is same-group and under review, as user-confirmed. Architectural differences help define a distinct study but do not certify independence of two submissions. Avoid substantial reuse of text/figures/result narratives and follow actual venue policies. See [ICAART guidelines](https://icaart.scitevents.org/Guidelines.aspx). No submission or external communication is performed by this document.
 
-## 15. Staged GO / NO-GO and statistical validation
+## 20. Implementation roadmap and final verdict
 
-| Stage | Work | Decision |
-|---|---|---|
-| 0A | Evidence fixtures, true-degree/symmetry proofs, native delta0/zero-evidence parity, deterministic hashes, sparse memory checks | Any algebra/leakage mismatch → NO-GO |
-| 0B | All available dataset offline diagnostics, independent-user diagnostic validity, shuffled controls; delta grid fixed | r allzero, normalized delta0, nonfinite statistics → NO-GO; do not manufacture nonzero evidence |
-| 1 | 2–5 epochs Baby/Sports GPU smoke, eval/resume and paired V8 | Verify runtime/memory/loss; not rank architectures from early accuracy |
-| 2 | Same-budget Baby/Sports delta pilot and direct controls; checkpoints every5 | VALID trend warrants full runs only if mechanism/control evidence survives; absence of early gain is inconclusive unless consistent adverse effects |
-| 3 | Full V8/REEC seeds1–3, Baby/Sports; Electronics after cost/utility check | WEAK-GO for uncertain small gains; NO-GO for reproducible regression or placebo parity with no mechanism support |
-| 4 | Frozen finalists3 datasets,5 seeds if budget; necessary ablations/robustness | GO for reproducible positive effect with uncertainty and attribution; otherwise retain V8 or report negative result |
+1. Preserve R1 logs/configs/report archive; repair the future reporting pipeline before generating any new statistical table.
+2. Use existing P0 bridge to test hard-min removal without introducing a new graph/optimizer module.
+3. P1 full-stratum estimator, controls, versioned config/checkpoints and new PEEC YAMLs are implemented. Runtime validation is the next gate; retain the existing loss, scorer and smoother.
+4. Verify future fixtures: full counts/null, singleton/empty bins, duplicates, r bounds, Eq.7, exact delta0, support identity, inherited gradients before step, checkpoint mismatch rejection and sparse-only allocations. **No test is marked run or passed in this revision.**
+5. Execute controlled diagnostics/pilots and real paired runs according to §§14–17. Only then consider the optional reference-degree challenger.
+6. Freeze the winning method from validation and mechanism evidence; complete Electronics and report uncertainty/negative results. Paper wording must follow those outcomes.
 
-For numerical inactivity use FP32-aware thresholds tied to reference repeated-build/SpMM error: if dose is at most10× measured numerical noise floor, classify inactive. This is a detectability rule, **not** an accuracy-optimal dosage band. No universal “5% operator change yields gain”. If all delta≤2 remain inactive, stop; do not expand search until a hoped-for metric appears.
+**Final verdict: IMPLEMENT WITH MODIFICATIONS as a research candidate, not as an established accuracy upgrade.** Primary R2 is **PEEC-full with actual-degree normalization**. R1/REEC remains the historical control; existing pooled-half is the necessary bridge; reference-degree KL allocation is a conditional backup. No auxiliary consensus branch is added to rescue the metric.
 
-Train-time overhead target ≤5% median with same measurement scope, not a guarantee. >10% steady overhead warrants engineering inspection because new online ops should be zero; temporary sampled diagnostics are timed separately. Preprocessing wall time/RSS is reported, not hidden. Diagnose memory/compute and candidate coverage before Electronics full training.
+**Conservative outcome:** parity or regression; retain V8 and report that this evidence family did not add useful optimizer information.
+**Plausible but unproven outcome:** a small reproducible gain with stronger coverage and better ranking-linked utility than matched simple controls.
+**Optimistic outcome:** improvement over V8.1 across datasets at near-V8 online cost, established by actual multi-seed results. No numeric forecast is defensible.
+**Failure outcome:** more association without useful margins, uncontrolled subgroup harm, placebo/count parity, or benefits explained by extra tuning. Stop the claim rather than rename another stack.
 
-Use paired seeds at least{1,2,3}, preferably5, with **fixed evidence graph** for primary seed variability. Separately evaluate graph seed sensitivity on shortlisted settings (e.g. two additional evidence partitions); do not conflate five graph shuffles with five independent training replications. Report mean±SD, paired differences and CI. With3 or5 seed pairs, exact two-sided sign-flip minima are .25/.0625; cannot promise Wilcoxon p<.05 from5 runs. Paired t-test has assumptions and low power; per-user bootstrap is conditional on trained models and does not replace seed uncertainty. State multiplicity over datasets/metrics/searches and limitations of repeatedly inspected historical TEST.
+### Final quality record
 
-**STRONG-GO** requires effect reproducible across training/evidence seeds, mechanism advantage over relevant simple/placebo controls, no material tail regression and uncertainty supporting positive gain. A +5% goal is aspirational; no invented minimum achievable gain. No-go on ranking after valid nonzero dose means evidence hypothesis failed, not necessarily implementation bug.
-
-## 16. Dataset-specific expectations and robustness
-
-- **Baby:** cheaper pilot; strong semantic redundancy may make repeated excess indistinguishable from rawcos or q. Tiny aggregate gain is plausible but unproven. Inspect minority/tail positive targets rather than claiming ceiling from one checkpoint.
-- **Sports:** prior V8.1 had the clearest small local gain. Heterogeneous activity/content interests may make activity conditioning relevant; it may also leave very sparse replicated coverage. Do not infer “sign mismatch is proven” from domain name.
-- **Electronics:** larger catalog and long-tail evidence can fail replication; high item degree average does not imply dense pair overlap. Budget memory and9h-class training carefully. Do not transfer old V8.1 cap behavior into a universal density law.
-
-Robustness controls: train-only edge-score corruption/shuffles with matched support; downsample interactions **for new evidence only** while training parent data remains fixed; report degree-stratified target recall with denominators, recommendation popularity/catalog coverage, r coverage and normalized mass shifts. Modality corruption studies need regenerate semantic weights/candidates consistently for both arms; do not selectively corrupt one model. Category interpretation requires verified metadata or is omitted.
-
-## 17. Reviewer #2 attack: failure modes
-
-| Risk / severity | Why possible | Diagnostic and mitigation |
-|---|---|---|
-| Association ≠ useful update — HIGH | Two users groups can repeat exposure bias | Shared-state margin tests, degree-matched controls; reject causal language or whole hypothesis |
-| Replication too sparse — HIGH | Most item pairs share0–1 users per half | Coverage/dose preflight; stop or openly switch pooled backup, no fake replica novelty |
-| Double-use of behavior — HIGH | CSE/FSC already encode same evidence | Eta and published-calibration controls; claim only incremental utility established |
-| Tail suppression via normalization — HIGH | Boost head-linked edges raises degrees | Group coefficient changes/long-tail targets; reject if adverse trade-off |
-| Simplistic null — HIGH | Log2 strata do not control all heterogeneity | Permutation/configuration-null diagnostics; label proxy, not calibrated inference |
-| Chance null excess still survives — HIGH | Multiple edges, correlated users, selection on content | Third-user-group predictivity and shuffled placebo; no edge significance claim |
-| Over-propagation — HIGH | More exchange can blur distinctions | Native L3 unchanged, energy/rank/margin checks, small preregistered delta grid |
-| Nonzero raw dose but normalized no-op — HIGH | Uniform/component-constant r | Eq.10 and polynomial probes; no-go rather than rescale noise |
-| Old normalization/cache bug — CRITICAL | D8 substituted or delta0 rebuilt | Strict actual-degree tests and exact bypass/cache hash |
-| Leakage/mapping errors — CRITICAL | Graph statistics accidentally include held-out or shifted IDs | Split hashes, evidence API train-only, candidate endpoint assertions |
-| Score saturates uniformly — MEDIUM | Very strong pairs r near1 | Histogram/endpoint contrast; pooled/count controls; no learned gate added automatically |
-| Partition dependence — HIGH | Different halves change supported evidence | Fixed primary partition, extra evidence-seed sensitivity; disclose instability |
-| Insufficient novelty — HIGH | R7/R11 already calibrate graph evidence | Direct mechanism baselines; problem/negative-result contribution, not “first consensus” |
-| Gain due tuning — HIGH | Four new delta trials but frozen V8 | Same-budget eta/simple calibration searches; disclose all trials |
-| Extra CPU time — MEDIUM | Posting-list intersections on hubs | Compiled bounded blocks, wall/RSS profile; abort long preprocessing, no dense fallback |
-| Tiny uncertain gains — HIGH | V8 improvements within seed noise | Replications/unrounded metrics; do not advertise meaningful superiority |
-| Submitted CoGate overlap — HIGH | Same group/backbone/datasets and broad consensus narrative | Full difference table, transparent disclosure; chairs decide eligibility |
-
-## 18. Novelty and relation to CoGate
-
-### 18.1 Shared background versus candidate contribution
-
-| Aspect | CoGate / V8.1 | versionICAART REEC |
-|---|---|---|
-| Central object | Auxiliary consensus representation | Static calibration of optimizer exchange weights |
-| Graph | Separate behavior×semantic confidence support | Same native V8 semantic support, no new auxiliary graph |
-| Evidence | Product/soft agreement with behavior | Activity-conditioned **excess** and disjoint-user repetition |
-| Insertion | Gated residual at first FSC item state | Only final item optimizer BSC operator |
-| Objective | New/modified auxiliary CL view | Existing V8 NLGCL unchanged |
-| Additional learned params | Channel/scalar gates | **0** |
-| Training sparse work | Extra auxiliary message path | Same native item BSC SpMM count/support |
-| Inference | Primary FSC scorer | Same; not unique to this proposal |
-| Scientific question | Does auxiliary consensus supervision help? | Does replicable excess identify where fixed-support optimizer exchange is useful? |
-
-**BORROWED/STANDARD:** MI/FSC/BSC, NLGCL, co-occurrence, activity/null conditioning principles, exponential weighting, symmetric normalization and norm inequalities.
-
-**ADAPTED:** candidate-only behavioral calibration applied to V8 WMSG; preserving existing CF blend; hardware-efficient frozen graph pipeline.
-
-**CANDIDATE NEW problem/combination contribution:** distinguish evidence *magnitude* from *replicability and excess beyond activity structure*, test its **optimizer-only** utility with exact topology and objective controls, connect normalized endpoint contrast to effective BSC dosage. Neither min aggregation nor Eq.10 alone is a claim of fundamental mathematical novelty.
-
-**Not yet established:** first-of-kind algorithm, statistical denoising guarantee, ranking superiority, independent archival contribution large enough beyond CoGate. R7 and R11 are especially close on evidence calibration/null ideas. If pooled/count/placebo controls match REEC, the specific novelty claim fails even if overall pipeline remains competitive.
-
-### 18.2 Publication boundary
-
-CoGate is same-group and **under review**, user-confirmed. A changed insertion point helps define a different question but does not automatically make another simultaneous paper eligible. Avoid recycling substantial text, figures, tables and result narratives as independent original material. Related-work citation alone does not cure substantial submission overlap.
-
-ICAART states submissions must not substantially overlap with published or simultaneously submitted archival work; SOICT requires original work not concurrently under review elsewhere. Apply to actual manuscripts, not a code-percentage threshold. See [ICAART guidelines](https://icaart.scitevents.org/Guidelines.aspx), [SOICT submission policy](https://soict.org/submission/paper-submission/). Prepare a factual contribution/overlap statement and follow the venues' disclosure process before submission; no message has been sent on authors' behalf.
-
-At audit date, ICAART2027 stage2 deadline is22/10/2026 AOE according to [official dates](https://icaart.scitevents.org/ImportantDates.aspx). Do not compress required controls into invented results for that deadline. If validation is incomplete, reduce claims/choose a later submission rather than label this untested proposal a completed strong paper.
-
-## 19. Implementation roadmap and acceptance tests
-
-1. Freeze V8 control commit/config/splits/candidate/graph hashes. Export high-precision historical results and correct paper claims before architecture code.
-2. Implement pure CPU evidence functions and invariants; return explicit active/inactive state.
-3. Implement Eq.6 graph builder by reusing native V8 raw W/CF/normalizer; new model wrapper only replaces final BSC graph.
-4. Add runner/YAML/checkpoint identity and diagnostics; native evaluation/selection code reused.
-5. Run algebraic/unit/integration tests, offline diagnostics and GPU smoke. Only then write/select full training notebook arms.
-6. Perform staged controlled experiments; paper contribution wording follows results, not version numbering.
-
-Required tests:
-
-- Enumerated tiny group fixtures reproduce observed/expected overlaps and exact r, including empty/singleton groups, duplicate pairs and isolated items.
-- Whole user belongs to one half; deterministic assignments independent of training RNG; arbitrary consistent ID remapping preserves counts with mapping-aware assignments.
-- `0<=r<1`, zero-count neutral, one-half peak neutral, no divide-by-tiny-prior or NaN.
-- **No same-user leakage across replication halves**; no valid/test edge accepted by evidence input boundary.
-- Unique undirected scoring mirrored exactly; topology/zero diagonal/isolated blocks agree with native support.
-- Delta0/no-evidence exactly returns V8 operator; uniform component score mathematically normalizes to same operator within FP tolerance.
-- Dense tiny reference only in tests validates actual-degree normalization, eigenspectrum/norm and Eq.10 finite differences. Include invalid stale-degree and asymmetric negative fixtures.
-- Finite BSC polynomial equals native recurrence; Eq.11 numeric fixtures; no differentiable graphs retained by static preparation/smoother.
-- Parameter groups exactly once, same loss/gradient before optimizer, native one-step parity at delta0, checkpoint save/load/resume with graph hash rejection.
-- Sparse-only large-shape allocation guard; **no training/preprocessing dense NxN**. Bounded candidate counters support Electronics size without real full training in unit tests.
-
-## 20. Expected outcomes and final recommendation
-
-**Conservative:** no measurable incremental gain; REEC supplies a negative result showing repeated cointeraction evidence still does not identify useful optimizer exchange. Retain V8.
-
-**Plausible but unproven:** a small reproducible improvement in one or more datasets at equal dimension/runtime, with better independent-user evidence validity and margin behavior than raw counts/placebo. Paper value depends on controls and uncertainty.
-
-**Optimistic:** improvements across all3 datasets and content/tail robustness beyond CSE retuning; confirm with multi-seed evaluation and closest prior work before making strong claims. No numerical gain forecast is defensible now.
-
-**Failure:** no replicated coverage, normalized no-op, evidence does not predict independent-user association, positive association gives harmful update/margin changes, or gains vanish against simple controls. Stop the architecture; do not add consensus CL, category labels or dynamic gates without a new diagnosis.
-
-**Final recommendation:** develop **versionICAART = STAIR-REEC, optimizer-only, fixed-support, zero new trainable parameters**, as a **diagnostic-first research candidate**. Do not deploy original BSC-SBE equations. Do not simply rename V8.1 to avoid CoGate overlap. The defensible contribution must come from identifying and testing a different mechanism; if that mechanism does not survive falsification, an implementation-ready specification is not a reason to submit it as a successful new method.
-
-### Final quality check
-
-- [x] Exact V8 control and current seed1 results separated from forecasts.
-- [x] Draft and critique both adjudicated; incorrect lift/PMI, PSD, stale-degree and power-iteration claims corrected.
-- [x] Local PDFs examined; source identities/URLs corrected; preflight limitation disclosed.
-- [x] No invented experiment, future venue acceptance, calibrated probability or novelty certificate.
-- [x] Every new operation has explicit equations, tensors, integration point, complexity and falsification test.
-- [x] CoGate shared components and submission-overlap uncertainty stated.
-- [x] Minimal code delta and native loss/evaluation contracts specified.
-- [x] Fair controls, realized dose, graph/optimizer diagnostics, paired seeds and NO-GO path defined.
-- [ ] New architecture implemented and tested — **next stage**, not done by this report.
-- [ ] Superiority over V8/CoGate/closest external methods — **unmeasured**.
+- [x] Current REEC results and proposed PEEC results are explicitly separated.
+- [x] Synthetic inference, missing Recall@1 and unrun Electronics are excluded.
+- [x] Hard selection, null scope, dose and normalization are separate hypotheses with separate controls.
+- [x] Full-stratum equations, legacy bridge semantics, tensor contracts and code delta are specified.
+- [x] Contraction proof uses actual degrees; no row-stochastic, PSD-adjacency or stable-Adam overclaim.
+- [x] Relevant current paper versions and publication-status limits are stated.
+- [x] CoGate relationship and standard/borrowed components are acknowledged.
+- [x] Fair search, real paired seeds, uncertainty and falsification/NO-GO are required.
+- [x] PEEC primary source/config/notebook and regression-test definitions implemented; static syntax checks only.
+- [ ] Project tests, real graph diagnostics and training — **NOT RUN by user instruction**.
+- [ ] Optional reference-degree KL challenger — **not implemented; conditional backup only**.
+- [ ] PEEC improves ranking or qualifies as an independent publishable method — **unmeasured**.

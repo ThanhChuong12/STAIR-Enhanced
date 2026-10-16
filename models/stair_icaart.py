@@ -1,4 +1,4 @@
-"""models/stair_icaart.py — STAIR-REEC (versionICAART) model architecture.
+"""models/stair_icaart.py — PEEC / legacy REEC calibrated-graph architectures.
 =============================================================================
 Inherits directly from STAIR5_v8_Model (WMSG-core platform).
 Overrides ONLY graph preparation to substitute S_8 with S_ICA.
@@ -22,11 +22,11 @@ from models.stair5_v4_graph import tensor_to_scipy
 from models.stair5_v4_utils import file_sha256
 from models.stair_icaart_graph import build_stair_icaart_graph
 from optimizers.stair5_v8_smoother import STAIR5V8Smoother
-from stair_icaart_config import validate_icaart_config
+from stair_icaart_config import evidence_identity, validate_icaart_config
 
 
 class STAIR_ICAART_Model(STAIR5_v8_Model):
-    """STAIR-REEC architecture: calibrated pre-BSC semantic graph on unchanged V8 backbone."""
+    """Versioned PEEC/REEC graph calibration on the unchanged V8 backbone."""
 
     def __init__(self, dataset: Any, cfg: Any):
         cfg = copy.copy(cfg)
@@ -55,6 +55,7 @@ class STAIR_ICAART_Model(STAIR5_v8_Model):
             Path(__file__).with_name("stair_icaart_graph.py"),
             root / "stair_icaart_config.py",
             root / "main_stair_icaart.py",
+            root / "stair_icaart_reporting.py",
         ):
             if src.is_file():
                 self.source_manifest[src.name] = file_sha256(src)
@@ -89,28 +90,25 @@ class STAIR_ICAART_Model(STAIR5_v8_Model):
             baseline_fp = self.graph_fingerprint
             baseline_scipy = tensor_to_scipy(baseline_mAdj)
 
-            # 2. Build STAIR-REEC calibrated graph S_ICA
-            _bg = self.dataset.train().to_bigraph(edge_type="u2i")
-            if hasattr(_bg, "edge_index") and _bg.edge_index is not None:
-                train_edges = _bg.edge_index
-            elif hasattr(_bg, "__getitem__"):
-                try:
-                    train_edges = _bg["u2i"].edge_index
-                except (AttributeError, KeyError):
-                    train_edges = None
-                    for _k in [("USER", "u2i", "ITEM"), ("user", "u2i", "item"), ("User", "u2i", "Item")]:
-                        if _k in _bg:
-                            train_edges = _bg[_k].edge_index
+            # 2. Calibrate only the frozen semantic support for the selected evidence mode
+            bigraph = self.dataset.train().to_bigraph(edge_type="u2i")
+            train_edges = getattr(bigraph, "edge_index", None)
+            if not isinstance(train_edges, torch.Tensor):
+                # Resolve only the requested user-to-item relation. Never select
+                # an arbitrary edge store whose IDs might belong to another graph.
+                train_edges = None
+                if hasattr(bigraph, "__getitem__"):
+                    for key in ("u2i", ("USER", "u2i", "ITEM"),
+                                ("user", "u2i", "item"), ("User", "u2i", "Item")):
+                        try:
+                            candidate = bigraph[key].edge_index
+                        except (AttributeError, KeyError, TypeError):
+                            continue
+                        if isinstance(candidate, torch.Tensor):
+                            train_edges = candidate
                             break
-                    if train_edges is None and hasattr(_bg, "_data"):
-                        for _v in _bg._data.values():
-                            if hasattr(_v, "edge_index") and _v.edge_index is not None:
-                                train_edges = _v.edge_index
-                                break
-            else:
-                train_edges = getattr(_bg, "edge_index", None)
-            if train_edges is None:
-                raise AttributeError(f"Không thể trích xuất train_edges từ bigraph {_bg}")
+                if train_edges is None:
+                    raise AttributeError("Cannot resolve the training user-to-item edge relation")
             state = build_stair_icaart_graph(
                 mfeats=self._icaart_features,
                 knn_edges_list=self._icaart_candidates,
@@ -135,7 +133,7 @@ class STAIR_ICAART_Model(STAIR5_v8_Model):
             self.graph_metadata = {
                 **self.graph_metadata,
                 "version": "ICAART",
-                "architecture": "STAIR-REEC",
+                "architecture": self.icaart_manifest["architecture"],
                 "baseline_v8_fingerprint": baseline_fp,
                 "graph_fingerprint": self.graph_fingerprint,
                 "icaart": self.icaart_metadata,
@@ -148,7 +146,7 @@ class STAIR_ICAART_Model(STAIR5_v8_Model):
         """Binds checkpoint resume to the exact calibrated graph fingerprint and manifest."""
         state = super().get_extra_state()
         state["stair_icaart"] = {
-            "architecture": "STAIR-REEC-versionICAART",
+            **evidence_identity(validate_icaart_config(self.cfg)),
             "manifest": getattr(self, "icaart_manifest", {}),
             "graph_fingerprint": self.graph_fingerprint,
         }
@@ -158,7 +156,8 @@ class STAIR_ICAART_Model(STAIR5_v8_Model):
         """Validates graph fingerprint integrity upon checkpoint resume."""
         rec = state.get("stair_icaart") if isinstance(state, dict) else None
         if not isinstance(rec, dict) or rec.get("graph_fingerprint") != self.graph_fingerprint:
-            raise ValueError("STAIR-REEC graph fingerprint mismatch on resume")
+            label = "STAIR-PEEC" if self.icaart_manifest["null_scope"] == "full_activity" else "STAIR-REEC"
+            raise ValueError(f"{label} graph fingerprint mismatch on resume")
         super().set_extra_state(state)
 
     def load_state_dict(self, state_dict, strict=True, assign=False):
@@ -168,5 +167,6 @@ class STAIR_ICAART_Model(STAIR5_v8_Model):
         graph = state_dict.get("mAdj")
         if (not isinstance(graph, torch.Tensor) or graph.dtype != torch.float32
                 or sparse_fingerprint(tensor_to_scipy(graph)) != self.graph_fingerprint):
-            raise ValueError("STAIR-REEC checkpoint graph payload checksum mismatch")
+            label = "STAIR-PEEC" if self.icaart_manifest["null_scope"] == "full_activity" else "STAIR-REEC"
+            raise ValueError(f"{label} checkpoint graph payload checksum mismatch")
         return super().load_state_dict(state_dict, strict=strict, assign=assign)

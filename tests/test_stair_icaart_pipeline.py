@@ -158,9 +158,11 @@ def make_batch(model_instance):
     }
 
 
-def test_exact_v8_delta0_parity(setup):
+@pytest.mark.parametrize("mode,halves", [("replicated_excess", 2), ("pooled_activity_excess", 0)])
+def test_exact_v8_delta0_parity(setup, mode, halves):
     """Verify bitwise parity of loss, gradients, and 1-step Adam update at delta=0."""
     dataset, cfg, _ = setup
+    cfg.evidence_mode, cfg.evidence_halves = mode, halves
 
     # 1. Instantiate V8 reference model
     torch.manual_seed(2026)
@@ -383,3 +385,82 @@ def test_resume_rejects_tampered_sparse_graph_payload(setup):
     )
     with pytest.raises(ValueError, match="payload checksum"):
         model.load_state_dict(saved)
+
+
+@pytest.mark.parametrize("mode", ["pooled_activity_excess", "pooled_activity_count", "pooled_activity_shuffle"])
+def test_peec_graph_contract_and_no_partition(setup, monkeypatch, mode):
+    dataset, cfg, _ = setup
+    cfg.evidence_mode, cfg.evidence_halves = mode, 0
+    import models.stair_icaart_graph as graph_module
+    def forbidden(*args, **kwargs):
+        raise AssertionError("PEEC must not partition users")
+    monkeypatch.setattr(graph_module, "build_activity_replication", forbidden)
+    model = STAIR_ICAART_Model(dataset, cfg)
+    manifest = model.icaart_manifest
+    assert manifest["null_scope"] == "full_activity"
+    assert manifest["active_partition"] is False
+    assert manifest["active_halves"] == 0
+    assert manifest["evidence_seed"] is None
+    assert len(manifest["counts_shape"]) == len(manifest["null_expectation_shape"]) == 1
+    assert model.icaart_metadata["frac_single_half_disagreement"] is None
+    assert model.mAdj.layout == torch.sparse_csr
+    assert model.mAdj.grad_fn is None
+    assert len(model.marked_params()) == 2
+
+
+def test_peec_resume_rejects_legacy_estimator_even_at_delta_zero(setup):
+    dataset, cfg, _ = setup
+    cfg.evidence_delta = 0.0
+    legacy = STAIR_ICAART_Model(dataset, cfg)
+    cfg.evidence_mode, cfg.evidence_halves = "pooled_activity_excess", 0
+    pooled = STAIR_ICAART_Model(dataset, cfg)
+    assert legacy.graph_fingerprint == pooled.graph_fingerprint
+    before = {key: value.detach().clone() for key, value in pooled.named_parameters()}
+    with pytest.raises(ValueError, match="provenance"):
+        pooled.load_state_dict(legacy.state_dict())
+    for key, value in pooled.named_parameters():
+        assert torch.equal(value, before[key])
+
+
+def test_peec_checkpoint_roundtrip(setup, tmp_path):
+    dataset, cfg, _ = setup
+    cfg.evidence_mode, cfg.evidence_halves = "pooled_activity_excess", 0
+    first = STAIR_ICAART_Model(dataset, cfg)
+    path = tmp_path / "peec.pt"
+    torch.save(first.state_dict(), path)
+    second = STAIR_ICAART_Model(dataset, cfg)
+    second.load_state_dict(torch.load(path, map_location="cpu", weights_only=True))
+    assert first.get_extra_state() == second.get_extra_state()
+    for a, b in zip(first.parameters(), second.parameters()):
+        assert torch.equal(a, b)
+
+
+def test_native_metric_observer_exports_only_selected_test(tmp_path, monkeypatch):
+    """Spy on the boundary: native evaluation is called once; regular TEST is not selected."""
+    import json
+    from main_stair_icaart import CoachForSTAIRICAART
+    from main_stair5_v8 import CoachForSTAIR5_v8
+    coach = object.__new__(CoachForSTAIRICAART)
+    coach.cfg = types.SimpleNamespace(artifact_dir=str(tmp_path), seed=1,
+                                      evidence_mode="pooled_activity_excess", evidence_delta=1.)
+    test_monitors = {"test": {"metric": [types.SimpleNamespace(
+        active=True, count=12, name=name, avg=value,
+    ) for name, value in (("RECALL@10", .06), ("RECALL@20", .1),
+                          ("NDCG@10", .03), ("NDCG@20", .046234567891))]}}
+    monkeypatch.setattr(CoachForSTAIRICAART, "monitors",
+                        property(lambda self: test_monitors))
+    calls = []
+    monkeypatch.setattr(CoachForSTAIR5_v8, "evaluate",
+                        lambda self, **kw: calls.append(kw))
+    monkeypatch.setattr(CoachForSTAIRICAART, "get_res_sys_arch",
+                        lambda self: types.SimpleNamespace(graph_fingerprint="a" * 64))
+    monkeypatch.setattr("main_stair_icaart.is_main_process", lambda: True)
+    coach.evaluate(500, mode="test")
+    assert len(calls) == 1
+    assert not (tmp_path / "selected_metrics.json").exists()
+    coach._exporting_selected = True
+    coach.evaluate(430, mode="test")
+    assert len(calls) == 2
+    measured = json.loads((tmp_path / "selected_metrics.json").read_text())
+    assert measured["epoch"] == 430
+    assert measured["metrics"]["NDCG@20"] == .046234567891
