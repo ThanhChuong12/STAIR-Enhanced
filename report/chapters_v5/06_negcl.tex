@@ -1,0 +1,482 @@
+% ==============================================================================
+% CHƯƠNG: CÁC PHƯƠNG ÁN MỞ RỘNG NÂNG CAO CHO NEGCL (V1 - V7)
+% Nghiên cứu và khảo sát trên ba tập dữ liệu Amazon (Baby, Sports, Clothing)
+% ==============================================================================
+
+\section{Các phương án mở rộng nâng cao cho NEGCL}
+\label{sec:negcl_advanced_extensions}
+
+Chương này khảo sát bảy phương án mở rộng cho NEGCL, ký hiệu từ \textbf{V1} đến \textbf{V7}, nhằm xử lý nhiễu đa phương thức, over-smoothing, popularity bias và mất cân bằng gradient trong học biểu diễn tương phản. Các kết quả dưới đây được trình bày theo số liệu của bảng; chúng không tự chứng minh cơ chế nhân quả hay nguyên nhân cải thiện.
+
+\begin{table}[H]
+\centering
+\renewcommand{\baselinestretch}{1}
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.18}
+\caption{Tổng quan bảy phương án mở rộng nâng cao (V1--V7) khảo sát trên nền tảng NEGCL.}
+\label{tab:negcl_v1_v7_overview}
+\begin{tabularx}{\linewidth}{@{}
+    >{\centering\arraybackslash}p{0.8cm}
+    >{\raggedright\arraybackslash}p{3.2cm}
+    X
+    >{\raggedright\arraybackslash}p{3.2cm}@{}}
+\toprule
+\textbf{Mã} & \textbf{Phương án} & \textbf{Cơ chế và vị trí can thiệp} & \textbf{Không gian hoặc toán tử} \\
+\midrule
+V1 & Diff-NEGCL & Mô hình hóa phân bố đặc trưng đa phương thức và dùng quá trình đảo để ước lượng đặc trưng & score-based diffusion \\
+V2 & REARM-Meta & Chiếu thành phần đa phương thức khỏi hướng cộng tác rồi cân bằng bằng cổng thích ứng & Phép chiếu trực giao trong $\mathbb{R}^d$ \\
+V3 & MoDiCF & Hiệu chỉnh điểm bằng dự báo đối thực; diễn giải nhân quả cần thêm giả định nhận dạng & Can thiệp $do(\cdot)$ và điểm đối thực \\
+V4 & FITMM & Định tuyến thích ứng đa phương thức kết hợp với mục tiêu information bottleneck & Bộ định tuyến MoE $\mathcal{R}_{\text{MoE}}$ \\
+V5 & C-DNS & Khai phá mẫu âm bán khó theo giáo trình học động với biên theo tương đồng ngữ nghĩa & Lịch trình nhiệt độ $\tau_\ell$ \\
+V6 & DualBand-NEGCL & Kết hợp thành phần lan truyền thông thấp và phần dư thông cao & Ma trận kề chuẩn hóa đối xứng $\hat{\mathbf{A}}$ \\
+V7 & AdaTau-NEGCL & Điều chỉnh nhiệt độ tương phản theo biểu diễn của mẫu neo & Hàm nhiệt độ động $\tau_n(\mathbf{e}_n)$ \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ==============================================================================
+% 1. CƠ SỞ LÝ THUYẾT VÀ MÔ HÌNH TOÁN HỌC
+% ==============================================================================
+\subsection{Cơ sở lý thuyết và mô hình toán học}
+\label{sec:theory_and_formulation}
+
+% ------------------------------------------------------------------------------
+% V1: Diff-NEGCL
+% ------------------------------------------------------------------------------
+\subsubsection{V1: Diff-NEGCL -- Ước lượng đặc trưng bằng mô hình khuếch tán}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    input/.style={rectangle, draw=blue!65!black, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.6cm, align=center,
+        font=\scriptsize, fill=blue!6, inner sep=4pt},
+    improve/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=4pt,
+        minimum height=1.15cm, text width=3.3cm, align=center,
+        font=\scriptsize\bfseries, fill=orange!12, inner sep=4pt},
+    process/.style={rectangle, draw=teal!70!black, thick, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.7cm, align=center,
+        font=\scriptsize, fill=teal!8, inner sep=4pt},
+    output/.style={rectangle, draw=violet!70!black, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.6cm, align=center,
+        font=\scriptsize, fill=violet!7, inner sep=4pt},
+    arr/.style={-{Stealth[length=2.2mm]}, thick}
+]
+\node[input] (raw) at (-5.3,0) {Đặc trưng thô\\$\mathbf{e}_m \in \{\mathbf{v}, \mathbf{t}\}$\\có thể chứa nhiễu};
+\node[improve] (diff) at (-1.8,0) {V1: Quá trình khuếch tán\\và mạng nơ-ron dự đoán\\nhiễu $\boldsymbol{\epsilon}_\theta(\mathbf{x}_t, t)$};
+\node[process] (clean) at (1.8,0) {Ước lượng đặc trưng\\$\hat{\mathbf{x}}_0$\\qua quá trình đảo};
+\node[output] (hg) at (5.2,0) {Lan truyền siêu đồ thị\\và học tương phản\\NEGCL};
+\draw[arr] (raw) -- (diff);
+\draw[arr] (diff) -- (clean);
+\draw[arr] (clean) -- (hg);
+\end{tikzpicture}
+\caption{Sơ đồ của V1 (Diff-NEGCL). Mô hình khuếch tán dự đoán nhiễu và tạo ước lượng đặc trưng đầu vào cho quá trình lan truyền siêu đồ thị.}
+\label{fig:v1_diff_negcl}
+\end{figure}
+
+Đặc trưng đa phương thức trích xuất từ các mô hình học sâu thị giác và ngôn ngữ thường chứa nhiều thành phần dư thừa không tương thích với hành vi mua sắm thực tế. Trong V1, một quá trình khuếch tán thuận thêm nhiễu Gaussian từng bước vào vector đặc trưng $\mathbf{x}_0 = \mathbf{e}_m$:
+\begin{equation}
+q(\mathbf{x}_t \mid \mathbf{x}_{t-1}) = \mathcal{N}\left(\mathbf{x}_t; \sqrt{1 - \beta_t}\mathbf{x}_{t-1}, \beta_t \mathbf{I}\right), \quad t = 1, \dots, T,
+\end{equation}
+trong đó $\beta_t \in (0, 1)$ là lịch trình phương sai. Trạng thái tại bước $t$ bất kỳ được biểu diễn trực tiếp theo $\mathbf{x}_0$:
+\begin{equation}
+\mathbf{x}_t = \sqrt{\bar{\alpha}_t}\mathbf{x}_0 + \sqrt{1 - \bar{\alpha}_t}\boldsymbol{\epsilon}, \quad \boldsymbol{\epsilon} \sim \mathcal{N}(\mathbf{0}, \mathbf{I}), \quad \bar{\alpha}_t = \prod_{s=1}^t (1 - \beta_s).
+\end{equation}
+Mạng dự đoán nhiễu $\boldsymbol{\epsilon}_\theta(\mathbf{x}_t, t)$ có thể được huấn luyện bằng mục tiêu dự đoán nhiễu đơn giản hóa của mô hình khuếch tán:
+\begin{equation}
+\mathcal{L}_{\text{diff}} = \mathbb{E}_{t, \mathbf{x}_0, \boldsymbol{\epsilon}}\left[\|\boldsymbol{\epsilon} - \boldsymbol{\epsilon}_\theta(\mathbf{x}_t, t)\|_2^2\right].
+\end{equation}
+Ở bước đảo, ước lượng tại bước $t$ được tính bằng $\hat{\mathbf{x}}_0 = (\mathbf{x}_t - \sqrt{1-\bar{\alpha}_t}\,\boldsymbol{\epsilon}_\theta(\mathbf{x}_t,t))/\sqrt{\bar{\alpha}_t}$. Quá trình này chỉ cho ước lượng từ mô hình đã học; riêng mục tiêu trên không bảo đảm loại bỏ nhiễu ngữ nghĩa hay siêu cạnh sai nếu không có giả định, dữ liệu sạch hoặc tiêu chí đánh giá phù hợp.
+
+% ------------------------------------------------------------------------------
+% V2: REARM-Meta
+% ------------------------------------------------------------------------------
+\subsubsection{V2: REARM-Meta -- Tách trực giao và cân bằng Meta-Gate}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    input/.style={rectangle, draw=blue!65!black, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.6cm, align=center,
+        font=\scriptsize, fill=blue!6, inner sep=4pt},
+    improve/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=4pt,
+        minimum height=1.15cm, text width=3.3cm, align=center,
+        font=\scriptsize\bfseries, fill=orange!12, inner sep=4pt},
+    process/.style={rectangle, draw=teal!70!black, thick, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.7cm, align=center,
+        font=\scriptsize, fill=teal!8, inner sep=4pt},
+    output/.style={rectangle, draw=violet!70!black, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.6cm, align=center,
+        font=\scriptsize, fill=violet!7, inner sep=4pt},
+    arr/.style={-{Stealth[length=2.2mm]}, thick}
+]
+\node[input] (emb) at (-5.3,0) {Biểu diễn cộng tác\\và đa phương thức\\$\mathbf{e}_{\text{cf}}, \mathbf{e}_v, \mathbf{e}_t$};
+\node[improve] (orth) at (-1.8,0) {V2: Phép chiếu trực giao\\$\mathbf{e}_m^{\text{spec}} \perp \mathbf{e}_{\text{cf}}$\\và điều chuẩn trực giao};
+\node[process] (meta) at (1.8,0) {Cổng động Meta-Gate\\$\mathbf{g}_m = \sigma(\mathbf{W}_m [\mathbf{e}_m^{\text{spec}} \| \mathbf{e}_{\text{cf}}] + \mathbf{b}_m)$};
+\node[output] (final) at (5.2,0) {Dung hợp tối ưu\\$\mathbf{e}^* = \mathbf{e}_{\text{cf}} + \sum \mathbf{g}_m \odot \mathbf{e}_m^{\text{spec}}$};
+\draw[arr] (emb) -- (orth);
+\draw[arr] (orth) -- (meta);
+\draw[arr] (meta) -- (final);
+\end{tikzpicture}
+\caption{Sơ đồ can thiệp của V2 (REARM-Meta). Biểu diễn đa phương thức được tách trực giao khỏi biểu diễn cộng tác nhằm triệt tiêu sự chồng lấn thông tin trước khi dung hợp.}
+\label{fig:v2_rearm_meta}
+\end{figure}
+
+V2 tách thành phần phương thức nằm dọc theo biểu diễn cộng tác và phần dư trực giao. Với một cặp vector, phép chiếu được viết:
+\begin{equation}
+\mathbf{e}_m^{\text{spec}} = \mathbf{e}_m - \frac{\mathbf{e}_m^\top \mathbf{e}_{\text{cf}}}{\|\mathbf{e}_{\text{cf}}\|_2^2 + \varepsilon} \mathbf{e}_{\text{cf}}.
+\end{equation}
+Nếu áp dụng phép chiếu trên trực tiếp, phần dư đã trực giao về mặt đại số và số hạng phạt sau gần bằng không. Gọi $\mathbf{E}_m$ và $\mathbf{E}_{\text{cf}}$ là ma trận biểu diễn theo lô trước phép chiếu; khi đó có thể dùng số hạng điều chuẩn:
+\begin{equation}
+\mathcal{L}_{\text{orth}} = \sum_{m \in \{v, t\}} \left\|\left(\mathbf{E}_m\right)^\top \mathbf{E}_{\text{cf}}\right\|_F^2,
+\end{equation}
+Một cổng học được đánh giá mức đóng góp của từng thành phần trực giao; nếu cần dùng mật độ tương tác làm đầu vào thì phải bổ sung biến đó tường minh:
+\begin{equation}
+\mathbf{g}_m = \sigma\left(\mathbf{W}_m [\mathbf{e}_m^{\text{spec}} \parallel \mathbf{e}_{\text{cf}}] + \mathbf{b}_m\right).
+\end{equation}
+
+% ------------------------------------------------------------------------------
+% V3: MoDiCF
+% ------------------------------------------------------------------------------
+\subsubsection{V3: MoDiCF -- Hiệu chỉnh điểm bằng dự báo đối thực}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    input/.style={rectangle, draw=blue!65!black, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.6cm, align=center,
+        font=\scriptsize, fill=blue!6, inner sep=4pt},
+    improve/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=4pt,
+        minimum height=1.15cm, text width=3.3cm, align=center,
+        font=\scriptsize\bfseries, fill=orange!12, inner sep=4pt},
+    process/.style={rectangle, draw=teal!70!black, thick, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.7cm, align=center,
+        font=\scriptsize, fill=teal!8, inner sep=4pt},
+    output/.style={rectangle, draw=violet!70!black, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.6cm, align=center,
+        font=\scriptsize, fill=violet!7, inner sep=4pt},
+    arr/.style={-{Stealth[length=2.2mm]}, thick}
+]
+\node[input] (dag) at (-5.3,0) {Đầu vào và phương thức\\$u, i, M$\\Chọn giá trị đối thực $M^*$};
+\node[improve] (tie) at (-1.8,0) {V3: So sánh đối thực\\$\delta_{ui}^{\text{cf}} = \hat{y}(u,i;M)-\hat{y}(u,i;M^*)$};
+\node[process] (debias) at (1.8,0) {Hiệu chỉnh điểm\\$\hat{y}_{ui}^{\text{clean}} = \hat{y}_{ui} - \gamma\delta_{ui}^{\text{cf}}$};
+\node[output] (score) at (5.2,0) {Điểm xếp hạng\\đã hiệu chỉnh\\$\hat{y}_{ui}^{\text{clean}}$};
+\draw[arr] (dag) -- (tie);
+\draw[arr] (tie) -- (debias);
+\draw[arr] (debias) -- (score);
+\end{tikzpicture}
+\caption{Sơ đồ minh họa V3 (MoDiCF). Điểm dự báo tại phương thức đối thực được dùng trong một quy tắc hiệu chỉnh; diễn giải nhân quả cần các giả định bổ sung.}
+\label{fig:v3_modicf}
+\end{figure}
+
+Trong gợi ý đa phương thức, điểm dự báo có thể phụ thuộc vào biểu diễn phương thức $M$. Ký hiệu $M^*$ là giá trị đối thực cơ sở, điểm chênh lệch giữa hai dự báo được định nghĩa:
+\begin{equation}
+\delta_{ui}^{\text{cf}} = \hat{y}(u, i; M=m) - \hat{y}(u, i; M=m^*),
+\end{equation}
+trong đó $m^*$ là giá trị phương thức đối thực được lựa chọn. Đại lượng này là chênh lệch dự báo đối thực, không mặc nhiên là hiệu ứng gián tiếp nhân quả. Điểm sau hiệu chỉnh được định nghĩa theo một quy tắc mô hình hóa:
+\begin{equation}
+\hat{y}_{ui}^{\text{clean}} = \hat{y}_{ui} - \gamma \cdot \delta_{ui}^{\text{cf}},
+\end{equation}
+với $\delta_{ui}^{\text{cf}}$ là chênh lệch giữa điểm dự báo ở phương thức quan sát và phương thức đối thực. Muốn diễn giải phép hiệu chỉnh này là khử chệch nhân quả cần nêu rõ đồ thị nhân quả, biến gây nhiễu và giả định nhận dạng; nếu không, đây chỉ là một phép hiệu chỉnh dựa trên dự báo đối thực.
+
+% ------------------------------------------------------------------------------
+% V4: FITMM
+% ------------------------------------------------------------------------------
+\subsubsection{V4: FITMM -- Định tuyến đa phương thức theo cấu trúc thông tin}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    input/.style={rectangle, draw=blue!65!black, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.6cm, align=center,
+        font=\scriptsize, fill=blue!6, inner sep=4pt},
+    improve/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=4pt,
+        minimum height=1.15cm, text width=3.3cm, align=center,
+        font=\scriptsize\bfseries, fill=orange!12, inner sep=4pt},
+    process/.style={rectangle, draw=teal!70!black, thick, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.7cm, align=center,
+        font=\scriptsize, fill=teal!8, inner sep=4pt},
+    output/.style={rectangle, draw=violet!70!black, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.6cm, align=center,
+        font=\scriptsize, fill=violet!7, inner sep=4pt},
+    arr/.style={-{Stealth[length=2.2mm]}, thick}
+]
+\node[input] (expert) at (-5.3,0) {3 chuyên gia\\$\mathbf{e}_u^{\text{cf}}, \mathbf{e}_u^v,$\\$\mathbf{e}_u^t$};
+\node[improve] (router) at (-1.8,0) {V4: Bộ định tuyến MoE\\$\boldsymbol{\pi}(u) = \operatorname{Softmax}(\mathbf{e}_u^\top\mathbf{W}_r/\sqrt{d})$\\Kết hợp có điều kiện};
+\node[process] (sparse) at (1.8,0) {Dung hợp có điều kiện\\$\mathbf{e}_u^{\text{routed}} = \sum_{k=1}^3 \pi_k(u) \mathbf{e}_u^k$};
+\node[output] (loss) at (5.2,0) {Mục tiêu huấn luyện\\$\mathcal{L}_{\text{BPR}} + \mathcal{L}_{\text{IB}}$\\và cân bằng tải};
+\draw[arr] (expert) -- (router);
+\draw[arr] (router) -- (sparse);
+\draw[arr] (sparse) -- (loss);
+\end{tikzpicture}
+\caption{Sơ đồ của V4 (FITMM). Bộ định tuyến tạo trọng số cho ba biểu diễn người dùng; mục tiêu huấn luyện kết hợp xếp hạng, nén thông tin và cân bằng tải.}
+\label{fig:v4_fitmm}
+\end{figure}
+
+V4 coi mỗi kênh tín hiệu là một chuyên gia và tối ưu mục tiêu information bottleneck:
+\begin{equation}
+\min_{\theta} -I(Y; \mathbf{Z}) + \beta I(X; \mathbf{Z}),
+\end{equation}
+trong đó $\mathbf{Z}$ là biểu diễn nén sau định tuyến, $X$ là đầu vào và $Y$ là tín hiệu tương tác hoặc nhãn mục tiêu. Trọng số định tuyến cho người dùng $u$ được tính bằng:
+\begin{equation}
+\boldsymbol{\pi}(u) = \text{Softmax}\left(\frac{\mathbf{e}_u^\top \mathbf{W}_r}{\sqrt{d}}\right) \in \Delta^2, \quad \mathbf{e}_u^{\text{routed}} = \pi_{\text{cf}}(u)\mathbf{e}_u^{\text{cf}} + \pi_v(u)\mathbf{e}_u^v + \pi_t(u)\mathbf{e}_u^t.
+\end{equation}
+Hàm mất mát tổng thể có thể viết $\mathcal{L}=\mathcal{L}_{\text{BPR}}+\lambda_{\text{IB}}\mathcal{L}_{\text{IB}}+\lambda_{\text{lb}}\mathcal{L}_{\text{lb}}$, trong đó $\mathcal{L}_{\text{lb}}$ là điều chuẩn cân bằng tải. Cần chỉ rõ cách ước lượng các thông tin tương hỗ và định nghĩa $\mathcal{L}_{\text{lb}}$ trong thực nghiệm; nếu không, biểu thức trên chỉ xác định họ mục tiêu chứ chưa đủ để tái lập phương pháp.
+
+% ------------------------------------------------------------------------------
+% V5: C-DNS
+% ------------------------------------------------------------------------------
+\subsubsection{V5: C-DNS -- Khai phá mẫu âm bán khó theo giáo trình học động}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    input/.style={rectangle, draw=blue!65!black, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.6cm, align=center,
+        font=\scriptsize, fill=blue!6, inner sep=4pt},
+    improve/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=4pt,
+        minimum height=1.15cm, text width=3.3cm, align=center,
+        font=\scriptsize\bfseries, fill=orange!12, inner sep=4pt},
+    process/.style={rectangle, draw=teal!70!black, thick, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.7cm, align=center,
+        font=\scriptsize, fill=teal!8, inner sep=4pt},
+    output/.style={rectangle, draw=violet!70!black, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.6cm, align=center,
+        font=\scriptsize, fill=violet!7, inner sep=4pt},
+    arr/.style={-{Stealth[length=2.2mm]}, thick}
+]
+\node[input] (pool) at (-5.3,0) {Tập mẫu âm ứng viên\\$\mathcal{S}_u^- = \{j_1, \dots, j_K\}$};
+\node[improve] (sched) at (-1.8,0) {V5: Giáo trình học động\\Chọn mẫu âm bán khó\\$\tau_\ell = \max(\tau_{\min},\tau_0(1-\ell/E))$};
+\node[process] (margin) at (1.8,0) {Biên theo tương đồng\\$\Delta_{ij} = \cos(\mathbf{e}_i^{\text{mm}}, \mathbf{e}_j^{\text{mm}})$};
+\node[output] (bpr) at (5.2,0) {BPR thích ứng giáo trình\\$\mathcal{L}_{\text{C-DNS}}$};
+\draw[arr] (pool) -- (sched);
+\draw[arr] (sched) -- (margin);
+\draw[arr] (margin) -- (bpr);
+\end{tikzpicture}
+\caption{Sơ đồ của V5 (C-DNS). Cơ chế chọn mẫu âm thích ứng theo epoch và biên phân biệt phụ thuộc độ tương đồng ngữ nghĩa.}
+\label{fig:v5_cdns}
+\end{figure}
+
+Việc chọn mẫu âm ngẫu nhiên có thể tạo ra các mẫu quá dễ, trong khi hard negative ngay từ đầu có thể làm tăng nguy cơ false negative và gây mất ổn định. V5 chuyển dịch phân phối mẫu âm theo epoch $\ell$:
+\begin{equation}
+P(j \mid u, i; \ell) \propto \exp\left(\frac{\hat{y}_{uj} - \hat{y}_{ui}}{\tau_\ell}\right) \cdot \mathbb{I}\left(m_{\text{low}}(\ell) \le \hat{y}_{uj} \le m_{\text{high}}(\ell)\right),
+\end{equation}
+trong đó $\tau_\ell=\max(\tau_{\min},\tau_0(1-\ell/E))$ với $\tau_{\min}>0$, còn $m_{\text{low}}(\ell)$ và $m_{\text{high}}(\ell)$ là hai ngưỡng chọn mẫu được xác định theo lịch trình. Để tái lập cần công bố cụ thể các ngưỡng, $\alpha(\ell)$ và cách lấy mẫu từ phân phối này. Điểm tương đồng ngữ nghĩa giữa mẫu dương $i$ và mẫu âm $j$ được cộng vào biên cần phân biệt:
+\begin{equation}
+\mathcal{L}_{\text{C-DNS}} = -\sum_{(u, i, j)} \ln \sigma\left(\hat{y}_{ui} - \hat{y}_{uj} - \alpha(\ell) \cos(\mathbf{e}_i^{\text{mm}}, \mathbf{e}_j^{\text{mm}})\right).
+\end{equation}
+
+% ------------------------------------------------------------------------------
+% V6: DualBand-NEGCL
+% ------------------------------------------------------------------------------
+\subsubsection{V6: DualBand-NEGCL -- Bộ lọc đồ thị miền tần số kép}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    input/.style={rectangle, draw=blue!65!black, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.6cm, align=center,
+        font=\scriptsize, fill=blue!6, inner sep=4pt},
+    improve/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=4pt,
+        minimum height=1.15cm, text width=3.3cm, align=center,
+        font=\scriptsize\bfseries, fill=orange!12, inner sep=4pt},
+    process/.style={rectangle, draw=teal!70!black, thick, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.7cm, align=center,
+        font=\scriptsize, fill=teal!8, inner sep=4pt},
+    output/.style={rectangle, draw=violet!70!black, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.6cm, align=center,
+        font=\scriptsize, fill=violet!7, inner sep=4pt},
+    arr/.style={-{Stealth[length=2.2mm]}, thick}
+]
+\node[input] (graph) at (-5.3,0) {Biểu diễn nút $\mathbf{E}^{(0)}$\\và ma trận kề $\tilde{\mathbf{A}}$};
+\node[improve] (filter) at (-1.8,0) {V6: Bộ lọc hai dải\\Thông thấp $\hat{\mathbf{A}}$\\Thông cao $\mathbf{I} - \hat{\mathbf{A}}$};
+\node[process] (gate) at (1.8,0) {Cổng phổ tần số thích ứng\\$\mathbf{g}_{\text{hf}} = \sigma(\mathbf{W}_f \mathbf{E}_{\text{high}} + \mathbf{b}_f)$};
+\node[output] (emb) at (5.2,0) {Biểu diễn sau kết hợp\\$\mathbf{E}_{\text{final}} = \mathbf{E}_{\text{low}} + \mathbf{g}_{\text{hf}} \odot \mathbf{E}_{\text{high}}$};
+\draw[arr] (graph) -- (filter);
+\draw[arr] (filter) -- (gate);
+\draw[arr] (gate) -- (emb);
+\end{tikzpicture}
+\caption{Sơ đồ của V6 (DualBand-NEGCL). Biểu diễn được tách thành thành phần lan truyền và phần dư, sau đó kết hợp qua cổng học được.}
+\label{fig:v6_dualband}
+\end{figure}
+
+Lan truyền GCN thường thiên về thành phần thông thấp và có thể gây over-smoothing khi tăng số tầng. V6 dùng phép xấp xỉ hai dải sau; thành phần thông cao là phần dư phổ, không mặc nhiên tương ứng với sở thích ngách:
+\begin{align}
+\hat{\mathbf{A}} &= \tilde{\mathbf{D}}^{-1/2}\tilde{\mathbf{A}}\tilde{\mathbf{D}}^{-1/2}, \qquad \tilde{\mathbf{A}}=\mathbf{A}+\mathbf{I}, \\
+\mathbf{E}_{\text{low}} &= \hat{\mathbf{A}}\mathbf{E}, \qquad
+\mathbf{E}_{\text{high}} = (\mathbf{I}-\hat{\mathbf{A}})\mathbf{E},
+\end{align}
+trong đó $\tilde{\mathbf{D}}$ là ma trận bậc của $\tilde{\mathbf{A}}$. Đây là bộ lọc bậc thấp, không phải khai triển Chebyshev; hiệu quả bảo toàn sở thích ngách cần được kiểm chứng riêng.
+Biểu diễn tổng hợp sử dụng cổng gating thích ứng cho nhánh tần số cao:
+\begin{equation}
+\mathbf{E}_{\text{final}} = \mathbf{E}_{\text{low}} + \sigma(\mathbf{W}_f \mathbf{E}_{\text{high}} + \mathbf{b}_f) \odot \mathbf{E}_{\text{high}}.
+\end{equation}
+
+% ------------------------------------------------------------------------------
+% V7: AdaTau-NEGCL
+% ------------------------------------------------------------------------------
+\subsubsection{V7: AdaTau-NEGCL -- Tự thích ứng nhiệt độ đối chiếu đa phương thức}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    input/.style={rectangle, draw=blue!65!black, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.6cm, align=center,
+        font=\scriptsize, fill=blue!6, inner sep=4pt},
+    improve/.style={rectangle, draw=red!70!black, dashed, thick, rounded corners=4pt,
+        minimum height=1.15cm, text width=3.3cm, align=center,
+        font=\scriptsize\bfseries, fill=orange!12, inner sep=4pt},
+    process/.style={rectangle, draw=teal!70!black, thick, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.7cm, align=center,
+        font=\scriptsize, fill=teal!8, inner sep=4pt},
+    output/.style={rectangle, draw=violet!70!black, rounded corners=3pt,
+        minimum height=1.15cm, text width=2.6cm, align=center,
+        font=\scriptsize, fill=violet!7, inner sep=4pt},
+    arr/.style={-{Stealth[length=2.2mm]}, thick}
+]
+\node[input] (sim) at (-5.3,0) {Biểu diễn neo, dương\\$\mathbf{e}_n, \mathbf{e}_{n^+}$\\và tập mẫu âm};
+\node[improve] (tau) at (-1.8,0) {V7: Nhiệt độ thích ứng\\$\tau_n=\tau_0[1+\kappa\tanh(\mathbf{w}_\tau^\top\mathbf{e}_n+b_\tau)]$};
+\node[process] (scale) at (1.8,0) {Co giãn logit InfoNCE\\theo nhiệt độ của mẫu neo};
+\node[output] (loss) at (5.2,0) {Mất mát tương phản\\$\mathcal{L}_{\text{AdaTau}}$};
+\draw[arr] (sim) -- (tau);
+\draw[arr] (tau) -- (scale);
+\draw[arr] (scale) -- (loss);
+\end{tikzpicture}
+\caption{Sơ đồ của V7 (AdaTau-NEGCL). Nhiệt độ được điều chỉnh theo biểu diễn mẫu neo rồi dùng để co giãn các logit trong mất mát InfoNCE.}
+\label{fig:v7_adatau}
+\end{figure}
+
+Trong InfoNCE, nhiệt độ co giãn các logit tương đồng và do đó ảnh hưởng đến phân bố xác suất cũng như gradient. Tác động cụ thể phụ thuộc vào các logit trong lô; không thể kết luận chỉ từ công thức rằng nhiệt độ cố định gây bùng nổ gradient. V7 tham số hóa nhiệt độ cho mẫu neo $n$:
+\begin{equation}
+\tau(n) = \tau_0 \cdot \left(1 + \kappa \cdot \tanh(\mathbf{w}_\tau^\top \mathbf{e}_n + b_\tau)\right),
+\end{equation}
+với $\tau_0>0$ và $\kappa \in (0,1)$, nhờ đó $\tau(n)>0$. Với các biểu diễn đã chuẩn hóa, mẫu dương $n^+$ và tập mẫu âm $\mathcal{N}(n)$, mất mát theo từng mẫu neo là:
+\begin{equation}
+\ell_n = -\log\frac{\exp(s(\mathbf{e}_n,\mathbf{e}_{n^+})/\tau(n))}{\exp(s(\mathbf{e}_n,\mathbf{e}_{n^+})/\tau(n)) + \sum_{j\in\mathcal{N}(n)}\exp(s(\mathbf{e}_n,\mathbf{e}_j)/\tau(n))},
+\end{equation}
+trong đó $s(\cdot,\cdot)$ là hàm tương đồng. Công thức này định nghĩa nhiệt độ theo mẫu neo, không phải theo từng phương thức.
+
+% ==============================================================================
+% 2. KẾT QUẢ THỰC NGHIỆM VÀ ĐỐI SÁNH
+% ==============================================================================
+\subsection{Kết quả thực nghiệm và đối sánh}
+\label{sec:experiments_and_benchmark}
+
+Bảng~\ref{tab:v1_v7_full_benchmark} trình bày số liệu NEGCL đã công bố~\cite{shi2025negcl} làm mốc đối chiếu duy nhất và kết quả của bảy phương án V1--V7 trên ba tập Amazon Baby, Sports và Clothing.
+
+Quy tắc ghi nhận: $R@K$ và $N@K$ lần lượt ký hiệu $\text{Recall@K}$ và $\text{NDCG@K}$. $\Delta\text{R@20}$ và $\Delta\text{N@20}$ là mức thay đổi tương đối so với số liệu NEGCL đã công bố, tính theo các giá trị chỉ số hiển thị; trong công thức, chỉ số tham chiếu là số liệu NEGCL đã công bố tương ứng:
+\begin{equation}
+\Delta\text{Metric} = \frac{\text{Metric}_{\text{Model}} - \text{Metric}_{\text{ref}}}{\text{Metric}_{\text{ref}}} \times 100\%.
+\end{equation}
+Các tỉ lệ được tính từ giá trị chỉ số đã làm tròn trong bảng; vì vậy chúng có thể hơi khác nếu tính từ số liệu gốc chưa làm tròn. Các giá trị in đậm thể hiện kết quả cao nhất trong nhóm phương án mở rộng trên từng tiêu chí.
+\clearpage
+
+\begingroup
+\renewcommand{\baselinestretch}{1}
+\fontsize{7.4}{8.8}\selectfont
+\setlength{\tabcolsep}{1.8pt}
+\renewcommand{\arraystretch}{1.12}
+\setlength{\LTleft}{\fill}
+\setlength{\LTright}{\fill}
+\begin{longtable}{@{}
+    >{\raggedright\arraybackslash}p{1.4cm}
+    >{\raggedright\arraybackslash}p{3.4cm}
+    *{4}{>{\centering\arraybackslash}p{0.96cm}}
+    *{2}{>{\centering\arraybackslash}p{1.2cm}}@{}}
+\caption{Đối sánh hiệu năng giữa NEGCL đã công bố và bảy phương pháp mở rộng V1--V7 trên ba tập dữ liệu Amazon. $\Delta$R@20 và $\Delta$N@20 biểu thị tỉ lệ thay đổi phần trăm so với NEGCL đã công bố.}
+\label{tab:v1_v7_full_benchmark}
+\tabularnewline
+\toprule
+\rowcolor{gray!18}
+\textbf{Tập dữ liệu} & \textbf{Mô hình} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{$\Delta$R@20} & \textbf{$\Delta$N@20} \\
+\midrule
+\endfirsthead
+\multicolumn{8}{c}{\textbf{Bảng \thetable\ (tiếp theo)}}\\
+\toprule
+\rowcolor{gray!18}
+\textbf{Tập dữ liệu} & \textbf{Mô hình} & \textbf{R@10} & \textbf{R@20} & \textbf{N@10} & \textbf{N@20} & \textbf{$\Delta$R@20} & \textbf{$\Delta$N@20} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{8}{r}{\textit{Tiếp tục ở trang sau}}\\
+\endfoot
+\bottomrule
+\endlastfoot
+
+\multirow{8}{*}{\textbf{Baby}}
+ & \textbf{NEGCL công bố} & 0.0674 & 0.1033 & 0.0364 & 0.0456 & $0.00\%$ & $0.00\%$ \\
+\cmidrule{2-8}
+ & V1: Diff-NEGCL & 0.0670 & 0.1026 & 0.0362 & 0.0452 & $-0.68\%$ & $-0.88\%$ \\
+ & V2: REARM-Meta & 0.0665 & 0.1019 & 0.0359 & 0.0450 & $-1.36\%$ & $-1.32\%$ \\
+ & V3: MoDiCF & 0.0674 & 0.1031 & 0.0364 & 0.0455 & $-0.19\%$ & $-0.22\%$ \\
+ & V4: FITMM & 0.0678 & 0.1040 & 0.0366 & 0.0459 & $+0.68\%$ & $+0.66\%$ \\
+ & V5: C-DNS & 0.0656 & 0.1005 & 0.0352 & 0.0442 & $-2.71\%$ & $-3.07\%$ \\
+ & V6: DualBand-NEGCL & 0.0657 & 0.1006 & 0.0353 & 0.0442 & $-2.61\%$ & $-3.07\%$ \\
+ & \textbf{V7: AdaTau-NEGCL} & \textbf{0.0680} & \textbf{0.1041} & \textbf{0.0367} & \textbf{0.0460} & $\mathbf{+0.77\%}$ & $\mathbf{+0.88\%}$ \\
+\midrule
+\multirow{8}{*}{\textbf{Sports}}
+ & \textbf{NEGCL công bố} & 0.0757 & 0.1130 & 0.0414 & 0.0511 & $0.00\%$ & $0.00\%$ \\
+\cmidrule{2-8}
+ & V1: Diff-NEGCL & 0.0766 & 0.1143 & 0.0419 & 0.0517 & $+1.15\%$ & $+1.17\%$ \\
+ & V2: REARM-Meta & 0.0754 & 0.1134 & 0.0414 & 0.0513 & $+0.35\%$ & $+0.39\%$ \\
+ & V3: MoDiCF & 0.0762 & 0.1139 & 0.0417 & 0.0515 & $+0.80\%$ & $+0.78\%$ \\
+ & \textbf{V4: FITMM} & \textbf{0.0774} & \textbf{0.1158} & \textbf{0.0423} & \textbf{0.0523} & $\mathbf{+2.48\%}$ & $\mathbf{+2.35\%}$ \\
+ & V5: C-DNS & 0.0770 & 0.1149 & \textbf{0.0423} & 0.0520 & $+1.68\%$ & $+1.76\%$ \\
+ & V6: DualBand-NEGCL & 0.0770 & 0.1148 & \textbf{0.0423} & 0.0520 & $+1.59\%$ & $+1.76\%$ \\
+ & V7: AdaTau-NEGCL & 0.0771 & 0.1152 & 0.0422 & 0.0521 & $+1.95\%$ & $+1.96\%$ \\
+\midrule
+\multirow{8}{*}{\textbf{Clothing}}
+ & \textbf{NEGCL công bố} & 0.0613 & 0.0897 & 0.0336 & 0.0408 & $0.00\%$ & $0.00\%$ \\
+\cmidrule{2-8}
+ & V1: Diff-NEGCL & 0.0621 & 0.0909 & 0.0340 & 0.0413 & $+1.34\%$ & $+1.23\%$ \\
+ & V2: REARM-Meta & 0.0609 & 0.0895 & 0.0334 & 0.0408 & $-0.22\%$ & $0.00\%$ \\
+ & V3: MoDiCF & 0.0617 & 0.0904 & 0.0338 & 0.0411 & $+0.78\%$ & $+0.74\%$ \\
+ & \textbf{V4: FITMM} & \textbf{0.0626} & \textbf{0.0918} & \textbf{0.0343} & \textbf{0.0417} & $\mathbf{+2.34\%}$ & $\mathbf{+2.21\%}$ \\
+ & V5: C-DNS & 0.0613 & 0.0899 & 0.0339 & 0.0412 & $+0.22\%$ & $+0.98\%$ \\
+ & V6: DualBand-NEGCL & 0.0607 & 0.0903 & 0.0338 & 0.0413 & $+0.67\%$ & $+1.23\%$ \\
+ & V7: AdaTau-NEGCL & 0.0623 & 0.0912 & 0.0341 & 0.0415 & $+1.67\%$ & $+1.72\%$ \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+% ==============================================================================
+% 3. PHÂN TÍCH KẾT QUẢ THỰC NGHIỆM
+% ==============================================================================
+\subsection{Phân tích kết quả thực nghiệm}
+\label{sec:result_analysis}
+
+\subsubsection{So sánh kết quả giữa các tập dữ liệu}
+Bảng~\ref{tab:v1_v7_full_benchmark} cho thấy mức chênh lệch của các phương án so với NEGCL đã công bố:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Trên Amazon Baby:} $\Delta$R@20 nằm trong khoảng $-2.71\%$ đến $+0.77\%$, còn $\Delta$N@20 nằm trong khoảng $-3.07\%$ đến $+0.88\%$. V1, V2, V3, V5 và V6 thấp hơn mốc công bố ở cả hai chỉ số; V4 và V7 cao hơn ở cả hai chỉ số. V7 đạt giá trị cao nhất trong nhóm mở rộng trên Baby.
+    \item \textbf{Trên Amazon Sports:} Cả bảy phương án đều cao hơn mốc công bố ở R@20 và N@20. Mức tăng $\Delta$R@20 nằm trong khoảng $+0.35\%$ đến $+2.48\%$, còn $\Delta$N@20 nằm trong khoảng $+0.39\%$ đến $+2.35\%$. V4 có các giá trị cao nhất ở R@10, R@20 và N@20; ở N@10, V4 bằng V5 và V6.
+    \item \textbf{Trên Amazon Clothing:} V2 thấp hơn mốc công bố ở R@20 và bằng ở N@20; sáu phương án còn lại cao hơn ở cả hai chỉ số. $\Delta$R@20 nằm trong khoảng $-0.22\%$ đến $+2.34\%$, còn $\Delta$N@20 từ $0.00\%$ đến $+2.21\%$. V4 đạt giá trị cao nhất trong nhóm mở rộng ở cả bốn chỉ số.
+\end{itemize}
+Các chênh lệch mô tả kết quả trong bảng, nhưng chưa xác định nguyên nhân tăng giảm hoặc chứng minh cơ chế của từng phương pháp.
+
+\subsubsection{Đánh giá chi tiết từng nhóm phương pháp}
+
+\paragraph{V4 và V7 dẫn đầu trên các tập khác nhau:}
+Trong nhóm mở rộng, \textbf{V4 (FITMM)} đạt R@20 và N@20 cao nhất trên Sports ($+2.48\%$ và $+2.35\%$) và Clothing ($+2.34\%$ và $+2.21\%$) so với NEGCL đã công bố. Trên Baby, \textbf{V7 (AdaTau-NEGCL)} đạt R@20 và N@20 cao nhất, lần lượt tăng $+0.77\%$ và $+0.88\%$. Bảng không có lần chạy lặp lại hoặc sai số nên chưa thể kết luận về độ ổn định.
+
+\paragraph{Kết quả của V1 và V5:}
+\textbf{V1} cao hơn mốc công bố ở R@20 và N@20 trên Sports ($+1.15\%$, $+1.17\%$) và Clothing ($+1.34\%$, $+1.23\%$), nhưng thấp hơn trên Baby. \textbf{V5 (C-DNS)} cũng cho kết quả khác nhau theo tập: thấp hơn mốc công bố trên Baby, cao hơn trên Sports ($+1.68\%$, $+1.76\%$) và chỉ tăng nhẹ trên Clothing ($+0.22\%$, $+0.98\%$). Các số liệu này tự chúng không xác nhận nguyên nhân của chênh lệch.
+
+\paragraph{Các giới hạn cần đánh giá thêm:}
+V2 có mức tăng nhỏ trên Sports nhưng R@20 thấp hơn mốc công bố trên Clothing; V3 có kết quả thấp hơn trên Baby và cao hơn trên Sports, Clothing. V6 thấp hơn mốc công bố ở Baby nhưng cao hơn ở R@20 và N@20 trên Sports, Clothing. Bảng không cung cấp phép đo chi phí tính toán, lần chạy lặp lại hoặc phân tích riêng theo mức độ phổ biến của sản phẩm.
+
+% ==============================================================================
+% 4. HƯỚNG PHÁT TRIỂN VÀ KẾT LUẬN
+% ==============================================================================
+\subsection{Hướng phát triển và kết luận}
+\label{sec:future_and_conclusion}
+
+\begin{enumerate}[leftmargin=*, label=\textbf{\arabic*.}]
+  \item \textbf{Thử nghiệm kiến trúc kết hợp:} Đánh giá giả thuyết kết hợp bộ định tuyến V4 với nhiệt độ thích ứng V7 bằng thí nghiệm đối chứng và phân tích thành phần.
+  \item \textbf{Đánh giá chi phí tính toán:} Đo thời gian huấn luyện và suy luận của V1; chỉ khảo sát phương án khuếch tán một bước nếu kết quả cho thấy chi phí là nút thắt.
+  \item \textbf{Mở rộng miền dữ liệu:} Kiểm thử tính tổng quát của V1--V7 trên dữ liệu video ngắn hoặc mạng xã hội đa kênh, chẳng hạn TikTok.
+\end{enumerate}
+
+\noindent\textbf{Tóm tắt chương:}
+Chương đã trình bày bảy phương án mở rộng V1--V7 cùng các công thức đề xuất và số liệu được báo cáo trên ba tập Amazon, sử dụng NEGCL đã công bố làm mốc đối chiếu duy nhất. Trong nhóm mở rộng, V4 đạt R@20 và N@20 cao nhất trên Sports và Clothing, đồng thời cao nhất cả bốn chỉ số trên Clothing; riêng N@10 trên Sports, V4 đồng hạng với V5 và V6. V7 đạt giá trị cao nhất ở cả bốn chỉ số trên Baby. Cần bổ sung mô tả thí nghiệm, lần chạy lặp lại, độ biến thiên và kiểm chứng từng cơ chế trước khi kết luận về tính ổn định hoặc nguyên nhân cải thiện.
