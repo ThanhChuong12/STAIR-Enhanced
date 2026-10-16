@@ -90,7 +90,27 @@ class STAIR_ICAART_Model(STAIR5_v8_Model):
             baseline_scipy = tensor_to_scipy(baseline_mAdj)
 
             # 2. Build STAIR-REEC calibrated graph S_ICA
-            train_edges = self.dataset.train().to_bigraph(edge_type="u2i")["u2i"].edge_index
+            _bg = self.dataset.train().to_bigraph(edge_type="u2i")
+            if hasattr(_bg, "edge_index") and _bg.edge_index is not None:
+                train_edges = _bg.edge_index
+            elif hasattr(_bg, "__getitem__"):
+                try:
+                    train_edges = _bg["u2i"].edge_index
+                except (AttributeError, KeyError):
+                    train_edges = None
+                    for _k in [("USER", "u2i", "ITEM"), ("user", "u2i", "item"), ("User", "u2i", "Item")]:
+                        if _k in _bg:
+                            train_edges = _bg[_k].edge_index
+                            break
+                    if train_edges is None and hasattr(_bg, "_data"):
+                        for _v in _bg._data.values():
+                            if hasattr(_v, "edge_index") and _v.edge_index is not None:
+                                train_edges = _v.edge_index
+                                break
+            else:
+                train_edges = getattr(_bg, "edge_index", None)
+            if train_edges is None:
+                raise AttributeError(f"Không thể trích xuất train_edges từ bigraph {_bg}")
             state = build_stair_icaart_graph(
                 mfeats=self._icaart_features,
                 knn_edges_list=self._icaart_candidates,

@@ -357,3 +357,8 @@ def replicated_excess_score(
         raise ArithmeticError(f"Evidence score r outside [0, 1): min={r.min()}, max={r.max()}")
 
     return r
+
+
+# Public alias for backward compatibility and verification scripts
+compute_replicated_excess_evidence = replicated_excess_score
+

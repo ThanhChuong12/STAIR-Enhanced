@@ -266,14 +266,48 @@ if _need_tg_shim:
             self._nodes = {}
 
         def __getitem__(self, key):
-            if isinstance(key, str):
-                if key not in self._nodes:
-                    self._nodes[key] = types.SimpleNamespace(x=None)
-                return self._nodes[key]
+            if isinstance(key, tuple):
+                if key not in self._data:
+                    self._data[key] = types.SimpleNamespace(edge_index=None, edge_weight=None)
+                return self._data[key]
+            elif isinstance(key, str):
+                # 1. Match edge by name or contained in edge tuple (e.g. 'u2i' in ('USER', 'u2i', 'ITEM'))
+                for edge_key, edge_obj in self._data.items():
+                    if isinstance(edge_key, tuple):
+                        if len(edge_key) == 3 and edge_key[1] == key:
+                            return edge_obj
+                        if key in edge_key:
+                            return edge_obj
+                    elif edge_key == key:
+                        return edge_obj
+                # 2. Match node
+                if key in self._nodes:
+                    return self._nodes[key]
+                # 3. Fallback: create namespace with both x and edge_index
+                obj = types.SimpleNamespace(x=None, edge_index=None, edge_weight=None)
+                self._nodes[key] = obj
+                return obj
             else:
                 if key not in self._data:
-                    self._data[key] = types.SimpleNamespace(edge_index=None)
+                    self._data[key] = types.SimpleNamespace(edge_index=None, edge_weight=None)
                 return self._data[key]
+
+        def __contains__(self, key):
+            if key in self._nodes or key in self._data:
+                return True
+            for edge_key in self._data:
+                if isinstance(edge_key, tuple) and key in edge_key:
+                    return True
+                elif edge_key == key:
+                    return True
+            return False
+
+        def __getattr__(self, name):
+            if name == 'edge_index':
+                for edge_obj in self._data.values():
+                    if hasattr(edge_obj, 'edge_index') and edge_obj.edge_index is not None:
+                        return edge_obj.edge_index
+            raise AttributeError(f"'HeteroData' object has no attribute '{name}'")
 
         def coalesce(self):
             return self

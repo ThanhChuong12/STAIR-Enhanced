@@ -603,3 +603,8 @@ def build_stair_icaart_graph(
     operator_tensor = scipy_to_tensor(S_ICA).to(device)
 
     return GraphStateICAART(operator=operator_tensor, metadata=metadata, manifest=manifest)
+
+
+# Public alias for backward compatibility and verification scripts
+calibrate_semantic_support = calibrate_semantic_operator
+
