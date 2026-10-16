@@ -84,6 +84,9 @@ def validate_icaart_config(config: Any) -> Dict[str, Any]:
     halves = values["evidence_halves"]
     full = mode in FULL_ACTIVITY_MODES
     expected_halves = 0 if full else 2
+    if halves is None:
+        values["evidence_halves"] = expected_halves
+        halves = expected_halves
     if isinstance(halves, bool) or not isinstance(halves, int) or halves != expected_halves:
         raise ValueError(f"{mode} requires evidence_halves={expected_halves}")
 

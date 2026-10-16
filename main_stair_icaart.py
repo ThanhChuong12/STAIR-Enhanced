@@ -22,7 +22,7 @@ import torch
 from main_stair5_v8 import CoachForSTAIR5_v8, load_dataset
 from models.stair5_v8_graph import ARMS_V8, resolve_v8_config
 from models.stair_icaart import STAIR_ICAART_Model
-from stair_icaart_config import ICAART_OPTIONS, ICAART_NAMES, evidence_identity, validate_icaart_config
+from stair_icaart_config import ICAART_OPTIONS, ICAART_NAMES, FULL_ACTIVITY_MODES, evidence_identity, validate_icaart_config
 from stair_icaart_reporting import atomic_json, native_metric_snapshot, validate_selected_receipt
 from freerec.ddp import is_main_process
 
@@ -122,6 +122,13 @@ def _compile_config():
         which4best="NDCG@20",
     )
     cfg.compile()
+    halves_flag_present = any(
+        arg == "--evidence-halves" or arg.startswith("--evidence-halves=")
+        for arg in sys.argv
+    )
+    if not halves_flag_present:
+        expected_halves = 0 if cfg.evidence_mode in FULL_ACTIVITY_MODES else 2
+        cfg.evidence_halves = expected_halves
     validate_icaart_config(cfg)
     cfg = resolve_v8_config(cfg)
 
