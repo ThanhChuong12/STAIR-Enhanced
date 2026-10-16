@@ -1,0 +1,244 @@
+\section{STAIR: Manipulating Collaborative and Multimodal Information}
+
+\subsection{Kết quả thực nghiệm cải tiến 1 (Giai đoạn 6): Bounded Semantic Consensus Validation (STAIR6-v1 / BSCV)}
+
+\subsubsection{Kiến trúc đề xuất}
+
+Phiên bản cải tiến 1 của Giai đoạn 6, ký hiệu là \textbf{STAIR6-v1}, kế thừa khung xương kiến trúc WMSG-CSE, đồng thời tích hợp cơ chế xác thực đồng thuận ngữ nghĩa có giới hạn chuẩn (Bounded Semantic Consensus Validation, viết tắt là \textbf{BSCV}). 
+
+Về mặt nguyên lý, BSCV bổ sung một nhánh biểu diễn phụ trợ dựa trên sự đồng thuận đa phương thức giữa hành vi tương tác và nội dung sản phẩm. Điểm cốt lõi là nhánh phụ trợ này \textbf{chỉ can thiệp vào vector truy vấn (query) phía mặt hàng trong hàm mất mát tương phản NLGCL ở pha huấn luyện}. Toàn bộ các thành phần còn lại—bao gồm khởi tạo embedding, tích chập tiến FSC (Forward Stepwise Convolution), toán tử làm mịn WMSG với đồ thị $S_8$, hàm mục tiêu phân hạng BPR và cơ chế suy luận—hoàn toàn được giữ nguyên. Do đó, mô hình đạt được hiệu năng vượt bậc mà không làm phát sinh thêm bất kỳ chi phí tính toán nào trong giai đoạn suy luận (Zero Serving Overhead).
+
+Cấu trúc toán học của kiến trúc STAIR6-v1 (BSCV) bao gồm bốn thành phần chính:
+
+\noindent\textcolor{lightblue}{\textbf{1. Ma trận kề đồng thuận ngữ nghĩa trên tập cạnh CF}}
+
+Thay vì mở rộng thêm các cạnh mới trên toàn bộ danh mục sản phẩm gây loãng thông tin và tăng chi phí bộ nhớ, mô hình tái sử dụng tập cạnh ứng viên khác đường chéo $\mathcal{E}_{\text{CF}}$ và trọng số đồng xuất hiện hành vi $q_{ij}$ đã được xây dựng từ nhánh tương tác CF:
+\begin{equation}
+q_{ij} = \frac{c_{ij}}{c_{ij} + 5} \frac{c_{ij}}{\sqrt{n_i n_j}}, \quad \mathcal{E}_{\text{CF}} = \operatorname{supp}(W_{\text{CF}}) \setminus \{(i,i)\}
+\end{equation}
+trong đó $n_i$ là bậc tương tác của mặt hàng $i$ và $c_{ij}$ là số lượng người dùng tương tác chung giữa mặt hàng $i$ và mặt hàng $j$ trong tập huấn luyện. Trên mỗi cặp cạnh $(i,j) \in \mathcal{E}_{\text{CF}}$, độ tương đồng nội dung được tính từ đặc trưng văn bản gốc $F_t$ và hình ảnh gốc $F_v$ đã được chuẩn hóa theo hàng:
+\begin{equation}
+a_{ij}^t = \max\{0, \cos(F_{t,i}, F_{t,j})\}, \quad a_{ij}^v = \max\{0, \cos(F_{v,i}, F_{v,j})\}, \quad a_{ij} = \frac{5a_{ij}^t + a_{ij}^v}{6}
+\end{equation}
+Trọng số đồng thuận thô $W_C$ kết hợp tín hiệu hành vi và nội dung với ngưỡng sàn $\epsilon_C = 0.05$ nhằm duy trì tính liên thông trên tập cạnh $\mathcal{E}_{\text{CF}}$:
+\begin{equation}
+(W_C)_{ij} = \begin{cases}
+q_{ij}[\epsilon_C + (1 - \epsilon_C)a_{ij}], & (i,j) \in \mathcal{E}_{\text{CF}}, \\
+0, & \text{ngược lại}.
+\end{cases}
+\end{equation}
+Ma trận $W_C$ sau đó được chuẩn hóa đối xứng theo bậc $d_i^C = \sum_j (W_C)_{ij}$ để tạo thành toán tử truyền thông điệp tĩnh $C$ (các đỉnh cô lập có $d_i^C = 0$ được giữ nguyên giá trị 0 mà không cộng ma trận đơn vị):
+\begin{equation}
+C_{ij} = \begin{cases}
+\dfrac{(W_C)_{ij}}{\sqrt{d_i^C d_j^C}}, & d_i^C d_j^C > 0, \\
+0, & \text{ngược lại}.
+\end{cases}
+\end{equation}
+Do $W_C$ đối xứng và không âm, toán tử $C$ thỏa mãn tính chất đối xứng $C = C^\top$ và có chuẩn phổ bị chặn $\|C\|_2 \le 1$.
+
+\noindent\textcolor{lightblue}{\textbf{2. Thông điệp đồng thuận và cơ chế giới hạn chuẩn (Norm-Bounding Safeguard)}}
+
+Tại mỗi bước huấn luyện, thông điệp đồng thuận $M$ được tính thông qua phép nhân ma trận thưa từ bảng embedding mặt hàng tầng gốc $V^0 \in \mathbb{R}^{N_i \times d}$:
+\begin{equation}
+M = C V^0 \in \mathbb{R}^{N_i \times d}
+\end{equation}
+Đặt $x_i = I_i^1$ là biểu diễn mặt hàng tại tầng thứ nhất của quá trình tích chập FSC và $m_i = M_i$ là thông điệp đồng thuận tương ứng. Để ngăn chặn hiện tượng trôi dạt biểu diễn (representation drift)—đặc biệt trên các mặt hàng thưa tương tác nơi thông điệp ngữ nghĩa có độ lớn lấn át hoàn toàn đặc trưng cộng tác—mô hình áp dụng hệ số giới hạn chuẩn an toàn $\kappa_i$:
+\begin{equation}
+\kappa_i = \operatorname{stopgrad}\left[\min\left\{1, \frac{\|x_i\|_2}{\|m_i\|_2 + \varepsilon}\right\}\right], \quad \tilde{m}_i = \kappa_i m_i
+\end{equation}
+với $\varepsilon = 10^{-8}$ và $\operatorname{stopgrad}[\cdot]$ là toán tử ngắt lan truyền đạo hàm ngược. Phép toán này là lá chắn toán học then chốt bảo đảm chuẩn của thông điệp sau điều chỉnh không bao giờ vượt quá chuẩn biểu diễn gốc: $\|\tilde{m}_i\|_2 \le \|x_i\|_2$ với mọi mặt hàng $i$.
+
+\noindent\textcolor{lightblue}{\textbf{3. Cổng học thích ứng vô hướng (Learned Adaptive Gate)}}
+
+Mức độ dung nạp thông điệp đồng thuận cho từng mặt hàng được điều tiết tự động bởi một cổng vô hướng $g_i \in (0, 1)$. Đầu vào của cổng là vector ngữ cảnh ba chiều $z_i$ bất biến với phép quay hệ trục tọa độ:
+\begin{equation}
+z_i = \operatorname{stopgrad}\left[\cos_\varepsilon(x_i, m_i), \quad \frac{1}{4}\operatorname{clip}\left(\log\frac{\|m_i\|_2 + \varepsilon}{\|x_i\|_2 + \varepsilon}, -4, 4\right), \quad \mathbb{1}[d_i^C > 0]\right]
+\end{equation}
+Vector $z_i$ được đưa qua mạng nơ-ron MLP hai tầng có cấu trúc gọn nhẹ $3 \to 8 \to 1$ (chỉ phát sinh đúng 41 tham số huấn luyện) kết hợp hàm kích hoạt SiLU và Sigmoid:
+\begin{equation}
+g_i = \sigma\left(W_2 \operatorname{SiLU}(W_1 z_i + b_1) + b_2\right)
+\end{equation}
+
+\noindent\textcolor{lightblue}{\textbf{4. Ghép nối thặng dư và hàm mục tiêu NLGCL}}
+
+Biểu diễn truy vấn mặt hàng phụ trợ $J_i$ được tổng hợp từ $x_i$ và thành phần thặng dư đồng thuận theo lịch trình điều phối động $\rho_e$:
+\begin{equation}
+\rho_e = \rho_{\max} \operatorname{clip}\left(\frac{e - 30}{30}, 0, 1\right), \quad J_i = x_i + \rho_e g_i \tilde{m}_i
+\end{equation}
+với $\rho_{\max} = 0.20$. Trong 30 epoch đầu tiên, $\rho_e = 0$ để mô hình ổn định không gian nhúng cơ sở từ tín hiệu BPR và NLGCL gốc; từ epoch 31 đến 60, $\rho_e$ tăng tuyến tính lên $0.20$ và giữ cố định cho đến epoch 500. Vì $g_i \in (0, 1)$ và $\|\tilde{m}_i\|_2 \le \|x_i\|_2$, độ lệch của truy vấn luôn bị chặn chặt bởi bất đẳng thức:
+\begin{equation}
+\|J_i - x_i\|_2 \le \rho_e \|x_i\|_2 \le 0.20 \|x_i\|_2
+\end{equation}
+Vector $J_i$ được sử dụng làm truy vấn ở nhánh mặt hàng sang người dùng trong hàm mất mát InfoNCE với nhiệt độ $\tau = 0.20$:
+\begin{equation}
+\mathcal{L}_{\text{CL}}^{\text{BSCV}} = 0.5\,\ell(J[i_b], U^0[u_b]) + 0.5\,\ell(U^1[u_b], V^0[i_b]), \quad \mathcal{L}_{\text{total}} = \mathcal{L}_{\text{BPR}} + 0.01\,\mathcal{L}_{\text{CL}}^{\text{BSCV}}
+\end{equation}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.82, transform shape,
+    inputbox/.style={rectangle, draw=blue!60!black, line width=0.8pt, rounded corners=4pt, minimum height=0.8cm, text width=2.8cm, font=\footnotesize, align=center, fill=blue!6, inner sep=4pt},
+    block/.style={rectangle, draw=blue!60!black, line width=0.8pt, rounded corners=4pt, minimum height=0.9cm, text width=5.6cm, font=\footnotesize, align=center, fill=blue!6, inner sep=4pt},
+    layerbox/.style={rectangle, draw=teal!70!black, line width=0.8pt, rounded corners=4pt, minimum height=0.9cm, text width=5.6cm, font=\footnotesize\bfseries, align=center, fill=teal!8, inner sep=4pt},
+    clbox/.style={rectangle, draw=orange!80!black, dashed, line width=1pt, rounded corners=6pt, text width=6.0cm, font=\footnotesize, align=left, fill=orange!8, inner sep=8pt},
+    finalbox/.style={rectangle, draw=blue!85!black, line width=1.2pt, rounded corners=6pt, minimum height=1.1cm, text width=11.0cm, font=\small, align=center, fill=blue!12, inner sep=6pt},
+    arr/.style={-{Stealth[length=3.5mm, width=2.5mm]}, line width=1pt, draw=gray!80!black},
+    dasharr/.style={-{Stealth[length=3.5mm, width=2.5mm]}, line width=1pt, dashed, draw=purple!80!black},
+    subbgleft/.style={draw=blue!30, dashed, fill=blue!2, rounded corners=8pt},
+    subbgright/.style={draw=orange!40, dashed, fill=orange!2, rounded corners=8pt}
+]
+
+\draw[subbgleft] (-7.6, 2.0) rectangle (-0.6, -7.8);
+\node[font=\small\bfseries\color{blue!70!black}, anchor=north] at (-4.1, 1.8) {Khung xương WMSG-CSE};
+
+\draw[subbgright] (0.6, 2.0) rectangle (7.6, -7.8);
+\node[font=\small\bfseries\color{orange!80!black}, anchor=north] at (4.1, 1.8) {Nhánh đồng thuận phụ trợ BSCV (STAIR6-v1)};
+
+\node[inputbox, anchor=north] (raw_cf) at (-5.6, 0.8) {Đồ thị CF $W_{\text{CF}}$};
+\node[inputbox, anchor=north] (raw_feat) at (-2.6, 0.8) {Đặc trưng $F_t, F_v$};
+
+\node[block, anchor=north] (s8_op) at (-4.1, -0.6) {\textbf{Toán tử làm mịn $S_8$}\\[2pt]$S_8 = 0.9 S_{\text{WMSG}} + 0.1 \bar{S}_{\text{CF}}$};
+\draw[arr] (raw_cf.south) -- ++(0,-0.3) -| ([xshift=-1.4cm]s8_op.north);
+\draw[arr] (raw_feat.south) -- ++(0,-0.3) -| ([xshift=1.4cm]s8_op.north);
+
+\node[layerbox, anchor=north] (fsc) at (-4.1, -2.4) {\textbf{Tích chập tiến FSC}\\[2pt]Sinh $H^0 = [U^0; V^0], H^1 = [U^1; I^1]$ và $\bar{H}$};
+\draw[arr] (s8_op.south) -- (fsc.north);
+
+\node[block, anchor=north] (bpr) at (-4.1, -4.3) {\textbf{Nhánh xếp hạng BPR}\\[2pt]Tính $\mathcal{L}_{\text{BPR}}(\bar{H})$ và suy luận Top-K};
+\draw[arr] (fsc.south) -- (bpr.north);
+
+\node[block, anchor=north] (bsc) at (-4.1, -6.1) {\textbf{Bộ tối ưu AdamWSEvo}\\[2pt]Làm mịn hướng cập nhật mặt hàng qua $S_8$};
+\draw[arr] (bpr.south) -- (bsc.north);
+
+\node[block, anchor=north] (c_mat) at (4.1, 0.8) {\textbf{Ma trận đồng thuận $C$}\\[2pt]$(W_C)_{ij} = q_{ij}[\epsilon_C + (1-\epsilon_C)a_{ij}]$};
+\draw[dasharr] (raw_cf.east) -- ++(0.3,0) |- ([yshift=4pt]c_mat.west);
+\draw[dasharr] (raw_feat.east) -- ++(0.5,0) |- ([yshift=-4pt]c_mat.west);
+
+\node[layerbox, anchor=north] (msg) at (4.1, -1.1) {\textbf{Thông điệp \& Giới hạn chuẩn}\\[2pt]$M = C V^0, \quad \tilde{m}_i = \min(1, \|x_i\|/\|m_i\|) m_i$};
+\draw[arr] (c_mat.south) -- (msg.north);
+\draw[dasharr] (fsc.east) -- ++(0.5,0) |- (msg.west);
+
+\node[clbox, anchor=north] (gate) at (4.1, -3.0) {
+    \textbf{\small Cổng thích ứng (41 tham số)}\\[2pt]
+    $g_i = \sigma(\text{MLP}(z_i)) \in (0, 1)$\\
+    $J_i = I_i^1 + \rho_e g_i \tilde{m}_i$
+};
+\draw[arr] (msg.south) -- (gate.north);
+
+\node[block, anchor=north] (nlgcl) at (4.1, -5.6) {\textbf{Hàm mất mát NLGCL}\\[2pt]$0.5\,\ell(J, U^0) + 0.5\,\ell(U^1, V^0)$};
+\draw[arr] (gate.south) -- (nlgcl.north);
+
+\node[finalbox, anchor=north] (total) at (0.0, -8.8) {\textbf{Hàm mục tiêu huấn luyện tổng thể}\\[4pt]$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{BPR}} + 0.01\,\mathcal{L}_{\text{CL}}^{\text{BSCV}}$ (Quá trình suy luận chỉ dùng $\bar{H}$, không tốn chi phí tính $C$ và cổng)};
+\draw[arr] (bsc.south) |- ([yshift=0.35cm]total.north) -| ([xshift=-3.5cm]total.north);
+\draw[arr] (nlgcl.south) |- ([yshift=0.35cm]total.north) -| ([xshift=3.5cm]total.north);
+
+\end{tikzpicture}
+\caption{Kiến trúc tổng thể của mô hình STAIR6-v1 (BSCV). Ma trận đồng thuận $C$ và cổng vô hướng chỉ bổ sung tín hiệu cho truy vấn mặt hàng trong nhánh NLGCL lúc huấn luyện, giữ nguyên nhánh suy luận cơ sở.}
+\label{fig:stair6_v1_bscv_architecture}
+\end{figure}
+
+\subsubsection{Kết quả thực nghiệm và đối chuẩn hiệu năng}
+
+Mô hình STAIR6-v1 (BSCV) được huấn luyện trong 500 epoch trên nền tảng GPU NVIDIA Tesla T4 (16 GB VRAM) cho cả ba tập dữ liệu chuẩn gồm Amazon Baby, Amazon Sports và Amazon Electronics. Việc lựa chọn mô hình tốt nhất tuân thủ quy chuẩn nghiêm ngặt theo chỉ số NDCG@20 trên tập validation (đánh giá định kỳ mỗi 5 epoch), sau đó nạp lại chính xác checkpoint này để kiểm định độc lập trên tập test với chế độ xếp hạng toàn phần (full ranking).
+
+Để bảo đảm tính khách quan và đối chuẩn chính xác nhất, số liệu của mô hình STAIR Baseline được trích xuất trực tiếp từ Bảng 2 trong bài báo gốc STAIR do nhóm tác giả công bố. Bảng~\ref{tab:stair6_v1_results} đối chiếu chi tiết hiệu năng giữa mô hình STAIR Baseline (công bố trong bài báo gốc STAIR) và phiên bản cải tiến STAIR6-v1 (BSCV).
+
+\renewcommand{\arraystretch}{1.18}
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{6.0pt}
+\begin{longtable}{%
+    >{\raggedright\arraybackslash}p{2.8cm}
+    >{\centering\arraybackslash}p{2.3cm}
+    >{\centering\arraybackslash}p{2.8cm}
+    >{\centering\arraybackslash}p{2.8cm}
+    >{\centering\arraybackslash}p{2.8cm}}
+
+    \caption{Kết quả thực nghiệm của phiên bản cải tiến STAIR6-v1 (BSCV) so với STAIR Baseline (số liệu công bố chính thức trong Bảng 2 của bài báo STAIR) trên ba tập dữ liệu.}
+    \label{tab:stair6_v1_results} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{Baseline (Paper)} & \textbf{STAIR6-v1 (BSCV)} & \textbf{$\Delta$ vs Baseline} \\
+    \hline
+    \endfirsthead
+    \multicolumn{5}{c}{{\bfseries Bảng \thetable\ (tiếp theo)}} \\
+    \hline
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{Baseline (Paper)} & \textbf{STAIR6-v1 (BSCV)} & \textbf{$\Delta$ vs Baseline} \\
+    \hline
+    \endhead
+    \midrule
+    \multicolumn{5}{r}{\textit{Tiếp tục ở trang sau...}} \\
+    \endfoot
+    \hline
+    \endlastfoot
+
+    Baby & Recall@10 & 0.0674 & \textbf{0.0679} & $+0.74\%$ \\
+    \midrule
+    {(best ep 430)} & Recall@20 & 0.1042 & \textbf{0.1054} & $+1.15\%$ \\
+    \midrule
+    & NDCG@10   & 0.0359 & \textbf{0.0366} & $+1.95\%$ \\
+    \midrule
+    & NDCG@20   & 0.0453 & \textbf{0.0463} & $\mathbf{+2.21\%}$ \\
+    \hline
+    Sports & Recall@10 & 0.0743 & \textbf{0.0767} & $+3.23\%$ \\
+    \midrule
+    {(best ep 500)} & Recall@20 & 0.1117 & \textbf{0.1149} & $\mathbf{+2.86\%}$ \\
+    \midrule
+    & NDCG@10   & 0.0407 & \textbf{0.0423} & $\mathbf{+3.93\%}$ \\
+    \midrule
+    & NDCG@20   & 0.0503 & \textbf{0.0521} & $\mathbf{+3.58\%}$ \\
+    \hline
+    Electronics & Recall@10 & 0.0440 & \textbf{0.0462} & $\mathbf{+5.00\%}$ \\
+    \midrule
+    {(best ep 500)} & Recall@20 & 0.0663 & \textbf{0.0683} & $\mathbf{+3.02\%}$ \\
+    \midrule
+    & NDCG@10   & 0.0245 & \textbf{0.0261} & $\mathbf{+6.53\%}$ \\
+    \midrule
+    & NDCG@20   & 0.0302 & \textbf{0.0318} & $\mathbf{+5.30\%}$ \\
+    \hline
+\end{longtable}
+\endgroup
+
+Kết quả thực nghiệm từ Bảng~\ref{tab:stair6_v1_results} ghi nhận mức cải thiện nhất quán và toàn diện của STAIR6-v1 (BSCV) so với mô hình STAIR Baseline công bố trong bài báo gốc:
+\begin{itemize}
+    \item \textbf{Trên tập Amazon Baby}: Mô hình hội tụ sớm tại epoch 430 và thiết lập đỉnh cao NDCG@20 là \textbf{0.0463}, tăng \textbf{+2.21\%} so với baseline công bố ($0.0453$). Chỉ số Recall@10 đạt \textbf{0.0679} ($+0.74\%$), Recall@20 đạt \textbf{0.1054} ($+1.15\%$), đồng thời NDCG@10 đạt \textbf{0.0366} ($+1.95\%$).
+    \item \textbf{Trên tập Amazon Sports}: Phiên bản cải tiến STAIR6-v1 bứt phá mạnh mẽ, nâng NDCG@20 lên mức \textbf{0.0521} (tăng \textbf{+3.58\%} so với baseline $0.0503$). Chỉ số độ phủ Recall@10 đạt \textbf{0.0767} ($+3.23\%$), Recall@20 đạt \textbf{0.1149} (tăng \textbf{+2.86\%} so với baseline $0.1117$), và NDCG@10 đạt \textbf{0.0423} (tăng \textbf{+3.93\%} so với baseline $0.0407$).
+    \item \textbf{Trên tập Amazon Electronics}: Trên đồ thị quy mô lớn với 192.403 người dùng và 63.001 mặt hàng, mô hình tạo ra bước nhảy vọt ấn tượng nhất: NDCG@20 đạt \textbf{0.0318} (tăng \textbf{+5.30\%} so với baseline $0.0302$) cùng NDCG@10 đạt \textbf{0.0261} (tăng \textbf{+6.53\%} so với baseline $0.0245$). Chỉ số Recall@10 đạt \textbf{0.0462} (tăng \textbf{+5.00\%} so với baseline $0.0440$) và Recall@20 đạt \textbf{0.0683} (tăng \textbf{+3.02\%} so với baseline $0.0663$).
+\end{itemize}
+
+\subsubsection{Phân tích chẩn đoán cơ chế đồng thuận và chi phí phần cứng}
+
+Để làm rõ cơ chế giúp nhánh BSCV cải thiện hiệu năng vượt bậc mà không làm trôi dạt biểu diễn cộng tác, các thống kê chẩn đoán telemetry của cổng học thích ứng và giới hạn chuẩn đã được theo dõi liên tục trong suốt 470 epoch hoạt động (từ epoch 31 đến epoch 500):
+\begin{itemize}
+    \item \textbf{Sự thích ứng theo mật độ dữ liệu của giới hạn chuẩn (Norm-Cap Adaptation)}: Tần suất kích hoạt giới hạn chuẩn ($\kappa_i < 1$, tức khi $\|m_i\|_2 > \|x_i\|_2$) đạt $80.18\%$ trên tập Baby, giảm xuống $41.57\%$ trên tập Sports và chỉ còn $17.19\%$ trên tập Electronics. Trên tập dữ liệu nhỏ và thưa tương tác như Baby, chuẩn biểu diễn cộng tác $\|x_i\|_2$ của nhiều mặt hàng còn nhỏ; cơ chế giới hạn chuẩn đã tự động can thiệp ở hơn $80\%$ số mặt hàng để giữ tỷ lệ chuẩn thặng dư trung bình ở mức $0.1650$ (thấp hơn ngưỡng trần an toàn $\rho_{\max} = 0.20$). Ngược lại, trên tập quy mô lớn Electronics với $1.25$ triệu tương tác huấn luyện, hơn $82.8\%$ mặt hàng có biểu diễn cộng tác đủ vững chắc để tiếp nhận trực tiếp toàn bộ thông điệp đồng thuận mà không bị cắt cụt.
+    \item \textbf{Tính bổ trợ trực giao của thông điệp đồng thuận (Orthogonal Complementarity)}: Tỷ lệ năng lượng của thành phần thông điệp vuông góc với vector biểu diễn gốc $I_i^1$ chiếm trung bình $75.19\%$ trên Baby, $61.39\%$ trên Sports và $66.29\%$ trên Electronics. Số liệu này chứng minh thông điệp truyền qua ma trận đồng thuận $C$ không lặp lại thông tin cấu trúc có sẵn của tầng tích chập người dùng - mặt hàng, mà cung cấp từ $61\%$ đến $75\%$ tri thức theo các chiều trực giao mới, giúp phân tách rõ nét các mặt hàng trong hàm mất mát NLGCL.
+    \item \textbf{Hành vi hội tụ của cổng học thích ứng}: Xuất phát từ mức khởi tạo trung lập quanh $0.503 - 0.508$ ở epoch 31, giá trị trung bình của cổng $g_i$ tăng dần theo hàm mục tiêu và ổn định ở mức $0.9580$ trên Baby, $0.9546$ trên Sports và $0.9841$ trên Electronics. Đồng thời, khoảng $15.65\%$ số mặt hàng ngách trên Electronics (không có láng giềng thỏa mãn ngưỡng tương đồng $a_{ij} \ge 0.05$) được gán thông điệp bằng 0, bảo toàn tuyệt đối biểu diễn CF thuần túy.
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{5.0pt}
+\renewcommand{\arraystretch}{1.18}
+\caption{So sánh mức tiêu thụ bộ nhớ GPU và thời gian huấn luyện giữa STAIR Baseline (số liệu công bố chính thức trong Bảng 3 của bài báo STAIR) và STAIR6-v1 (BSCV).}
+\label{tab:stair6_v1_hardware}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{llcccc}
+\toprule
+\rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Mô hình} & \textbf{Bộ nhớ GPU} & \textbf{Thời gian / Epoch} & \textbf{Tổng thời gian Fit (500 ep)} & \textbf{Thông lượng (mẫu/giây)} \\
+\midrule
+\textbf{Amazon Baby} & STAIR Baseline (Paper) & $490\text{ MB}$ & $1.45\text{ s}$ & $\sim 12.08\text{ phút}$ & — \\
+& \textbf{STAIR6-v1 (BSCV - Tesla T4)} & \textbf{147.59 MiB} (đỉnh $148.23$) & \textbf{2.53 s} & \textbf{21.94 phút} & \textbf{47,250.1} \\
+\midrule
+\textbf{Amazon Sports} & STAIR Baseline (Paper) & $696\text{ MB}$ & $2.65\text{ s}$ & $\sim 22.08\text{ phút}$ & — \\
+& \textbf{STAIR6-v1 (BSCV - Tesla T4)} & \textbf{224.08 MiB} (đỉnh $224.61$) & \textbf{5.58 s} & \textbf{48.64 phút} & \textbf{39,727.9} \\
+\midrule
+\textbf{Amazon Electronics} & STAIR Baseline (Paper) & $1,738\text{ MB}$ & $10.23\text{ s}$ & $\sim 1.42\text{ giờ}$ & — \\
+& \textbf{STAIR6-v1 (BSCV - Tesla T4)} & \textbf{804.16 MiB} (đỉnh $804.22$) & \textbf{68.29 s} & \textbf{10.09 giờ} & \textbf{18,910.2} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+Bảng~\ref{tab:stair6_v1_hardware} đối chiếu chi phí tài nguyên phần cứng. Số liệu của STAIR Baseline được dẫn nguyên văn từ Bảng 3 trong bài báo gốc STAIR, trong khi chi phí của STAIR6-v1 được đo thực tế trên GPU NVIDIA Tesla T4 (16 GB VRAM). Nhờ cấu trúc ma trận thưa CSR và chỉ bổ sung đúng 41 tham số cho mạng cổng thích ứng, mô hình STAIR6-v1 duy trì chi phí bộ nhớ cực kỳ tinh gọn: chỉ $147.59\text{ MiB}$ trên Baby, $224.08\text{ MiB}$ trên Sports và $804.16\text{ MiB}$ trên Electronics (đỉnh $804.22\text{ MiB}$). Đáng chú ý, mức tiêu thụ VRAM của STAIR6-v1 thấp hơn rất nhiều so với dung lượng bộ nhớ GPU mà tác giả STAIR báo cáo cho mô hình Baseline (chỉ bằng $30\%$ trên Baby, $32\%$ trên Sports và $46\%$ trên Electronics). Hồ sơ bộ nhớ duy trì hoàn toàn phẳng trong suốt 500 epoch, khẳng định tính khả thi cao trong triển khai thực tế.
+
+\clearpage
