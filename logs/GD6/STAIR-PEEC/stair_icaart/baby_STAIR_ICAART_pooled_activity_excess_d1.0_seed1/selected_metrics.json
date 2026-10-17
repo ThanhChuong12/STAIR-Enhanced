@@ -1,0 +1,17 @@
+{
+  "mode": "test",
+  "epoch": 480,
+  "step": -1,
+  "selected_checkpoint": true,
+  "selection": "validation NDCG@20",
+  "seed": 1,
+  "evidence_mode": "pooled_activity_excess",
+  "evidence_delta": 1.0,
+  "graph_fingerprint": "b8013795d439064965dcd6946a44751d9a275ca0cefdc5231192066582d757a8",
+  "metrics": {
+    "RECALL@10": 0.06861877473361941,
+    "RECALL@20": 0.10610715503188693,
+    "NDCG@10": 0.03679847170953948,
+    "NDCG@20": 0.046397878786352126
+  }
+}
