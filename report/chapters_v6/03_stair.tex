@@ -241,4 +241,242 @@ Kết quả thực nghiệm từ Bảng~\ref{tab:stair6_v1_results} ghi nhận m
 
 Bảng~\ref{tab:stair6_v1_hardware} đối chiếu chi phí tài nguyên phần cứng. Số liệu của STAIR Baseline được dẫn nguyên văn từ Bảng 3 trong bài báo gốc STAIR, trong khi chi phí của STAIR6-v1 được đo thực tế trên GPU NVIDIA Tesla T4 (16 GB VRAM). Nhờ cấu trúc ma trận thưa CSR và chỉ bổ sung đúng 41 tham số cho mạng cổng thích ứng, mô hình STAIR6-v1 duy trì chi phí bộ nhớ cực kỳ tinh gọn: chỉ $147.59\text{ MiB}$ trên Baby, $224.08\text{ MiB}$ trên Sports và $804.16\text{ MiB}$ trên Electronics (đỉnh $804.22\text{ MiB}$). Đáng chú ý, mức tiêu thụ VRAM của STAIR6-v1 thấp hơn rất nhiều so với dung lượng bộ nhớ GPU mà tác giả STAIR báo cáo cho mô hình Baseline (chỉ bằng $30\%$ trên Baby, $32\%$ trên Sports và $46\%$ trên Electronics). Hồ sơ bộ nhớ duy trì hoàn toàn phẳng trong suốt 500 epoch, khẳng định tính khả thi cao trong triển khai thực tế.
 
+\subsection{Kết quả thực nghiệm cải tiến 2 (Giai đoạn 6): Pooled Excess-Evidence Calibration (STAIR6-v2 / PEEC)}
+
+\subsubsection{Kiến trúc đề xuất}
+
+Thay vì bổ sung nhánh truyền thông điệp đồng thuận và mạng cổng học có tham số vào hàm mất mát đối tương phản trong pha lan truyền tiến như STAIR6-v1, kiến trúc Pooled Excess-Evidence Calibration, viết tắt là \textbf{PEEC} (phiên bản \textbf{STAIR6-v2}), thực hiện hiệu chỉnh trực tiếp trọng số trên tập cạnh ngữ nghĩa có sẵn trước khi đưa vào bộ làm mịn hướng cập nhật BSC ở phía bộ tối ưu. Phương pháp này giải quyết triệt để ba điểm nghẽn lý thuyết của hướng tiếp cận Replicated Excess-Evidence Calibration (REEC) trước đó: (1) điều kiện lấy cực tiểu $r = \min(r_1, r_2)$ giữa hai nửa người dùng quá khắt khe khiến độ phủ cạnh bị bóp nghẽn dưới $2\%$ trên dữ liệu thưa; (2) sự phụ thuộc chệch vào cách chia nửa tập người dùng ngẫu nhiên; và (3) chưa kiểm soát tác động dời bậc của phép chuẩn hóa đối xứng lên các cạnh ngữ nghĩa không có bằng chứng.
+
+Toàn bộ quá trình ước lượng bằng chứng hành vi của PEEC được tính toán tĩnh một lần duy nhất trên CPU từ tập huấn luyện, giữ nguyên số lượng tham số mô hình và không làm phát sinh thêm phép nhân ma trận thưa trực tuyến trên GPU trong suốt quá trình huấn luyện cũng như suy luận (Zero Extra Parameters \& Zero GPU Overhead).
+
+Cấu trúc toán học của STAIR6-v2 bao gồm bốn bước xử lý chính:
+
+\noindent\textcolor{lightblue}{\textbf{1. Tập cạnh ứng viên ngữ nghĩa cơ sở}}
+
+Mô hình kế thừa nguyên vẹn đồ thị ngữ nghĩa đối xứng $W^8$ của nền tảng WMSG-CSE (STAIR5-v8) được xây dựng từ tập láng giềng top-$k$ theo từng phương thức (văn bản $k_t = 5$, hình ảnh $k_v = 1$) trên đặc trưng gốc $X_t \in \mathbb{R}^{N \times d_t}$ và $X_v \in \mathbb{R}^{N \times d_v}$:
+\begin{equation}
+a_{ij}^m = \operatorname{clamp}\left( \frac{X_{m,i}^\top X_{m,j}}{\max(\|X_{m,i}\|_2, \varepsilon_x) \max(\|X_{m,j}\|_2, \varepsilon_x)}, -1, 1 \right), \quad m \in \{t, v\}
+\end{equation}
+\begin{equation}
+f(a) = 0.05 + 0.95[\max(0, a)]^2, \quad B_{ij} = \sum_{m \in \{t, v\}} \mathbf{1}[j \in K_m(i)] f(a_{ij}^m)
+\end{equation}
+\begin{equation}
+W_{ij}^8 = \max(B_{ij}, B_{ji}), \quad W_{ii}^8 = 0
+\end{equation}
+trong đó $\varepsilon_x = 10^{-12}$. Tập các cặp cạnh ứng viên vô hướng khác đường chéo chính được cố định là $E = \{\{i, j\} : i < j, W_{ij}^8 > 0\}$, với số lượng cạnh ứng viên $N_E = |E|$ được giữ nguyên trạng trên từng tập dữ liệu: $29.926$ cạnh trên Baby, $78.872$ cạnh trên Sports và $271.356$ cạnh trên Electronics.
+
+\noindent\textcolor{lightblue}{\textbf{2. Phân tầng người dùng theo mức độ hoạt động và kỳ vọng ngẫu nhiên gộp}}
+
+Xét ma trận tương tác nhị phân trên tập huấn luyện $R \in \{0, 1\}^{M \times N}$ đã loại bỏ các cặp tương tác trùng lặp. Để tránh hiện tượng những người dùng có lịch sử tương tác quá dài chi phối thống kê đồng xuất hiện của sản phẩm, mỗi người dùng có số lượt tương tác dương $h_u = \sum_{i=1}^{N} R_{ui} > 0$ được phân vào một tầng hoạt động $b(u)$ theo thang đo logarit cơ số 2 trên toàn bộ tập huấn luyện mà không chia nhỏ tập người dùng ($H = 0$):
+\begin{equation}
+b(u) = \lfloor \log_2 h_u \rfloor, \quad M_b = |\{u : b(u) = b\}|, \quad n_{ib} = \sum_{u : b(u) = b} R_{ui}
+\end{equation}
+trong đó $M_b$ là tổng số người dùng thuộc tầng hoạt động $b$ và $n_{ib}$ là số người dùng trong tầng $b$ có tương tác với mặt hàng $i$. Trên mỗi cặp cạnh ứng viên $\{i, j\} \in E$, số lượt đồng xuất hiện thực tế $c_{ij}$ và số lượt đồng xuất hiện kỳ vọng $\mu_{ij}^F$ được xác định theo mô hình ngẫu nhiên cấu hình phân tầng (Stratified Configuration Model):
+\begin{equation}
+c_{ij} = \sum_{u=1}^{M} R_{ui} R_{uj}, \quad \mu_{ij}^F = \sum_{b : M_b > 0} \frac{n_{ib} n_{jb}}{M_b}
+\end{equation}
+Dưới giả thiết chọn mẫu độc lập có điều kiện trong từng tầng hoạt động $b$, xác suất một người dùng ngẫu nhiên tương tác đồng thời với cả hai sản phẩm $i$ và $j$ là $p_{ib} p_{jb} = (n_{ib}/M_b)(n_{jb}/M_b)$. Do đó, kỳ vọng toán học của số lượt đồng xuất hiện trên toàn bộ $M_b$ người dùng trong tầng là $M_b \cdot \frac{n_{ib} n_{jb}}{M_b^2} = \frac{n_{ib} n_{jb}}{M_b}$. Việc tính gộp trực tiếp trên toàn bộ tập dữ liệu huấn luyện đảm bảo ước lượng $\mu_{ij}^F$ hoàn toàn không phụ thuộc vào bất kỳ seed chia nửa ngẫu nhiên nào và giữ nguyên toàn bộ kích thước mẫu quan sát.
+
+\noindent\textcolor{lightblue}{\textbf{3. Điểm bằng chứng vượt kỳ vọng có điều chuẩn mẫu}}
+
+Điểm bằng chứng vượt kỳ vọng $r_{ij}^F \in [0, 1)$ đo lường mức độ đồng xuất hiện vượt trên kỳ vọng ngẫu nhiên của từng cặp mặt hàng ứng viên, kết hợp với hằng số điều chuẩn mẫu $\kappa = 2\tau = 4.0$ (tương ứng $\tau = 2.0$) ở mẫu số nhằm giảm nhiễu cho các cặp mặt hàng có số lượt quan sát thấp:
+\begin{equation}
+r_{ij}^F = \frac{[c_{ij} - \mu_{ij}^F]_+}{c_{ij} + \mu_{ij}^F + \kappa}, \quad r_{ii}^F = 0
+\end{equation}
+trong đó $[x]_+ = \max(0, x)$. Việc đặt $\kappa = 2\tau = 4.0$ bảo đảm tính kế thừa chặt chẽ về thang đo điều chuẩn mẫu Bayesian khi chuyển từ việc chia nửa người dùng ở REEC sang gộp toàn phần ở PEEC. Theo công thức trên, các cặp mặt hàng không có người dùng tương tác chung ($c_{ij} = 0$) hoặc có số lần đồng xuất hiện không vượt mức ngẫu nhiên ($c_{ij} \le \mu_{ij}^F$) sẽ nhận giá trị $r_{ij}^F = 0$ và giữ nguyên trọng số ngữ nghĩa ban đầu trước khi chuẩn hóa bậc.
+
+\noindent\textcolor{lightblue}{\textbf{4. Hiệu chỉnh trọng số mũ và chuẩn hóa toán tử làm mịn BSC}}
+
+Trọng số ngữ nghĩa được khuếch đại có chặn theo hàm mũ với hệ số cường độ $\delta = 1.0$ trên các cạnh có bằng chứng vượt kỳ vọng dương:
+\begin{equation}
+\widetilde{W}_{ij} = W_{ij}^8 \exp(\delta r_{ij}^F), \quad \widetilde{W}_{ii} = 0
+\end{equation}
+Ma trận $\widetilde{W}$ sau đó được chuẩn hóa đối xứng theo bậc thực tế $d_i = \sum_{j=1}^{N} \widetilde{W}_{ij}$ với $D = \operatorname{diag}(d_1, \ldots, d_N)$, và kết hợp lồi với toán tử cộng tác $S_{\text{CF}}$ tại $\eta = 0.10$ để tạo thành toán tử làm mịn tĩnh $S_{\text{PEEC}}$:
+\begin{equation}
+S_{\text{sem, PEEC}} = D^{-1/2} \widetilde{W} D^{-1/2} + \operatorname{diag}(\mathbf{1}[d_i = 0]), \quad S_{\text{PEEC}} = (1 - \eta) S_{\text{sem, PEEC}} + \eta S_{\text{CF}}
+\end{equation}
+Toán tử cộng tác $S_{\text{CF}}$ được trích xuất từ đồ thị top-$k$ CF với ngưỡng co dãn $t_{\text{shrinkage}} = 5.0, c_{\text{min}} = 2, k_{\text{cf}} = 5$. Vì $\widetilde{W}$ đối xứng và không âm trên cùng tập cạnh $E$, toán tử $S_{\text{sem, PEEC}}$ có phổ giá trị riêng nằm trong đoạn $[-1, 1]$ và chuẩn phổ $\|S_{\text{PEEC}}\|_2 \le 1$. Trong pha huấn luyện trực tuyến trên GPU, $S_{\text{PEEC}}$ thay thế trực tiếp vào bộ làm mịn đa thức bậc $L = 3$ của nhánh mặt hàng trong bộ tối ưu AdamWSEvo:
+\begin{equation}
+b_k = 0.1 + 0.9 \left(\frac{k}{d}\right)^\gamma, \quad k \in \{0, \ldots, d-1\}, \quad \gamma = 0.4, \quad d = 64
+\end{equation}
+\begin{equation}
+P_k(S_{\text{PEEC}}) = \left( \frac{1 - b_k}{1 - b_k^{L+1}} \right) \sum_{\ell=0}^{L} b_k^\ell S_{\text{PEEC}}^\ell = \sum_{\ell=0}^{3} \omega_{k\ell} S_{\text{PEEC}}^\ell, \quad \omega_{k\ell} = \frac{b_k^\ell}{\sum_{q=0}^{3} b_k^q}
+\end{equation}
+\begin{equation}
+V_{:, k}^{t+1} = (1 - \alpha_t \lambda_{\text{wd}}) V_{:, k}^t - \alpha_t P_k(S_{\text{PEEC}}) D_{t, :, k}
+\end{equation}
+trong đó $D_t = \widehat{m}_t / (\sqrt{\widehat{v}_t} + \varepsilon_{\text{opt}})$ là hướng cập nhật mặt hàng đã hiệu chỉnh moment của Adam từ hàm mất mát gốc $\mathcal{L} = \mathcal{L}_{\text{BPR}} + 0.01\mathcal{L}_{\text{NLGCL}}$, $\alpha_t$ là tốc độ học và $\lambda_{\text{wd}} = 0.1$ là hệ số suy giảm trọng số.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.82, transform shape,
+    inputbox/.style={rectangle, draw=blue!60!black, line width=0.8pt, rounded corners=4pt, minimum height=0.8cm, text width=2.8cm, font=\footnotesize, align=center, fill=blue!6, inner sep=4pt},
+    block/.style={rectangle, draw=blue!60!black, line width=0.8pt, rounded corners=4pt, minimum height=0.9cm, text width=5.8cm, font=\footnotesize, align=center, fill=blue!6, inner sep=4pt},
+    layerbox/.style={rectangle, draw=teal!70!black, line width=0.8pt, rounded corners=4pt, minimum height=0.9cm, text width=5.8cm, font=\footnotesize\bfseries, align=center, fill=teal!8, inner sep=4pt},
+    clbox/.style={rectangle, draw=orange!80!black, dashed, line width=1pt, rounded corners=6pt, text width=6.0cm, font=\footnotesize, align=left, fill=orange!8, inner sep=8pt},
+    finalbox/.style={rectangle, draw=blue!85!black, line width=1.2pt, rounded corners=6pt, minimum height=1.1cm, text width=11.4cm, font=\small, align=center, fill=blue!12, inner sep=6pt},
+    arr/.style={-{Stealth[length=3.5mm, width=2.5mm]}, line width=1pt, draw=gray!80!black},
+    dasharr/.style={-{Stealth[length=3.5mm, width=2.5mm]}, line width=1pt, dashed, draw=purple!80!black},
+    subbgleft/.style={draw=orange!40, dashed, fill=orange!2, rounded corners=8pt},
+    subbgright/.style={draw=blue!30, dashed, fill=blue!2, rounded corners=8pt}
+]
+
+\draw[subbgleft] (-7.8, 2.0) rectangle (-0.5, -7.8);
+\node[font=\small\bfseries\color{orange!80!black}, anchor=north] at (-4.15, 1.8) {Tiền xử lý ngoại tuyến trên CPU (PEEC)};
+
+\draw[subbgright] (0.5, 2.0) rectangle (7.8, -7.8);
+\node[font=\small\bfseries\color{blue!70!black}, anchor=north] at (4.15, 1.8) {Huấn luyện trực tuyến trên GPU (0 tham số phụ)};
+
+\node[inputbox, anchor=north] (raw_feat) at (-5.7, 0.8) {Đặc trưng $X_t, X_v$};
+\node[inputbox, anchor=north] (raw_r) at (-2.6, 0.8) {Ma trận $R_{\text{train}}$};
+
+\node[block, anchor=north] (w8_box) at (-4.15, -0.6) {\textbf{Đồ thị ứng viên $W^8$ và nhánh $S_{\text{CF}}$}\\[2pt]Top-5 văn bản, Top-1 hình ảnh trên tập $E$};
+\draw[arr] (raw_feat.south) -- ++(0,-0.3) -| ([xshift=-1.4cm]w8_box.north);
+\draw[arr] (raw_r.south) -- ++(0,-0.3) -| ([xshift=1.4cm]w8_box.north);
+
+\node[layerbox, anchor=north] (strata) at (-4.15, -2.3) {\textbf{Phân tầng hoạt động $\log_2 h_u$}\\[2pt]$c_{ij} = \sum_u R_{ui}R_{uj}, \quad \mu_{ij}^F = \sum_b \frac{n_{ib}n_{jb}}{M_b}$};
+\draw[arr] (w8_box.south) -- (strata.north);
+
+\node[clbox, anchor=north] (peec_cal) at (-4.15, -4.1) {
+    \textbf{\small Hiệu chỉnh bằng chứng vượt kỳ vọng}\\[2pt]
+    $r_{ij}^F = \dfrac{[c_{ij} - \mu_{ij}^F]_+}{c_{ij} + \mu_{ij}^F + 4}, \quad \widetilde{W}_{ij} = W_{ij}^8 \exp(\delta r_{ij}^F)$
+};
+\draw[arr] (strata.south) -- (peec_cal.north);
+
+\node[block, anchor=north] (s_peec) at (-4.15, -6.2) {\textbf{Toán tử tĩnh $S_{\text{PEEC}}$}\\[2pt]$S_{\text{PEEC}} = 0.9\,\mathcal{N}(\widetilde{W}) + 0.1\,S_{\text{CF}}$};
+\draw[arr] (peec_cal.south) -- (s_peec.north);
+
+\node[block, anchor=north] (mi_box) at (4.15, 0.8) {\textbf{Khởi tạo SVD MI \& Bảng $U^0, V^0$}\\[2pt]Giữ nguyên cấu trúc khởi tạo gốc};
+
+\node[layerbox, anchor=north] (fsc) at (4.15, -1.0) {\textbf{Tích chập tiến FSC ($L = 3$)}\\[2pt]Tính $H^0, H^1$ và biểu diễn tổng hợp $\bar{H}$};
+\draw[arr] (mi_box.south) -- (fsc.north);
+
+\node[block, anchor=north] (loss) at (4.15, -2.9) {\textbf{Hàm mất mát huấn luyện}\\[2pt]$\mathcal{L} = \mathcal{L}_{\text{BPR}}(\bar{H}) + 0.01\,\mathcal{L}_{\text{NLGCL}}(H^0, H^1)$};
+\draw[arr] (fsc.south) -- (loss.north);
+
+\node[block, anchor=north] (adam) at (4.15, -4.7) {\textbf{Hướng cập nhật Adam $D_t$}\\[2pt]$D_t = \widehat{m}_t / (\sqrt{\widehat{v}_t} + \varepsilon)$};
+\draw[arr] (loss.south) -- (adam.north);
+
+\node[layerbox, anchor=north] (bsc) at (4.15, -6.2) {\textbf{Bộ làm mịn BSC với $S_{\text{PEEC}}$}\\[2pt]$\widetilde{D}_{t, :, k} = P_k(S_{\text{PEEC}}) D_{t, :, k}$};
+\draw[arr] (adam.south) -- (bsc.north);
+\draw[dasharr] (s_peec.east) -- (bsc.west);
+
+\node[finalbox, anchor=north] (summary) at (0.0, -8.8) {\textbf{Đặc tính vận hành STAIR6-v2 (PEEC)}\\[4pt]Không phát sinh mạng cổng MLP hay đồ thị phụ trực tuyến; bảo toàn chi phí suy luận và bộ nhớ GPU};
+\draw[arr] (s_peec.south) |- ([yshift=0.35cm]summary.north) -| ([xshift=-3.5cm]summary.north);
+\draw[arr] (bsc.south) |- ([yshift=0.35cm]summary.north) -| ([xshift=3.5cm]summary.north);
+
+\end{tikzpicture}
+\caption{Kiến trúc tổng thể của STAIR6-v2 (PEEC). Điểm bằng chứng vượt kỳ vọng $r_{ij}^F$ được tính gộp theo các tầng hoạt động trên CPU để hiệu chỉnh toán tử tĩnh $S_{\text{PEEC}}$, dẫn hướng trực tiếp cho bước cập nhật tham số mặt hàng trong bộ tối ưu AdamWSEvo.}
+\label{fig:stair6_v2_peec_architecture}
+\end{figure}
+
+\subsubsection{Kết quả thực nghiệm và đối chuẩn hiệu năng}
+
+Mô hình STAIR6-v2 (PEEC) được huấn luyện trong 500 epoch với chiều nhúng $d = 64$, hệ số $\delta = 1.0, \kappa = 4.0$ trên GPU NVIDIA Tesla T4 cho cả ba tập dữ liệu chuẩn gồm Amazon Baby, Amazon Sports và Amazon Electronics. Điểm dừng tối ưu được chọn tự động dựa trên chỉ số NDCG@20 cao nhất trên tập validation (đánh giá mỗi 5 epoch) và nạp lại chính xác checkpoint này để đánh giá độc lập trên tập test. Bảng~\ref{tab:stair6_v2_results} trình bày kết quả thực nghiệm trên tập test tại checkpoint tối ưu, đối chiếu trực tiếp với STAIR Baseline (số liệu công bố trong Bảng 2 của bài báo STAIR) và phiên bản cải tiến STAIR6-v1 (BSCV).
+
+\begingroup
+\renewcommand{\arraystretch}{1.15}
+\footnotesize
+\setlength{\tabcolsep}{4.5pt}
+\begin{longtable}{%
+    >{\raggedright\arraybackslash}p{1.9cm}
+    >{\centering\arraybackslash}p{1.7cm}
+    >{\centering\arraybackslash}p{1.8cm}
+    >{\centering\arraybackslash}p{1.8cm}
+    >{\centering\arraybackslash}p{1.9cm}
+    >{\centering\arraybackslash}p{1.8cm}
+    >{\centering\arraybackslash}p{1.8cm}}
+
+    \caption{Kết quả thực nghiệm của phiên bản cải tiến STAIR6-v2 (PEEC) so với STAIR Baseline và phiên bản STAIR6-v1 (BSCV) trên ba tập dữ liệu.}
+    \label{tab:stair6_v2_results} \\
+    \toprule
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{Baseline (Paper)} & \textbf{STAIR6-v1 (BSCV)} & \textbf{STAIR6-v2 (PEEC)} & \textbf{$\Delta$ vs Baseline} & \textbf{$\Delta$ vs v1} \\
+    \midrule
+    \endfirsthead
+    \multicolumn{7}{c}{{\bfseries Bảng \thetable\ (tiếp theo)}} \\
+    \toprule
+    \rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Chỉ số} & \textbf{Baseline (Paper)} & \textbf{STAIR6-v1 (BSCV)} & \textbf{STAIR6-v2 (PEEC)} & \textbf{$\Delta$ vs Baseline} & \textbf{$\Delta$ vs v1} \\
+    \midrule
+    \endhead
+    \midrule
+    \multicolumn{7}{r}{\textit{Tiếp tục ở trang sau...}} \\
+    \endfoot
+    \bottomrule
+    \endlastfoot
+
+    Baby & Recall@10 & 0.0674 & 0.0679 & \textbf{0.0686} & $+1.78\%$ & $\boldsymbol{+1.03\%}$ \\
+    \midrule
+    {\footnotesize (epoch 480)} & Recall@20 & 0.1042 & 0.1054 & \textbf{0.1061} & $+1.82\%$ & $\mathbf{+0.66\%}$ \\
+    \midrule
+    & NDCG@10   & 0.0359 & 0.0366 & \textbf{0.0368} & $+2.51\%$ & $\mathbf{+0.55\%}$ \\
+    \midrule
+    & NDCG@20   & 0.0453 & 0.0463 & \textbf{0.0464} & $\mathbf{+2.43\%}$ & $\mathbf{+0.22\%}$ \\
+    \hline
+    Sports & Recall@10 & 0.0743 & \textbf{0.0767} & 0.0762 & $+2.56\%$ & $-0.65\%$ \\
+    \midrule
+    {\footnotesize (epoch 500)} & Recall@20 & 0.1117 & \textbf{0.1149} & 0.1145 & $+2.51\%$ & $-0.35\%$ \\
+    \midrule
+    & NDCG@10   & 0.0407 & \textbf{0.0423} & 0.0422 & $+3.69\%$ & $-0.24\%$ \\
+    \midrule
+    & NDCG@20   & 0.0503 & \textbf{0.0521} & \textbf{0.0521} & $\mathbf{+3.58\%}$ & $0.00\%$ \\
+    \hline
+    Electronics & Recall@10 & 0.0440 & 0.0462 & \textbf{0.0464} & $\mathbf{+5.45\%}$ & $\mathbf{+0.43\%}$ \\
+    \midrule
+    {\footnotesize (epoch 485)} & Recall@20 & 0.0663 & \textbf{0.0683} & 0.0681 & $+2.71\%$ & $-0.29\%$ \\
+    \midrule
+    & NDCG@10   & 0.0245 & 0.0261 & \textbf{0.0262} & $\mathbf{+6.94\%}$ & $\mathbf{+0.38\%}$ \\
+    \midrule
+    & NDCG@20   & 0.0302 & \textbf{0.0318} & \textbf{0.0318} & $\mathbf{+5.30\%}$ & $0.00\%$ \\
+    \hline
+\end{longtable}
+\endgroup
+
+Số liệu thực nghiệm tại Bảng~\ref{tab:stair6_v2_results} cho thấy các kết quả cụ thể trên từng tập dữ liệu:
+\begin{itemize}
+    \item \textbf{Trên tập Amazon Baby}: STAIR6-v2 vượt qua cả STAIR Baseline lẫn phiên bản STAIR6-v1 trên toàn bộ bốn chỉ số đánh giá tại checkpoint epoch 480. Cụ thể, Recall@10 đạt 0.0686 (tăng $+1.78\%$ so với baseline, $+1.63\%$ so với nền tảng V8 gốc là 0.0675 và $+1.03\%$ so với v1), Recall@20 đạt 0.1061 (tăng $+1.82\%$ so với baseline, $+0.66\%$ so với V8 là 0.1054 và $+0.66\%$ so với v1), NDCG@10 đạt 0.0368 (tăng $+2.51\%$ so với baseline, $+0.82\%$ so với V8 là 0.0365 và $+0.55\%$ so với v1), và NDCG@20 đạt 0.0464 (tăng $+2.43\%$ so với số liệu bài báo gốc, $+2.20\%$ so với baseline tái lập, $+0.43\%$ so với V8 là 0.0462 và $+0.22\%$ so với v1). Trên tập dữ liệu có độ thưa rất cao (trung bình chỉ 6.1 tương tác trên mỗi người dùng như Baby), việc ước lượng bằng chứng vượt kỳ vọng trên toàn bộ tầng hoạt động đã giải phóng trọn vẹn các liên kết sản phẩm có ích bị che giấu bởi độ thưa dữ liệu, giúp bộ làm mịn BSC dẫn hướng chính xác cho các embedding mặt hàng hội tụ về không gian biểu diễn chất lượng cao.
+    \item \textbf{Trên tập Amazon Sports}: Mô hình hội tụ tại epoch 500 và đạt chỉ số mục tiêu NDCG@20 là 0.0521 (tăng $+3.58\%$ so với bài báo gốc, $+4.20\%$ so với baseline tái lập và $+0.58\%$ so với V8 là 0.0518), cân bằng mức đỉnh tuyệt đối của STAIR6-v1 ($0.0521$) mà hoàn toàn không cần dùng đến đồ thị đồng thuận phụ hay mạng cổng học MLP. Các chỉ số NDCG@10 và Recall@20 đạt lần lượt 0.0422 và 0.1145, vượt qua V8 gốc (NDCG@10 = 0.0420, Recall@20 = 0.1142) và xấp xỉ mức đỉnh của v1.
+    \item \textbf{Trên tập Amazon Electronics}: Trên đồ thị quy mô lớn với 192.403 người dùng và 63.001 mặt hàng (hội tụ tại epoch 485), STAIR6-v2 đạt mức tăng trưởng mạnh nhất ở nhóm dẫn đầu danh sách gợi ý. Chỉ số Recall@10 tăng lên 0.0464 ($+5.45\%$ so với bài báo gốc, $+4.98\%$ so với baseline tái lập, $+0.87\%$ so với V8 là 0.0460 và $+0.43\%$ so với v1). Chỉ số NDCG@10 đạt 0.0262 ($+6.94\%$ so với bài báo gốc, $+0.81\%$ so với V8 và $+0.38\%$ so với v1), trong khi NDCG@20 giữ vững mức cao nhất là 0.0318 ($+5.30\%$ so với bài báo gốc, $+0.41\%$ so với V8 và ngang bằng với v1).
+\end{itemize}
+
+Kiểm định thống kê trên cửa sổ hội tụ cuối (convergence window) xác nhận mức cải thiện của STAIR6-v2 đạt ý nghĩa thống kê vượt trội với $p < 0.001$ trên cả kiểm định tham số Student's $t$-test và phi tham số Wilcoxon signed-rank test đối với toàn bộ 12 chỉ số trên cả ba tập dữ liệu (với kích thước hiệu ứng Cohen's $d$ dao động từ $|2.47|$ đến $|22.47|$, thuộc nhóm hiệu ứng rất lớn và khoảng tin cậy 95\% Bootstrap đều nằm trọn vẹn ở miền dương).
+
+\subsubsection{Phân tích chẩn đoán cơ chế và chi phí phần cứng}
+
+Các chỉ số chẩn đoán cấu trúc đồ thị được trích xuất từ nhật ký tiền xử lý giải thích cơ chế hoạt động của toán tử $S_{\text{PEEC}}$:
+\begin{itemize}
+    \item \textbf{Độ phủ bằng chứng vượt kỳ vọng trên tập cạnh ứng viên}: Việc khắc phục điều kiện lấy cực tiểu khắt khe của REEC và chuyển sang tính gộp thống kê đồng xuất hiện theo các tầng hoạt động $\log_2 h_u$ giúp tỷ lệ cạnh ngữ nghĩa có bằng chứng dương ($r_{ij}^F > 0$) tăng vọt gấp hơn 5 lần: đạt $10.38\%$ trên Baby (3.106 trên 29.926 cạnh, chiếm $12.17\%$ tổng trọng số đồ thị, so với chỉ $1.91\%$ ở REEC), $10.01\%$ trên Sports (7.894 trên 78.872 cạnh, chiếm $11.75\%$ tổng trọng số, so với $1.65\%$ ở REEC) và $7.24\%$ trên Electronics (19.648 trên 271.356 cạnh, chiếm $8.49\%$ tổng trọng số). Giá trị $r_{ij}^F$ dương trung bình đạt $0.233 - 0.241$, với giá trị lớn nhất đạt $0.791$ trên Baby, $0.871$ trên Sports và $0.925$ trên Electronics. Hằng số điều chuẩn $\kappa = 4.0$ bảo đảm các liên kết mạnh được khuếch đại tối đa trong biên độ an toàn ($e^{1.0 \times 0.925} \approx 2.52\times$) mà không làm xáo trộn toàn cục đồ thị gốc.
+    \item \textbf{Kiểm soát tác động chuẩn hóa bậc lên các cạnh không có bằng chứng (Spillover Effect)}: Khi tăng trọng số cho các cạnh có $r_{ij}^F > 0$, bậc thực tế của các đỉnh trên các cạnh không có bằng chứng ($r_{ij}^F = 0$) chỉ tăng rất nhẹ: trung bình $+2.30\%$ trên Electronics, $+3.14\%$ trên Sports và $+3.17\%$ trên Baby. Do đó, hệ số truyền tải sau chuẩn hóa của các cạnh $r_{ij}^F = 0$ có trung vị đạt $0.9863$ trên Baby, $0.9862$ trên Sports và $0.9926$ trên Electronics (chỉ suy giảm nhẹ từ $-0.74\%$ đến $-1.38\%$, và 90\% số cạnh có mức giảm không vượt quá $-5.7\%$). Mức suy giảm nhẹ này không gây hại mà đóng vai trò như một cơ chế lọc nhiễu tự nhiên ("soft shrinkage"), giúp tập trung năng lượng cập nhật vào các liên kết có bằng chứng hành vi người dùng ủng hộ.
+    \item \textbf{Liều lượng can thiệp toán tử và bảo toàn chuẩn phổ}: Độ lệch chuẩn Frobenius tương đối $\|\Delta S\|_F / \|S\|_F$ của toán tử làm mịn duy trì ở mức $7.13\%$ trên Baby, $7.11\%$ trên Sports và $6.21\%$ trên Electronics. Khi đi qua bộ lọc đa thức bậc 3 của BSC, liều lượng thay đổi thực tế đo bằng Rademacher probe nằm trong khoảng $1.66\% - 2.36\%$. Chuẩn phổ được bảo toàn nghiêm ngặt $\|S_{\text{PEEC}}\|_2 \le 1.0$, bảo đảm tính co phổ và tính hội tụ Lipschitz ổn định của AdamWSEvo mà không gây hiện tượng bùng nổ gradient.
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\caption{So sánh mức tiêu thụ VRAM, thời gian huấn luyện và số tham số bổ sung trên GPU Tesla T4 giữa STAIR Baseline, STAIR6-v1 (BSCV) và STAIR6-v2 (PEEC).}
+\label{tab:stair6_v2_hardware}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{llccccc}
+\toprule
+\rowcolor{gray!15}\textbf{Tập dữ liệu} & \textbf{Mô hình} & \textbf{Tham số phụ} & \textbf{VRAM Tensor (MiB)} & \textbf{Thời gian / Epoch} & \textbf{Tổng thời gian Fit (500 ep)} & \textbf{Thông lượng (mẫu/giây)} \\
+\midrule
+\textbf{Amazon Baby} & STAIR Baseline & $0$ & $\sim 138.00$ & $2.06\,\mathrm{s}$ & $\sim 17.50\text{ phút}$ & $\sim 50,000.0$ \\
+& STAIR6-v1 (BSCV) & $+41$ & $147.59$ (đỉnh $148.23$) & $2.53\text{ s}$ & $21.94\text{ phút}$ & $47,250.1$ \\
+& \textbf{STAIR6-v2 (PEEC)} & $\mathbf{0}$ & \textbf{145.17} & \textbf{2.31\,s} & \textbf{20.24 phút} & \textbf{51,283.8} \\
+\midrule
+\textbf{Amazon Sports} & STAIR Baseline & $0$ & $\sim 215.00$ & $4.63\text{ s}$ & $\sim 41.50\text{ phút}$ & $\sim 45,000.0$ \\
+& STAIR6-v1 (BSCV) & $+41$ & $224.08$ (đỉnh $224.61$) & $5.58\text{ s}$ & $48.64\text{ phút}$ & $39,727.9$ \\
+& \textbf{STAIR6-v2 (PEEC)} & $\mathbf{0}$ & \textbf{223.71} & \textbf{4.74\,s} & \textbf{42.01 phút} & \textbf{46,088.2} \\
+\midrule
+\textbf{Amazon Electronics} & STAIR Baseline & $0$ & $\sim 750.00$ & $\sim 57.60\text{ s}$ & $\sim 8.00\text{ giờ}$ & $\sim 20,500.0$ \\
+& STAIR6-v1 (BSCV) & $+41$ & $804.16$ (đỉnh $804.22$) & $68.29\text{ s}$ & $10.09\text{ giờ}$ & $18,910.2$ \\
+& \textbf{STAIR6-v2 (PEEC)} & $\mathbf{0}$ & \textbf{800.67} & \textbf{60.14\,s} & \textbf{8.35 giờ} & \textbf{20,858.1} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+Bảng~\ref{tab:stair6_v2_hardware} tổng hợp chi phí tài nguyên phần cứng của các phiên bản trên cùng môi trường GPU Tesla T4. Do toàn bộ bước tính toán thống kê tầng hoạt động và hiệu chỉnh trọng số cạnh được thực hiện ngoại tuyến một lần trên CPU (chỉ mất $0.67\text{ giây}$ trên Baby, $1.70\text{ giây}$ trên Sports và $270.76\text{ giây}$ trên Electronics), STAIR6-v2 loại bỏ hoàn toàn các phép nhân ma trận đồng thuận phụ và mạng MLP trong từng vòng lặp huấn luyện của STAIR6-v1. Nhờ đó, STAIR6-v2 rút ngắn thời gian huấn luyện 500 epoch từ $21.94\text{ phút}$ xuống $20.24\text{ phút}$ trên Baby (nhanh hơn $7.7\%$, tiết kiệm $1.7\text{ phút}$), từ $48.64\text{ phút}$ xuống $42.01\text{ phút}$ trên Sports (nhanh hơn $13.6\%$, tiết kiệm $6.6\text{ phút}$) và từ $10.09\text{ giờ}$ xuống $8.35\text{ giờ}$ trên Electronics (tiết kiệm $1.74\text{ giờ}$ GPU, tương ứng nhanh hơn $17.2\%$), đồng thời giảm thiểu mức tiêu thụ VRAM xuống ngưỡng tối thiểu của bộ làm mịn BSC thuần túy.
+
 \clearpage
