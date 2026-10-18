@@ -271,13 +271,13 @@ Trạng thái dưới đây là **PLANNED**, không phải đã chạy. Đổi t
 
 | Job ID | Arm | Dataset | Seed | Người chạy | Ưu tiên | Trạng thái |
 |---|---|---|---:|---|---|---|
-| ECL-wo_ec-baby-s1 | wo_ec | baby | 1 | Chương | P0 | PLANNED |
+| ECL-wo_ec-baby-s1 | wo_ec | baby | 1 | Chương | P0 | REUSED_VERIFIED |
 | ECL-wo_ec-baby-s2 | wo_ec | baby | 2 | Hiếu | P0 | PLANNED |
 | ECL-wo_ec-baby-s3 | wo_ec | baby | 3 | Chương | P0 | PLANNED |
-| ECL-wo_ec-sports-s1 | wo_ec | sports | 1 | Chương | P0 | PLANNED |
+| ECL-wo_ec-sports-s1 | wo_ec | sports | 1 | Chương | P0 | REUSED_VERIFIED |
 | ECL-wo_ec-sports-s2 | wo_ec | sports | 2 | Hiếu | P0 | PLANNED |
 | ECL-wo_ec-sports-s3 | wo_ec | sports | 3 | Chương | P0 | PLANNED |
-| ECL-wo_ec-electronics-s1 | wo_ec | electronics | 1 | Chương | P0 | PLANNED |
+| ECL-wo_ec-electronics-s1 | wo_ec | electronics | 1 | Chương | P0 | REUSED_VERIFIED |
 | ECL-wo_ec-electronics-s2 | wo_ec | electronics | 2 | Hiếu | P0 | PLANNED |
 | ECL-wo_ec-electronics-s3 | wo_ec | electronics | 3 | Chương | P0 | PLANNED |
 | ECL-wo_lc-baby-s1 | wo_lc | baby | 1 | Hiếu | P1 | PLANNED |
@@ -413,6 +413,10 @@ Một run hợp lệ phải có:
 **Hoàn tất run không yêu cầu metric cao hơn full hoặc baseline.** Nghiệm thu tính đúng đắn trước, phân tích khoa học sau.
 
 ### 8.4 Tái sử dụng seed 1 w/o EC từ artifact sẵn có
+
+**Cập nhật 2026-10-18:** Đã tìm thấy ba run 500 epochs có cấu hình/data/candidates và operator đúng bằng nhánh delta=0. Xem [audit và hướng dẫn notebook](ECLIPSE_wo_EC_Seed1_Artifact_Audit.md). **Không cần train lại seed 1**; cần dùng [notebook recovery seed 1](../../notebook/P6/eclipse_wo_ec_seed1.ipynb) để xuất selected TEST receipt từ checkpoint sẵn có. Baby chọn epoch **430**, còn summary sáu chữ số trong log thuộc epoch 500; không được lấy summary đó làm selected metric. Sports/Electronics chọn epoch 500. Tạm giữ trạng thái `REUSED_TRAINING_PENDING_SELECTED_REEVALUATION`, chỉ đổi thành `REUSED_VERIFIED` sau khi recovery và đọc chéo thành công. [Notebook w/o EC seed 2](../../notebook/P6/eclipse_wo_ec_seed2.ipynb) đã được chuẩn bị cho bước training độc lập tiếp theo; đổi `SEED=3` cho run seed 3.
+
+**Nghiệm thu sau recovery:** Phiên `eclipse_wo_ec_seed1_reuse_20261018T152158Z_69603726` đã có đủ native selected TEST receipts, đúng checkpoints, source/data/operator fingerprints và matched runtime trên cả ba dataset. Trạng thái ba job seed 1 hiện là **REUSED_VERIFIED**, thay thế trạng thái chờ ở ghi chú trước. Xem [báo cáo đã hiệu chỉnh](ECLIPSE_Ablation_Study_wo_EC.md) và [acceptance JSON](../../reports/eclipse_wo_ec_seed1_audit/recovered_seed1_acceptance.json). Đây là kiểm tra artifact của user-executed evaluation, không phải model rerun hoặc xác nhận thống kê từ một seed. Chưa tự xác nhận người đọc chéo độc lập là Hiếu. Notebook seed 2 đã nhúng riêng ba receipt **w/o EC đã đo**, kèm provenance; không cần upload lại checkpoint seed 1 chỉ để tổng hợp. Không sửa architecture hoặc các hyperparameters trước replication seeds 2–3.
 
 Chương kiểm tra, Hiếu đọc chéo:
 
