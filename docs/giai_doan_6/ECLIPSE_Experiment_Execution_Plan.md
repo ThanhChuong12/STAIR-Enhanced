@@ -298,13 +298,13 @@ Ledger ghi trạng thái theo từng job; các job chưa có artifact vẫn là 
 | ECL-binary_semantic-sports-s1 | binary_semantic | sports | 1 | Hiếu | P1 | PLANNED |
 | ECL-binary_semantic-sports-s2 | binary_semantic | sports | 2 | Hiếu | P1 | PLANNED |
 | ECL-binary_semantic-sports-s3 | binary_semantic | sports | 3 | Hiếu | P1 | PLANNED |
-| ECL-count_only-baby-s1 | count_only | baby | 1 | Chương | P1 | PLANNED |
+| ECL-count_only-baby-s1 | count_only | baby | 1 | Chương | P1 | READY |
 | ECL-count_only-baby-s2 | count_only | baby | 2 | Chương | P1 | PLANNED |
 | ECL-count_only-baby-s3 | count_only | baby | 3 | Chương | P1 | PLANNED |
-| ECL-count_only-sports-s1 | count_only | sports | 1 | Chương | P1 | PLANNED |
+| ECL-count_only-sports-s1 | count_only | sports | 1 | Chương | P1 | READY |
 | ECL-count_only-sports-s2 | count_only | sports | 2 | Chương | P1 | PLANNED |
 | ECL-count_only-sports-s3 | count_only | sports | 3 | Chương | P1 | PLANNED |
-| ECL-count_only-electronics-s1 | count_only | electronics | 1 | Chương | P1 | PLANNED |
+| ECL-count_only-electronics-s1 | count_only | electronics | 1 | Chương | P1 | READY |
 | ECL-shuffled_evidence-baby-s1 | shuffled_evidence | baby | 1 | Hiếu | P1 | PLANNED |
 | ECL-shuffled_evidence-baby-s2 | shuffled_evidence | baby | 2 | Hiếu | P1 | PLANNED |
 | ECL-shuffled_evidence-baby-s3 | shuffled_evidence | baby | 3 | Hiếu | P1 | PLANNED |
@@ -887,7 +887,7 @@ Chương nhận ít job nhưng nhiều Electronics; Hiếu nhận nhiều job ng
 
 ## 17. Review notebook của Hiếu — w/o CSE Electronics seed 3 (2026-10-19)
 
-[Báo cáo chi tiết và vị trí cell/line](ECLIPSE_wo_CSE_Electronics_S3_Notebook_Review.md). **ANALYZED_STATIC_ONLY**; không chạy model hoặc notebook, không sửa source notebook của Hiếu. Chưa có artifact w/o CSE trong gói notebook để nghiệm thu metric/hình.
+[Báo cáo chi tiết và vị trí cell/line](ECLIPSE_wo_CSE_Electronics_S3_Notebook_Review.md). **Initial review: ANALYZED_STATIC_ONLY**, trên snapshot gốc; không chạy model/training. Sau yêu cầu sửa tiếp theo, notebook đã được cập nhật như ghi chú cuối mục này. Chưa có artifact w/o CSE thực tế để nghiệm thu metric/hình.
 
 - CLI có đúng ý định eta0/delta1/LC.01; chưa kết luận kiến trúc ablation sai.
 - Lỗi chắc chắn: parser dùng `Recall@10/20` thay native `RECALL@10/20` và fallback0; phải sửa trước tổng hợp.
@@ -898,3 +898,34 @@ Chương nhận ít job nhưng nhiều Electronics; Hiếu nhận nhiều job ng
 - Electronics w/o CSE seed3 là extension ngoài ledger tối thiểu hiện tại (P2 chỉ dự kiến seed1). Không tự thêm thành completed hoặc suy đủ3seeds; nếu đã chạy thì giữ, ghi actual coverage và ưu tiên budget còn lại theo core plan.
 
 **Phân công follow-up:** Hiếu sửa template/harness cho các ablation mình phụ trách và xuất gói hậu xử lý; Chương đọc chéo artifact. Checklist mới không đồng nghĩa Hiếu đã implement hoặc đã chạy; chỉ đổi status sau khi có bằng chứng thực tế.
+
+
+### 17.1 Notebook đã sửa — READY cho kiểm tra môi trường và chạy bởi Hiếu
+
+[Notebook w/o CSE Electronics seed3](../../notebook/P6/eclipse_wo_cse_electronics_s3.ipynb) đã được sửa; [chi tiết follow-up](ECLIPSE_wo_CSE_Electronics_S3_Notebook_Review.md#7-follow-up--notebook-đã-được-sửa). Các lỗi liệt kê ở mục17 là findings của bản cũ; không còn là trạng thái hiện tại.
+
+- Train mới: `RUN_MODE='train'`, seed3/64D/500epochs/eta0/delta1/LC.01. Source pin và checks data/config/receipt; không mở rộng nhánh nghiên cứu hoặc đổi protocol Full.
+- Bổ sung hình cho run cũ: `RUN_MODE='report_only'`, chỉ định `EXISTING_ARTIFACT_DIR` và `EXISTING_STDOUT_LOG`. Không training/model/source checkout/network; dữ liệu thiếu giữ NOT_MEASURED, provenance lệch cần đọc chéo.
+- Xuất `eclipse_electronics_wo_cse_seed3_{learning_curves,training_memory,calibration_diagnostics,resource_profile}`: PDF/PNG300dpi, source CSV/JSON, captions; ZIP có stdout log ngoài và file inventory/checksum sidecar. `NOTEBOOK_SOURCE_PATH` tùy chọn để gói exact submitted ipynb, nếu không thì tải executed notebook riêng.
+- [57 kiểm tra dữ liệu/cú pháp/export đạt](../../reports/eclipse_wo_cse_electronics_s3_notebook_audit/repaired_notebook_validation.json), chỉ fixtures tạm, không model/GPU/training. Đây là software readiness, không phải Kaggle run COMPLETED/VERIFIED_ARTIFACT hoặc số liệu paper mới. Chưa tăng actual n hoặc sửa ledger thành completed.
+- Nếu notebook cũ đang train, để run hoàn tất và dùng report-only ở session mới; không thay source giữa run. Electronics seed3 vẫn là extension ngoài phạm vi tối thiểu, không suy đã có đủ seeds1–3.
+
+
+## 18. Count-only seed1 — notebook READY (2026-10-19)
+
+[Notebook ECL-count_only seed1](../../notebook/P6/eclipse_count_only_seed1.ipynb), [hướng dẫn bàn giao](ECLIPSE_Count_Only_Seed1_Notebook_Guide.md). Ba job `ECL-count_only-{baby,sports,electronics}-s1` chuyển **READY**, chưa RUNNING/COMPLETED. Giữ nguyên trạng thái các arms và seeds khác.
+
+- Mặc định Baby→Sports→Electronics, seed1,64D,500epochs. Mode `pooled_activity_count`, delta1/tau2/halves0; WMSG+CSE eta.1+LC.01+MI/FSC/BSC giữ theo Full. Chỉ mode/score thay đổi; không tune riêng từ TEST.
+- Score `c/(c+4)` không subtract null. Counts/null/candidates/semantic/CF invariant; Count score/final graph hashes không bị ép bằng Full. Dose reference weighted+CSE eta.1, không dùng guard delta0 hoặc reference eta0 của w/o CSE.
+- Training fresh, pin source và runtime/data/config checks; unique attempt, không xóa hoặc tự retry. Attach data trước Kaggle batch. Dùng slot riêng, không ngắt full/w/o EC đang tiến triển.
+- Mỗi dataset xuất learning curves, training memory, calibration diagnostics: PDF/PNG300dpi + CSV/JSON/captions; selectedTEST/resources/comparability. Session resource profile/status table và ZIP đầy đủ stdout/native files/config/source/notebook-template/provenance cùng inventory/checksum sidecar.
+- Report-only mode nhận mapping native artifact/stdout theo dataset, không training/GPU/network. Missing=NOT_MEASURED, không giả0 hoặc SD/p-value cho n1. Source/runtime deviations cần audit riêng.
+- [102 kiểm tra công thức/schema/cú pháp/hậu xử lý đạt](../../reports/eclipse_count_only_seed1_notebook/validation.json), dùng fixtures tạm và CPU score function, không model/GPU/network/training; chưa có metric Count-only mới. Người chạy còn phải nghiệm thu artifacts thật và human cross-read.
+- Sau seed1: Baby/Sports seeds2–3; Electronics chỉseed1. Có thể chọn subset dataset trước session nếu ngân sách cần tách, giữ nguyên protocol. Không tự tăng actual n hoặc suy đủ ba seed từ một notebook.
+
+
+### 18.1 Sửa false-positive ở guard launch sau preflight
+
+Notebook Count-only đã sửa lỗi `FileExistsError` do `build_config()` tạo artifact directory trống trong preflight. Chấp nhận directory trống/chưa log; vẫn bảo toàn directory có payload, stdout log, symlink hoặc path bất thường. Không thay Count-only algorithm/seed/epochs, không xóa hoặc tự resume run cũ. Template w/o CSE dùng cùng guard được đồng bộ.
+
+Khi cập nhật notebook đang mở trên Kaggle, chạy lại **cell định nghĩa engine/train_dataset ở mục6**, rồi cell Baby; không chạy setup chỉ để đổi SESSION_ID nếu directory hiện tại chỉ trống do preflight. Nếu có payload/log, audit hoặc tạo session mới đúng quy trình, không xóa để bypass. [Chi tiết sửa và111 kiểm tra hồi quy](ECLIPSE_Count_Only_Seed1_Notebook_Guide.md#6-sửa-lỗi-fileexistserror-trước-training-2026-10-19). Kiểm Popen bị intercept trước OS process; chưa có training mới và không tăng actual n/status COMPLETED.
