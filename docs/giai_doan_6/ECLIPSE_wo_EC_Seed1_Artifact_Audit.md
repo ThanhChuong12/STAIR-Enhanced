@@ -94,16 +94,20 @@ Steps:
 
 On missing input, hash/config/runtime disagreement, checkpoint mismatch or disagreement with the selected log's rounding interval, the notebook stops. It does not change metadata, relax checkpoint loading or launch a replacement 500-epoch run automatically.
 
-### 4.2 Continue with seed 2, then seed 3
+### 4.2 Continue with seed 2, then seed 3 (updated 2026-10-19)
 
 Notebook: [eclipse_wo_ec_seed2.ipynb](../../notebook/P6/eclipse_wo_ec_seed2.ipynb).
 
 - Default `SEED=2`, all three datasets, 500 epochs, fresh initialization.
 - The only algorithmic change from the full-model protocol is `evidence_delta=0.0`.
 - The guard expects the native **uncalibrated** graph fingerprint, `exact_v8_bypass=true`, `inactive_reason=delta_zero` and exactly zero operator/polynomial calibration dose. It does not incorrectly demand the full calibrated graph hash.
-- Use `SEED=3` in a separate session for the remaining independent training seed. Change `GPU_INDEX` when using the other physical GPU; use separate sessions/output directories.
+- Use the dedicated [eclipse_wo_ec_seed3.ipynb](../../notebook/P6/eclipse_wo_ec_seed3.ipynb) in a separate session for the remaining independent training seed. Change `GPU_INDEX` when using the other physical GPU; use separate sessions/output directories. Attach processed data through Add Input before Kaggle Save & Run All; the seed-3 notebook disables automatic download/attachment by default.
 - Attach the seed-1 recovery output and other w/o EC output directories through `ADDITIONAL_ARTIFACT_ROOTS`. The aggregator verifies native-reuse provenance separately from modern-run provenance and never inserts embedded full-model seed-1 metrics into this arm.
 - A seed-1 reevaluation with runtime deviations is not silently pooled as matched-runtime evidence.
+
+**2026-10-19 acceptance:** all three seed-2 runs have completed and passed [151 artifact checks](../../reports/eclipse_wo_ec_seed2_audit/acceptance.json). The corrected [ablation report](ECLIPSE_Ablation_Study_wo_EC.md) reports w/o EC n=2, but only matched Full–w/o EC seed 1 from locally available receipts. This does not establish an EC gain across two matched seeds.
+
+The dedicated seed-3 notebook is **READY** after [46 syntax/data-only checks](../../reports/eclipse_wo_ec_seed2_audit/seed3_notebook_validation.json). It embeds verified w/o EC seed-1 and seed-2 measurements for aggregation only; uploading their checkpoints is unnecessary for that purpose. It never uses those measurements as training initialization or checkpoint-selection evidence. No seed-3 result is currently claimed. Human cross-read by Hiếu remains separately attested.
 
 This continues the existing plan without another architecture modification. Full ECLIPSE notebooks and model/runner code were not edited.
 
@@ -130,11 +134,12 @@ Use multi-seed arm-level ablation figures for the main paper after all required 
 - [x] Original file digests, source commits, source hashes, configuration/data/operator equivalence audited statically.
 - [x] Original best checkpoints bundled for portable Kaggle recovery.
 - [x] Recovery-only seed-1 notebook prepared.
-- [x] Fresh w/o EC seed-2 notebook prepared, configurable for seed 3.
+- [x] Fresh w/o EC seed-2 notebook prepared; dedicated seed-3 notebook created with unchanged training configuration.
 - [x] Notebook JSON and Python cell/helper syntax parsed without executing cells.
 - [x] User runs native selected-checkpoint recovery and verifies receipts (completed in run `eclipse_wo_ec_seed1_reuse_20261018T152158Z_69603726`).
 - [ ] Independent human cross-read by Hiếu remains to be explicitly attested; automated file/hash review does not establish who performed a human review.
 - [x] Mark three seed-1 jobs `REUSED_VERIFIED`.
 - [x] Complete independent w/o EC seed 2 on all three datasets (completed in run `eclipse_wo_ec_seed2`).
+- [x] Prepare dedicated seed-3 notebook with safe Kaggle data preflight and verified seed-1/2 aggregation snapshots.
 - [ ] Complete independent w/o EC seed 3 on all three datasets.
 - [ ] Aggregate actual seeds, then analyze matched differences against full ECLIPSE without inventing missing measurements.

@@ -267,19 +267,19 @@ Nếu một slot rảnh trước, lấy job READY tiếp theo, không chờ đ�
 
 ### 6.2 Ledger từng job
 
-Trạng thái dưới đây là **PLANNED**, không phải đã chạy. Đổi thành READY sau kiểm tra implementation/harness, RUNNING khi process thực sự bắt đầu, COMPLETED_PENDING_REVIEW sau runner thành công và VERIFIED_ARTIFACT sau đọc chéo. Đây là nghiệm thu artifact, không phải nhãn reviewer khoa học độc lập.
+Ledger ghi trạng thái theo từng job; các job chưa có artifact vẫn là **PLANNED**. Đổi thành READY sau kiểm tra implementation/harness, RUNNING khi process thực sự bắt đầu, COMPLETED_PENDING_REVIEW sau runner thành công và VERIFIED_ARTIFACT sau đọc chéo. Đây là nghiệm thu artifact, không phải nhãn reviewer khoa học độc lập.
 
 | Job ID | Arm | Dataset | Seed | Người chạy | Ưu tiên | Trạng thái |
 |---|---|---|---:|---|---|---|
 | ECL-wo_ec-baby-s1 | wo_ec | baby | 1 | Chương | P0 | REUSED_VERIFIED |
 | ECL-wo_ec-baby-s2 | wo_ec | baby | 2 | Hiếu | P0 | VERIFIED_ARTIFACT |
-| ECL-wo_ec-baby-s3 | wo_ec | baby | 3 | Chương | P0 | PLANNED |
+| ECL-wo_ec-baby-s3 | wo_ec | baby | 3 | Chương | P0 | READY |
 | ECL-wo_ec-sports-s1 | wo_ec | sports | 1 | Chương | P0 | REUSED_VERIFIED |
 | ECL-wo_ec-sports-s2 | wo_ec | sports | 2 | Hiếu | P0 | VERIFIED_ARTIFACT |
-| ECL-wo_ec-sports-s3 | wo_ec | sports | 3 | Chương | P0 | PLANNED |
+| ECL-wo_ec-sports-s3 | wo_ec | sports | 3 | Chương | P0 | READY |
 | ECL-wo_ec-electronics-s1 | wo_ec | electronics | 1 | Chương | P0 | REUSED_VERIFIED |
 | ECL-wo_ec-electronics-s2 | wo_ec | electronics | 2 | Hiếu | P0 | VERIFIED_ARTIFACT |
-| ECL-wo_ec-electronics-s3 | wo_ec | electronics | 3 | Chương | P0 | PLANNED |
+| ECL-wo_ec-electronics-s3 | wo_ec | electronics | 3 | Chương | P0 | READY |
 | ECL-wo_lc-baby-s1 | wo_lc | baby | 1 | Hiếu | P1 | PLANNED |
 | ECL-wo_lc-baby-s2 | wo_lc | baby | 2 | Hiếu | P1 | PLANNED |
 | ECL-wo_lc-baby-s3 | wo_lc | baby | 3 | Hiếu | P1 | PLANNED |
@@ -414,7 +414,7 @@ Một run hợp lệ phải có:
 
 ### 8.4 Tái sử dụng seed 1 w/o EC từ artifact sẵn có
 
-**Cập nhật 2026-10-18:** Đã tìm thấy ba run 500 epochs có cấu hình/data/candidates và operator đúng bằng nhánh delta=0. Xem [audit và hướng dẫn notebook](ECLIPSE_wo_EC_Seed1_Artifact_Audit.md). **Không cần train lại seed 1**; cần dùng [notebook recovery seed 1](../../notebook/P6/eclipse_wo_ec_seed1.ipynb) để xuất selected TEST receipt từ checkpoint sẵn có. Baby chọn epoch **430**, còn summary sáu chữ số trong log thuộc epoch 500; không được lấy summary đó làm selected metric. Sports/Electronics chọn epoch 500. Tạm giữ trạng thái `REUSED_TRAINING_PENDING_SELECTED_REEVALUATION`, chỉ đổi thành `REUSED_VERIFIED` sau khi recovery và đọc chéo thành công. [Notebook w/o EC seed 2](../../notebook/P6/eclipse_wo_ec_seed2.ipynb) đã được chuẩn bị cho bước training độc lập tiếp theo; đổi `SEED=3` cho run seed 3.
+**Cập nhật 2026-10-18:** Đã tìm thấy ba run 500 epochs có cấu hình/data/candidates và operator đúng bằng nhánh delta=0. Xem [audit và hướng dẫn notebook](ECLIPSE_wo_EC_Seed1_Artifact_Audit.md). **Không cần train lại seed 1**; cần dùng [notebook recovery seed 1](../../notebook/P6/eclipse_wo_ec_seed1.ipynb) để xuất selected TEST receipt từ checkpoint sẵn có. Baby chọn epoch **430**, còn summary sáu chữ số trong log thuộc epoch 500; không được lấy summary đó làm selected metric. Sports/Electronics chọn epoch 500. Tạm giữ trạng thái `REUSED_TRAINING_PENDING_SELECTED_REEVALUATION`, chỉ đổi thành `REUSED_VERIFIED` sau khi recovery và đọc chéo thành công. [Notebook w/o EC seed 2](../../notebook/P6/eclipse_wo_ec_seed2.ipynb) đã được chuẩn bị cho bước training độc lập tiếp theo; Dùng [notebook w/o EC seed 3](../../notebook/P6/eclipse_wo_ec_seed3.ipynb) cho run seed 3; xem cập nhật ở mục 8.6.
 
 **Nghiệm thu sau recovery:** Phiên `eclipse_wo_ec_seed1_reuse_20261018T152158Z_69603726` đã có đủ native selected TEST receipts, đúng checkpoints, source/data/operator fingerprints và matched runtime trên cả ba dataset. Trạng thái ba job seed 1 hiện là **REUSED_VERIFIED**, thay thế trạng thái chờ ở ghi chú trước. Xem [báo cáo đã hiệu chỉnh](ECLIPSE_Ablation_Study_wo_EC.md) và [acceptance JSON](../../reports/eclipse_wo_ec_seed1_audit/recovered_seed1_acceptance.json). Đây là kiểm tra artifact của user-executed evaluation, không phải model rerun hoặc xác nhận thống kê từ một seed. Chưa tự xác nhận người đọc chéo độc lập là Hiếu. Notebook seed 2 đã nhúng riêng ba receipt **w/o EC đã đo**, kèm provenance; không cần upload lại checkpoint seed 1 chỉ để tổng hợp. Không sửa architecture hoặc các hyperparameters trước replication seeds 2–3.
 
@@ -431,7 +431,22 @@ Nếu đạt, đổi trạng thái job A1-s1 thành REUSED_VERIFIED, ghi source 
 
 ### 8.5 Nghiệm thu ECLIPSE w/o EC Seed 2
 
-**Cập nhật 2026-10-19:** Đã hoàn thành huấn luyện độc lập từ đầu 500 epochs cho **ECLIPSE w/o EC Seed 2** trên cả ba dataset (Baby, Sports, Electronics) tại phiên `eclipse_wo_ec_seed2_20261018T162239Z_f820d171`. Đầy đủ artifact, log, checkpoint `best_model.pt`, telemetry 500 epochs và các bảng tổng hợp đã được lưu trữ tại [logs/ICAART/eclipse_wo_ec_seed2](../../logs/ICAART/eclipse_wo_ec_seed2). Cả ba job `ECL-wo_ec-*-s2` chuyển trạng thái sang **`VERIFIED_ARTIFACT`**. Chi tiết phân tích đa seed $n=2$ và sample SD được cập nhật tại [báo cáo ablation](ECLIPSE_Ablation_Study_wo_EC.md).
+**Cập nhật 2026-10-19:** Phiên `eclipse_wo_ec_seed2_20261018T162239Z_f820d171` hoàn tất training độc lập 500 epochs trên Baby, Sports và Electronics. [Artifacts](../../logs/ICAART/eclipse_wo_ec_seed2) có native selected TEST receipts, checkpoints, manifests và telemetry. **151 kiểm tra artifact nhất quán** đã đạt: [acceptance JSON](../../reports/eclipse_wo_ec_seed2_audit/acceptance.json). Ba job `ECL-wo_ec-*-s2` là **VERIFIED_ARTIFACT**; đây là nghiệm thu kỹ thuật, không tự xác nhận Hiếu đã đọc chéo hoặc model đã rerun trên máy local.
+
+Selected epochs lần lượt Baby **420**, Sports **470**, Electronics **480**, đều theo VALID NDCG@20. Native evaluator có TEST tại terminal epoch 500 rồi restored selected checkpoint; bảng paper chỉ dùng `selected_metrics.json`, không chọn theo TEST. Seed 2 dùng pinned commit `5212263e87c5c1cfe6e48c91afa90201a48f5929`; seed 1 reuse historical revisions đã audit tương đương, không phải cùng source commit.
+
+w/o EC hiện có **n=2** trên mỗi dataset, đủ báo sample SD; **Full–w/o EC mới có matched seed 1 trong artifacts local**. Không so Full seed 1 với mean w/o EC n=2 để tuyên bố thắng qua hai seeds. Số liệu và các diễn giải đã hiệu chỉnh tại [báo cáo ablation](ECLIPSE_Ablation_Study_wo_EC.md). Giữ nguyên cấu hình khi tiếp tục replication; không tune từ TEST.
+
+### 8.6 Bàn giao w/o EC seed 3 — READY
+
+Notebook: [eclipse_wo_ec_seed3.ipynb](../../notebook/P6/eclipse_wo_ec_seed3.ipynb). Đã qua [46 kiểm tra dữ liệu và cú pháp](../../reports/eclipse_wo_ec_seed2_audit/seed3_notebook_validation.json), không chạy model/GPU/training. Cả ba job seed 3 chuyển **READY**, chỉ chuyển RUNNING khi process thực sự bắt đầu.
+
+1. Tạo session/output mới. Attach processed MMRec dataset bằng **Add Input trước Save & Run All**. Mặc định `AUTO_DOWNLOAD_DATA=False`; không dùng KaggleHub attach API trong batch session.
+2. Giữ `SEED=3`, delta=0, 64D, 500 epochs và các hyperparameters đã khóa; không nạp weights hoặc optimizer state từ seed khác. Chỉ đổi GPU index/data roots phù hợp máy.
+3. Notebook nhúng receipts **w/o EC seed 1 và 2 đã đo**, có provenance/digest/contract guards, chỉ để tổng hợp; không dùng chúng để khởi tạo/chọn checkpoint. Không cần upload checkpoints seed 1/2 chỉ để tính mean/SD.
+4. Thu đủ native selected TEST, best checkpoint, telemetry, manifests, configs và fingerprints. Xuất PDF vector + PNG 300 dpi + CSV/JSON/captions cho `eclipse_wo_ec_<dataset>_seed3_learning_curves`, `...training_memory`, `...calibration_diagnostics`, resource/stability summaries và ZIP.
+5. Mean/SD và stability chỉ tăng lên n=3 cho dataset có seed-3 receipt thực sự. Missing giữ NOT_MEASURED. Full seed 2/3 cần bàn giao riêng để tính matched differences; không nhân bản Full seed 1.
+6. Người chạy bàn giao ZIP; người còn lại đọc chéo receipts và provenance. Notebook READY không phải xác nhận training đã hoàn tất, significance hoặc EC thắng nhiều seeds.
 
 ## 9. Cách cấu hình và lệnh tham khảo
 
@@ -551,6 +566,54 @@ reviewed_by, exclusion_reason
 
 **Dose reference:** Full/Count/Shuffle/Global có cùng weighted/CSE uncalibrated reference khi protocol đúng; w/o EC dose=0. Binary và w/o CSE có reference riêng theo operator của arm; không so các con số dose khác reference rồi suy ra module nào mạnh hơn. Figure cơ chế chính nên dùng nhóm cùng reference, còn diagnostics Binary/CSE ghi riêng.
 
+### 10.4 Checklist áp dụng cho MỌI dataset × arm × seed (cập nhật 2026-10-19)
+
+Mục này là **yêu cầu nghiệm thu**, không khẳng định các notebook của mọi arm đã implement đầy đủ. Dùng khi Chương/Hiếu tạo notebook mới hoặc copy template; ưu tiên lấy guards/exporters đã audit từ notebook w/o EC rồi điều chỉnh theo arm. Không copy nguyên expected fingerprints của w/o EC cho arm khác.
+
+**Gate A — trước training (READY):**
+
+- [ ] Một nguồn `ARM`, `DATASET`, `SEED`, `PURPOSE`; job_id, CLI, resolved config, output naming cùng nguồn. Không để TARGET_SEED=2 nhưng lời gọi runner hard-code 3.
+- [ ] Mỗi attempt có session UTC+UUID riêng, không xóa/ghi đè log/receipt/checkpoint cũ. Cache graph tách khỏi attempt, giữ cache signature. Retry kỹ thuật liên kết attempt cũ; không tự chọn attempt theo TEST.
+- [ ] Checkout riêng được pin commit. Không tự fallback sang một repo HEAD khác mà không kiểm SHA/digests. Không sửa hoặc xóa checkout process đang chạy. Lưu remote URL, commit, git status/diff, source-file SHA256 và notebook SHA256; dirty patch phải có diff.
+- [ ] Không mở validator toàn cục để arm nào cũng nhận tham số bất kỳ. Kiểm đúng allowlist/diff của arm; w/o CSE eta0 không cần sửa validator lambda cho w/o LC. Nếu source revision khác Full, phải audit ảnh hưởng, không chỉ ghi “cùng commit”.
+- [ ] Match runtime/dependency versions và precision với protocol; lưu Python/Torch/FreeRec/PyG/CUDA/driver/GPU/TF32/AMP và pip freeze. Không cài fallback FreeRec unpinned hoặc tự upgrade Torch.
+- [ ] GPU dự kiến có thật; nếu thiếu thì fail trước training, không âm thầm fallback CPU rồi gộp timing như T4. Runtime/hardware lệch phải ghi deviation và đánh giá phạm vi so sánh.
+- [ ] Attach data qua Add Input trước Kaggle Save & Run All; tắt auto-attach mặc định trong batch. Kiểm đủ train/valid/test/text/image files, hashes, catalog/item order, TRAIN multiplicity và data root writable. Không chỉ kiểm thư mục tồn tại.
+- [ ] Check resolved configuration so với Full cùng dataset: dimension=64, layers=3, 500 epochs, gamma/lr/decay/batch/optimizer, sampling, mfiles/k, eval frequency/selection và đúng một intervention. Không nạp model/optimizer state từ run khác.
+- [ ] Persist command JSON, YAML gốc + overrides + resolved config/protocol diff, environment, input fingerprints, arm contract và preflight verdict. Nếu guard fail, không launch 9h để “thử xem”.
+
+**Gate B — sau training (COMPLETED_PENDING_REVIEW):**
+
+- [ ] Child exit0, native status COMPLETED đúng seed; telemetry đầy đủ epochs1–500 của run fresh hoặc resume được khai báo. Thiếu epoch/nonfinite phải điều tra, không tự bỏ dòng.
+- [ ] Native `selected_metrics.json`: mode=test, selected_checkpoint=true, selection=validation NDCG@20, đúng seed/evidence mode/delta; graph fingerprint khớp final operator của manifest.
+- [ ] Đọc đúng canonical keys **RECALL@10, RECALL@20, NDCG@10, NDCG@20**, finite trong [0,1]. Thiếu primary metric thì fail nghiệm thu; không `.get(name,0.0)`. Các diagnostic tùy chọn thiếu giữ null/NOT_MEASURED.
+- [ ] Selected epoch tương ứng native VALID selection (bao gồm tie rule); checkpoint tồn tại và có byte hash. Native lifecycle có thể TEST terminal rồi restored selected: chỉ selected receipt dùng cho paper. Không viết “chỉ một TEST đã được tính” nếu history có hai events.
+- [ ] Kiểm manifest/config/operator/loss theo bảng arm bên dưới. Native manifest có provenance không thay thế orchestration arm_id; `v8_arm=WMSG-core` có thể là tên backbone, không đủ nhận dạng paper arm.
+- [ ] Tách preprocessing, Coach.fit, tổng training epoch time, selected-eval/recovery time nếu đo và subprocess wall. `time_before_Popen→exit` **không phải** Coach.fit. Scope allocator/hardware/cache state được ghi.
+
+**Gate C — hậu xử lý/bàn giao (VERIFIED_ARTIFACT sau audit):**
+
+- [ ] Xuất selected TEST CSV + diagnostics/comparability/resource summaries, ba hình per-run ở mục11.8, source data và captions tiếng Anh. Plotting-only không gọi training hoặc tự chọn checkpoint khác.
+- [ ] Gói **cả** native artifact directory **và stdout log bên ngoài**, config/command/dirty diff/notebook/export script, provenance, tables/figures/captions. Không chỉ tar `artifact_dir` rồi bỏ `WORK_DIR/logs/...`.
+- [ ] Lưu archive receipt/sidecar JSON gồm archive filename/bytes/SHA256 và file inventory; tự kiểm đường dẫn tương đối trong gói. Log lỗi/attempt lỗi được giữ riêng, không xóa.
+- [ ] Người còn lại đọc chéo artifact và mở PDF/PNG kiểm crop/fonts/n/labels. `reviewed_by`, ngày và phạm vi phải là thực tế; không đánh dấu independent review chỉ vì notebook có tên Hiếu.
+- [ ] Ledger ghi trạng thái thật, artifact path và actual n. Không suy seed1/2 đã có từ notebook mang tên seed3. Một run không có SD/p-value qua seed.
+
+### 10.5 Điều kiện riêng theo arm — không tái sử dụng guard sai
+
+| Arm | Thay đổi cho phép | Những thứ phải giữ / kiểm tra sau run | Reference cho dose |
+|---|---|---|---|
+| Full | Không ablate; pooled_activity_excess, delta1 | eta.1, LC.01, weighted semantic và protocol; VALID-selected TEST | Weighted semantic+CSE uncalibrated eta.1 |
+| w/o EC | delta0 | eta.1/LC.01; exact native bypass; operator/poly dose0. Evidence có thể vẫn được tính và >0 | Weighted semantic+CSE uncalibrated eta.1, operator bằng reference |
+| w/o LC | lambda_nlgcl0 | Graph/evidence/candidates như Full; bỏ LC call/gradient; LC raw/weighted0 hoặc explicit inactive theo telemetry schema. Không ghi số đo không có thành0 | Như Full |
+| w/o CSE | eta0 | delta1/LC.01; same raw semantic candidates/weights/count/null/score; effective_eta0 và không CF contribution trong final graph. CF có thể vẫn build: ghi cost thật | **Uncalibrated semantic-only eta0** |
+| Binary semantic | Mỗi directed modality occurrence weight1 trước sum→max-sym | Candidates/count/null/score như Full; binary W có thể1 hoặc2; PEEC/CSE/LC giữ. Cả parent/reference/calibrator phải binary | **Binary uncalibrated+CSE** |
+| Count-only | pooled_activity_count; score=c/(c+4) | delta1/tau2/halves0, W/CSE/LC như Full; không gọi score là excess/null-subtracted; raw null có thể vẫn tính | Như Full |
+| Shuffled | pooled_activity_shuffle; fixed placebo seed20261016 | Count/null/support như Full; score multiset theo strata giữ; đo placement/moved fraction nếu có, không ép singleton đổi | Như Full |
+| Global-full | Bỏ activity conditioning, giữ full user pooling | Chỉ chạy sau mode implementation được kiểm tra; không dùng split-half estimator giả làm global-full | Như Full |
+
+Count/Shuffle có cùng delta không đồng nghĩa dose như Full; không sửa delta để thắng TEST. Final graph của w/o CSE/Binary/Count/Shuffle được phép khác Full, không xóa guard để chấp nhận tùy tiện hoặc bắt equality sai. Muốn chứng minh no-CF propagation có thể cần kiểm sparse operator hoặc builder contract; chỉ một flag eta0 chưa đủ chứng minh mọi implementation path đã dùng đúng nó.
+
 ## 11. Hình bắt buộc theo từng run và hình tổng hợp cho paper
 
 ### 11.1 Hình theo run, tự động xuất sau khi train xong
@@ -630,6 +693,39 @@ Caption: “Evidence coverage and realized perturbation after symmetric normaliz
 - Mỗi figure có CSV/JSON nguồn và script/notebook cell tạo hình.
 - Không dùng t-SNE, 3D bar hoặc heatmap chỉ để tăng số hình nếu không trả lời câu hỏi khoa học.
 - Chương/Hiếu phải mở PDF/PNG thật để kiểm tra crop, legend, font và nhãn; file xuất thành công chưa đủ là hình sẵn cho paper.
+
+### 11.8 Gói hình tối thiểu cho mỗi seed/arm và hướng dẫn Hiếu bổ sung
+
+**Naming thống nhất:** `eclipse_<dataset>_<arm>_seed<s>_<kind>`; dataset=`baby|sports|electronics`, arm=`full|wo_ec|wo_lc|wo_cse|binary_semantic|count_only|shuffled_evidence|global_full_null`. Giữ mapping mode native→arm trong catalog. Tên đã xuất khác chuẩn vẫn giữ raw file và catalog mapping, không train lại để đổi tên.
+
+Ví dụ notebook Hiếu đang được review: `eclipse_electronics_wo_cse_seed3_*`.
+
+| Bắt buộc mỗi run | Nội dung thiết kế | Dữ liệu nguồn và kiểm tra |
+|---|---|---|
+| `..._learning_curves.pdf/.png` | 2 panels: TRAIN total/BPR/weighted LC; VALID NDCG@20 và Recall@20. Đánh dấu selected epoch bằng receipt. | CSV từ telemetry/evaluation; filter VALID. Raw LC scale khác BPR: panel riêng hoặc weighted LC; không mislabeled raw thành weighted. Không TEST curve, không smoothing che điểm gốc. |
+| `..._training_memory.pdf/.png` | Allocated/reserved MiB và training seconds/epoch ở panels riêng. | CSV từ child training telemetry; caption training-only allocator, không tổng VRAM/whole-run peak. Không dùng parent notebook kernel memory. |
+| `..._calibration_diagnostics.pdf/.png` | Panels coverage (% edges và % raw-weight mass), operator/poly probe dose, score quantile profile nếu được đo. | JSON/CSV từ native graph diagnostics; caption reference/normalization/probe scope. Quantiles không thành histogram; thiếu panel ghi NOT_MEASURED, không điền0. |
+| `..._selected_test.csv` | 1 row dataset/arm/seed/attempt/selected_epoch +4 native TEST metrics và provenance path. | Validated receipt, không dùng console đã làm tròn. |
+| `..._resource_summary.csv`, `..._comparability.json`, `..._diagnostics.json` | Resources đúng timer/scope; protocol diff và fingerprints; cơ chế. | Manifest/native log/telemetry và source/data hashes; không bịa trường thiếu. |
+| `FIGURE_CAPTIONS.md` + source CSV/JSON | Caption tiếng Anh cho từng file; ghi dataset/arm/seed/n, split, units, reference. | PDF vector + PNG300dpi; nguồn/script xuất gói cùng hình. |
+
+**Không bắt buộc vẽ architecture mới cho mỗi seed.** Một schematic chung và chú thích arm là đủ. Resource profile tổng hợp, seed stability và ablation Full-vs-arm làm **sau khi có receipts thực tế**; n=1 chỉ point, n≥2 có sample SD; matched comparison chỉ trên giao seed set. Không tạo p-value từ epochs. Diagnostics graph static qua seed không được xem là independent seed replicates.
+
+**Lưu ý theo arm:**
+
+- w/o EC: dose0 là đúng; coverage có thể khác0, legacy coverage chưa đo là NOT_MEASURED.
+- w/o LC: hiển thị loss objective BPR và trạng thái LC disabled; không đổi loss0 thành thiếu số hoặc thêm LC giả.
+- w/o CSE: vẫn có calibration, dùng semantic-only dose reference; không caption “CF preprocessing cost=0” nếu native code vẫn build CF.
+- Count/Shuffle: báo score/dose cùng reference với Full; shuffle histogram giữ không có nghĩa normalized operator dose giữ.
+- Binary: reference là binary+CSE; không dùng w/o EC weighted hash làm expected graph.
+
+**Cứu kết quả đã chạy nhưng thiếu hình:**
+
+1. Copy nguyên run directory/stdout log/checkpoint/manifest ra bản lưu giữ; lập inventory hashes. Không chạy lại training cell hoặc cell dọn stale artifacts.
+2. Tạo notebook/script **report-only** đọc receipts, evaluation JSONL, training JSONL và manifest; không load model/training. Khôi phục những metadata có thật từ source revision/YAML/argv/log; trường không thể khôi phục ghi NOT_MEASURED.
+3. Xuất bảng/hình như trên, giữ outputs bổ sung trong `postprocess/<export_id>/`, tham chiếu run gốc. Ghi rõ ngày/export-script hash, không sửa raw receipts để ép schema.
+4. Nếu config/selection/data/operator được xác minh thì thiếu plotting **không yêu cầu train lại**. Nếu metric in console0 vì sai case nhưng native receipt đúng, sửa parser và regenerate report, không coi model đã đo0.
+5. Chỉ quyết định rerun sau khi kiểm lỗi ảnh hưởng scientific comparison hoặc thiếu checkpoint/evidence thiết yếu không khôi phục được. Giữ record mọi attempt, không rerun để chọn TEST tốt hơn.
 
 ## 12. Bảng paper và bộ dữ liệu tổng hợp
 
@@ -787,3 +883,18 @@ Nguồn chính thức để đối chiếu trước khi nộp: https://icaart.sc
 **Giữ các full run đang chạy. Tiếp theo ưu tiên w/o EC; tập trung các ablation nhỏ trên Baby/Sports; Count/Shuffle Electronics mỗi arm một seed; Global-full chỉ chạy sau khi implement đúng. Không chạy thêm STAIR gốc và không mở thêm kiến trúc/256D.**
 
 Chương nhận ít job nhưng nhiều Electronics; Hiếu nhận nhiều job ngắn và tổng hợp figure/table. Mục tiêu bàn giao là artifact đầy đủ, comparison công bằng và kết luận có thể kiểm tra — không phải mọi ablation đều phải giảm hoặc mọi ô đều phải có p<0.05.
+
+
+## 17. Review notebook của Hiếu — w/o CSE Electronics seed 3 (2026-10-19)
+
+[Báo cáo chi tiết và vị trí cell/line](ECLIPSE_wo_CSE_Electronics_S3_Notebook_Review.md). **ANALYZED_STATIC_ONLY**; không chạy model hoặc notebook, không sửa source notebook của Hiếu. Chưa có artifact w/o CSE trong gói notebook để nghiệm thu metric/hình.
+
+- CLI có đúng ý định eta0/delta1/LC.01; chưa kết luận kiến trúc ablation sai.
+- Lỗi chắc chắn: parser dùng `Recall@10/20` thay native `RECALL@10/20` và fallback0; phải sửa trước tổng hợp.
+- Fixed output + xóa stale checkpoints/receipts + log `w` có thể phá attempt cũ; tạo attempt mới, không dọn kết quả cũ tự động.
+- Source clone HEAD/fallback repo và local patch không đủ khóa reproducibility; lưu commit+dirty diff+digests, đúng named-arm contract. Preflight đang kiểm lambda0 của w/o LC chứ chưa kiểm w/o CSE.
+- Thiếu checks effective config/eta, fingerprints, native selected receipt, telemetry completeness; phải kiểm thay vì chỉ exit0.
+- Không có plotting/export CSV/captions; archive chỉ tar native artifact, bỏ stdout log nằm ngoài. Bổ sung mục10.4–10.5 và11.8, có thể hậu xử lý sau run không train lại.
+- Electronics w/o CSE seed3 là extension ngoài ledger tối thiểu hiện tại (P2 chỉ dự kiến seed1). Không tự thêm thành completed hoặc suy đủ3seeds; nếu đã chạy thì giữ, ghi actual coverage và ưu tiên budget còn lại theo core plan.
+
+**Phân công follow-up:** Hiếu sửa template/harness cho các ablation mình phụ trách và xuất gói hậu xử lý; Chương đọc chéo artifact. Checklist mới không đồng nghĩa Hiếu đã implement hoặc đã chạy; chỉ đổi status sau khi có bằng chứng thực tế.
