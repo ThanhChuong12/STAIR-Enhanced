@@ -272,13 +272,13 @@ Trạng thái dưới đây là **PLANNED**, không phải đã chạy. Đổi t
 | Job ID | Arm | Dataset | Seed | Người chạy | Ưu tiên | Trạng thái |
 |---|---|---|---:|---|---|---|
 | ECL-wo_ec-baby-s1 | wo_ec | baby | 1 | Chương | P0 | REUSED_VERIFIED |
-| ECL-wo_ec-baby-s2 | wo_ec | baby | 2 | Hiếu | P0 | PLANNED |
+| ECL-wo_ec-baby-s2 | wo_ec | baby | 2 | Hiếu | P0 | VERIFIED_ARTIFACT |
 | ECL-wo_ec-baby-s3 | wo_ec | baby | 3 | Chương | P0 | PLANNED |
 | ECL-wo_ec-sports-s1 | wo_ec | sports | 1 | Chương | P0 | REUSED_VERIFIED |
-| ECL-wo_ec-sports-s2 | wo_ec | sports | 2 | Hiếu | P0 | PLANNED |
+| ECL-wo_ec-sports-s2 | wo_ec | sports | 2 | Hiếu | P0 | VERIFIED_ARTIFACT |
 | ECL-wo_ec-sports-s3 | wo_ec | sports | 3 | Chương | P0 | PLANNED |
 | ECL-wo_ec-electronics-s1 | wo_ec | electronics | 1 | Chương | P0 | REUSED_VERIFIED |
-| ECL-wo_ec-electronics-s2 | wo_ec | electronics | 2 | Hiếu | P0 | PLANNED |
+| ECL-wo_ec-electronics-s2 | wo_ec | electronics | 2 | Hiếu | P0 | VERIFIED_ARTIFACT |
 | ECL-wo_ec-electronics-s3 | wo_ec | electronics | 3 | Chương | P0 | PLANNED |
 | ECL-wo_lc-baby-s1 | wo_lc | baby | 1 | Hiếu | P1 | PLANNED |
 | ECL-wo_lc-baby-s2 | wo_lc | baby | 2 | Hiếu | P1 | PLANNED |
@@ -428,6 +428,10 @@ Chương kiểm tra, Hiếu đọc chéo:
 6. Không chọn một artifact trong nhiều attempts vì TEST cao hơn.
 
 Nếu đạt, đổi trạng thái job A1-s1 thành REUSED_VERIFIED, ghi source path/checksums. Không cần đưa tên phiên bản nội bộ vào paper. Nếu chưa đạt thì giữ job phải chạy; không tự chuyển số liệu thành ablation chỉ vì gần nhau.
+
+### 8.5 Nghiệm thu ECLIPSE w/o EC Seed 2
+
+**Cập nhật 2026-10-19:** Đã hoàn thành huấn luyện độc lập từ đầu 500 epochs cho **ECLIPSE w/o EC Seed 2** trên cả ba dataset (Baby, Sports, Electronics) tại phiên `eclipse_wo_ec_seed2_20261018T162239Z_f820d171`. Đầy đủ artifact, log, checkpoint `best_model.pt`, telemetry 500 epochs và các bảng tổng hợp đã được lưu trữ tại [logs/ICAART/eclipse_wo_ec_seed2](../../logs/ICAART/eclipse_wo_ec_seed2). Cả ba job `ECL-wo_ec-*-s2` chuyển trạng thái sang **`VERIFIED_ARTIFACT`**. Chi tiết phân tích đa seed $n=2$ và sample SD được cập nhật tại [báo cáo ablation](ECLIPSE_Ablation_Study_wo_EC.md).
 
 ## 9. Cách cấu hình và lệnh tham khảo
 

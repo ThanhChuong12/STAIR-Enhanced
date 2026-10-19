@@ -135,5 +135,6 @@ Use multi-seed arm-level ablation figures for the main paper after all required 
 - [x] User runs native selected-checkpoint recovery and verifies receipts (completed in run `eclipse_wo_ec_seed1_reuse_20261018T152158Z_69603726`).
 - [ ] Independent human cross-read by Hiếu remains to be explicitly attested; automated file/hash review does not establish who performed a human review.
 - [x] Mark three seed-1 jobs `REUSED_VERIFIED`.
-- [ ] Complete independent w/o EC seeds 2 and 3 on all three datasets.
+- [x] Complete independent w/o EC seed 2 on all three datasets (completed in run `eclipse_wo_ec_seed2`).
+- [ ] Complete independent w/o EC seed 3 on all three datasets.
 - [ ] Aggregate actual seeds, then analyze matched differences against full ECLIPSE without inventing missing measurements.
