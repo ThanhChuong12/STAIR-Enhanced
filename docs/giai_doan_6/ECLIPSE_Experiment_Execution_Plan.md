@@ -96,7 +96,7 @@ Các giá trị trên lấy từ manifest seed 1 đã thực hiện, không ph�
 | Arm | Runner hiện tại | Notebook full hiện tại | Công việc trước khi chạy |
 |---|---|---|---|
 | Full | Đã có đủ $n=3$ seeds | Đã hoàn tất seeds 1/2/3 | **HOÀN TẤT VÀ NGHIỆM THU** (Seeds 1, 2, 3 đạt `VERIFIED_ARTIFACT`) |
-| w/o EC | Có thể biểu diễn bằng delta=0 | Không được dùng nguyên comparability full | Harness mới chấp nhận đúng graph delta0, giữ phần còn lại |
+| w/o EC | Đã có đủ $n=3$ seeds | Đã hoàn tất seeds 1/2/3 | **HOÀN TẤT VÀ NGHIỆM THU** (Seeds 1, 2, 3 đạt `VERIFIED_ARTIFACT`) |
 | w/o LC | Model có nhánh bỏ LC khi lambda=0, nhưng validator chỉ cho 0.01 | Bị khóa cấu hình full | Thêm named arm, cho phép riêng lambda=0; không nới full tùy ý |
 | w/o CSE | eta=0 được runner chấp nhận | Kiểm tra full sẽ từ chối eta/graph khác | Named arm/harness, expected operator semantic-only |
 | Binary semantic | Bị khóa weighted; graph recovery còn hard-code weighted | Không phù hợp | Sửa routing raw semantic graph ở cả đường parent/reference và calibrator |
@@ -226,7 +226,7 @@ r^G_{ij}=\frac{[c_{ij}-\mu^G_{ij}]_+}{c_{ij}+\mu^G_{ij}+4}.
 | Arm | Baby | Sports | Electronics | Mức |
 |---|---|---|---|---|
 | Full ECLIPSE | seeds 1/2/3 | seeds 1/2/3 | seeds 1/2/3 | P0; **HOÀN TẤT 100% (Seeds 1, 2, 3 VERIFIED_ARTIFACT)** |
-| w/o EC | seeds 1/2/3 | seeds 1/2/3 | seeds 1/2/3 | P0, 9 job kế hoạch |
+| w/o EC | seeds 1/2/3 | seeds 1/2/3 | seeds 1/2/3 | P0; **HOÀN TẤT 100% (Seeds 1, 2, 3 VERIFIED_ARTIFACT)** |
 | w/o LC | seeds 1/2/3 | seeds 1/2/3 | seed 1 tùy thời gian | P1; Electronics là P2 |
 | w/o CSE | seeds 1/2/3 | seeds 1/2/3 | seed 1 tùy thời gian | P1; Electronics là P2 |
 | Binary semantic | seeds 1/2/3 | seeds 1/2/3 | seed 1 tùy thời gian | P1; Electronics là P2 |
@@ -437,16 +437,20 @@ Selected epochs lần lượt Baby **420**, Sports **470**, Electronics **480**,
 
 w/o EC hiện có **n=2** trên mỗi dataset, đủ báo sample SD; **Full–w/o EC mới có matched seed 1 trong artifacts local**. Không so Full seed 1 với mean w/o EC n=2 để tuyên bố thắng qua hai seeds. Số liệu và các diễn giải đã hiệu chỉnh tại [báo cáo ablation](ECLIPSE_Ablation_Study_wo_EC.md). Giữ nguyên cấu hình khi tiếp tục replication; không tune từ TEST.
 
-### 8.6 Bàn giao w/o EC seed 3 — READY
+### 8.6 Nghiệm thu ECLIPSE w/o EC Seed 3 — Hoàn Thành Trọn Vẹn $n=3$ w/o EC
 
-Notebook: [eclipse_wo_ec_seed3.ipynb](../../notebook/P6/eclipse_wo_ec_seed3.ipynb). Đã qua [46 kiểm tra dữ liệu và cú pháp](../../reports/eclipse_wo_ec_seed2_audit/seed3_notebook_validation.json), không chạy model/GPU/training. Cả ba job seed 3 chuyển **READY**, chỉ chuyển RUNNING khi process thực sự bắt đầu.
-
-1. Tạo session/output mới. Attach processed MMRec dataset bằng **Add Input trước Save & Run All**. Mặc định `AUTO_DOWNLOAD_DATA=False`; không dùng KaggleHub attach API trong batch session.
-2. Giữ `SEED=3`, delta=0, 64D, 500 epochs và các hyperparameters đã khóa; không nạp weights hoặc optimizer state từ seed khác. Chỉ đổi GPU index/data roots phù hợp máy.
-3. Notebook nhúng receipts **w/o EC seed 1 và 2 đã đo**, có provenance/digest/contract guards, chỉ để tổng hợp; không dùng chúng để khởi tạo/chọn checkpoint. Không cần upload checkpoints seed 1/2 chỉ để tính mean/SD.
-4. Thu đủ native selected TEST, best checkpoint, telemetry, manifests, configs và fingerprints. Xuất PDF vector + PNG 300 dpi + CSV/JSON/captions cho `eclipse_wo_ec_<dataset>_seed3_learning_curves`, `...training_memory`, `...calibration_diagnostics`, resource/stability summaries và ZIP.
-5. Mean/SD và stability chỉ tăng lên n=3 cho dataset có seed-3 receipt thực sự. Missing giữ NOT_MEASURED. Full seed 2/3 cần bàn giao riêng để tính matched differences; không nhân bản Full seed 1.
-6. Người chạy bàn giao ZIP; người còn lại đọc chéo receipts và provenance. Notebook READY không phải xác nhận training đã hoàn tất, significance hoặc EC thắng nhiều seeds.
+**Cập nhật 2026-10-20:** Phiên huấn luyện độc lập `eclipse_wo_ec_seed3_20261019T075013Z_03cb3f39` đã hoàn tất 500 epochs trên cả 3 datasets: Amazon Baby, Amazon Sports, và Amazon Electronics.
+- Toàn bộ hóa đơn native `selected_metrics.json`, manifests, configs, figures và checkpoint weights đã được lưu trữ và kiểm tra tại [`logs/ICAART/eclipse_wo_ec_seed3/`](../../logs/ICAART/eclipse_wo_ec_seed3/).
+- Cả ba job `ECL-wo_ec-*-s3` được nâng trạng thái thành **VERIFIED_ARTIFACT**.
+- Nhánh **ECLIPSE w/o EC** (A1) chính thức hoàn thành toàn bộ bộ ba hạt giống $n=3$ (Seeds 1, 2, 3).
+- **Kết quả tổng hợp w/o EC ($n=3$, Mean $\pm$ Sample SD):**
+  - **Baby ($n=3$):** Recall@10 = $0.067455 \pm 0.000119$, Recall@20 = $0.104091 \pm 0.001180$, NDCG@10 = $0.036664 \pm 0.000207$, NDCG@20 = $\mathbf{0.046070 \pm 0.000162}$.
+  - **Sports ($n=3$):** Recall@10 = $0.076236 \pm 0.000125$, Recall@20 = $0.114329 \pm 0.000084$, NDCG@10 = $0.041837 \pm 0.000251$, NDCG@20 = $\mathbf{0.051703 \pm 0.000229}$.
+  - **Electronics ($n=3$):** Recall@10 = $0.045962 \pm 0.000136$, Recall@20 = $0.068167 \pm 0.000206$, NDCG@10 = $0.025971 \pm 0.000063$, NDCG@20 = $\mathbf{0.031715 \pm 0.000030}$.
+- **Đối chiếu ghép cặp 3-seed hoàn chỉnh (Full ECLIPSE vs. w/o EC):**
+  - Full ECLIPSE giành chiến thắng ở **32 / 36 so sánh (88.9%)** (thắng 8/9 seeds trên NDCG@20 và 9/9 seeds trên Recall@10).
+  - Đạt ý nghĩa thống kê $p < 0.05$ trên **Sports NDCG@20** ($p = 0.0446$) và **Baby Recall@10** ($p = 0.0179$).
+  - Xem chi tiết tại [ECLIPSE_Ablation_Study_wo_EC.md](ECLIPSE_Ablation_Study_wo_EC.md).
 
 ### 8.7 Nghiệm thu Full ECLIPSE (A0) Seeds 2 & 3 — Hoàn Thành Trọn Vẹn $n=3$ Full Model
 
