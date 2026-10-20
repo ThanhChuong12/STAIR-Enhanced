@@ -7,7 +7,7 @@
 - **Origin skill/mode:** academic-research-suite → experiment-agent / plan.
 - **Trạng thái kế hoạch:** PLANNED. Đã đọc mã nguồn để xác định khả năng cấu hình; không chạy training hoặc unit tests trong lần lập kế hoạch này.
 - **Phương pháp paper:** **ECLIPSE — Excess-Evidence Calibrated Layer-Contrastive Item Propagation with Support Expansion**. PEEC là tên mô-đun pooled excess-evidence calibration.
-- **Thông tin đang thực hiện:** Chương cho biết đã bắt đầu các run ECLIPSE full seed 2 và 3. Không khởi chạy trùng, không dừng hoặc sửa source checkout của những process đó.
+- **Tiến độ Full Model (A0):** Toàn bộ ba hạt giống độc lập ($n=3$: Seed 1, Seed 2, Seed 3) của **Full ECLIPSE** đã hoàn tất trọn vẹn 500 epochs trên cả 3 datasets và được nghiệm thu chính thức `VERIFIED_ARTIFACT` (chi tiết xem [ECLIPSE_Full_Model_Multi_Seed_Analysis.md](ECLIPSE_Full_Model_Multi_Seed_Analysis.md)).
 - **Giả định tài nguyên để lập lịch:** hai slot GPU độc lập hoạt động đồng thời. Hai hàng đợi dưới đây là slot A/Chương và slot B/Hiếu; nếu GPU đều ở máy Chương thì Hiếu vẫn có thể nhận nhiệm vụ cấu hình/nghiệm thu và điều phối hàng đợi B. Không giả định có bốn GPU. Nếu có thêm slot, lấy job chưa chạy từ ledger, không đổi protocol.
 - **Quyết định đã chốt:** không chạy thêm STAIR gốc; giữ kết quả tái lập và artifact sẵn có, ghi đúng số run. Không đưa số phiên bản nội bộ vào bảng đối sánh paper.
 - **Đích thực nghiệm:** kiểm chứng hiệu quả và đóng góp của phương pháp, không bảo đảm accept, không đặt p<0.05 hoặc một tỷ lệ tăng trưởng cố định làm điều kiện nghiệm thu run.
@@ -95,7 +95,7 @@ Các giá trị trên lấy từ manifest seed 1 đã thực hiện, không ph�
 
 | Arm | Runner hiện tại | Notebook full hiện tại | Công việc trước khi chạy |
 |---|---|---|---|
-| Full | Đã có artifact seed 1 | Đã tạo cho seed 2/3 | Đang triển khai; không sửa process đang chạy |
+| Full | Đã có đủ $n=3$ seeds | Đã hoàn tất seeds 1/2/3 | **HOÀN TẤT VÀ NGHIỆM THU** (Seeds 1, 2, 3 đạt `VERIFIED_ARTIFACT`) |
 | w/o EC | Có thể biểu diễn bằng delta=0 | Không được dùng nguyên comparability full | Harness mới chấp nhận đúng graph delta0, giữ phần còn lại |
 | w/o LC | Model có nhánh bỏ LC khi lambda=0, nhưng validator chỉ cho 0.01 | Bị khóa cấu hình full | Thêm named arm, cho phép riêng lambda=0; không nới full tùy ý |
 | w/o CSE | eta=0 được runner chấp nhận | Kiểm tra full sẽ từ chối eta/graph khác | Named arm/harness, expected operator semantic-only |
@@ -143,8 +143,8 @@ S=(1-\eta)\mathcal N(W^\delta)+\eta\bar S_{CF}.
 \]
 
 - delta=1, eta=0.1, lambda_LC=0.01.
-- Seed 1 đã có đủ bốn TEST metrics. Seed 2/3 đang được triển khai theo thông tin người dùng.
-- Thu được ba seed/dataset; không chọn seed tốt nhất để làm số đại diện.
+- Toàn bộ ba hạt giống (Seeds 1, 2, 3) đã hoàn thành 500 epochs trên cả ba dataset, đạt trạng thái `VERIFIED_ARTIFACT`. Chi tiết xem [Báo cáo phân tích Full ECLIPSE đa seed](ECLIPSE_Full_Model_Multi_Seed_Analysis.md).
+- Thu được ba seed/dataset; không chọn seed tốt nhất để làm số đại diện. Báo cáo bằng Mean $\pm$ Sample SD ($n=3$, $\text{ddof}=1$).
 
 ### A1 — w/o EC
 
@@ -225,7 +225,7 @@ r^G_{ij}=\frac{[c_{ij}-\mu^G_{ij}]_+}{c_{ij}+\mu^G_{ij}+4}.
 
 | Arm | Baby | Sports | Electronics | Mức |
 |---|---|---|---|---|
-| Full ECLIPSE | seeds 1/2/3 | seeds 1/2/3 | seeds 1/2/3 | P0; seed 1 có, seed 2/3 đang triển khai |
+| Full ECLIPSE | seeds 1/2/3 | seeds 1/2/3 | seeds 1/2/3 | P0; **HOÀN TẤT 100% (Seeds 1, 2, 3 VERIFIED_ARTIFACT)** |
 | w/o EC | seeds 1/2/3 | seeds 1/2/3 | seeds 1/2/3 | P0, 9 job kế hoạch |
 | w/o LC | seeds 1/2/3 | seeds 1/2/3 | seed 1 tùy thời gian | P1; Electronics là P2 |
 | w/o CSE | seeds 1/2/3 | seeds 1/2/3 | seed 1 tùy thời gian | P1; Electronics là P2 |
@@ -447,6 +447,22 @@ Notebook: [eclipse_wo_ec_seed3.ipynb](../../notebook/P6/eclipse_wo_ec_seed3.ipyn
 4. Thu đủ native selected TEST, best checkpoint, telemetry, manifests, configs và fingerprints. Xuất PDF vector + PNG 300 dpi + CSV/JSON/captions cho `eclipse_wo_ec_<dataset>_seed3_learning_curves`, `...training_memory`, `...calibration_diagnostics`, resource/stability summaries và ZIP.
 5. Mean/SD và stability chỉ tăng lên n=3 cho dataset có seed-3 receipt thực sự. Missing giữ NOT_MEASURED. Full seed 2/3 cần bàn giao riêng để tính matched differences; không nhân bản Full seed 1.
 6. Người chạy bàn giao ZIP; người còn lại đọc chéo receipts và provenance. Notebook READY không phải xác nhận training đã hoàn tất, significance hoặc EC thắng nhiều seeds.
+
+### 8.7 Nghiệm thu Full ECLIPSE (A0) Seeds 2 & 3 — Hoàn Thành Trọn Vẹn $n=3$ Full Model
+
+**Cập nhật 2026-10-20:** Toàn bộ ba hạt giống độc lập ($n=3$) của mô hình chuẩn **Full ECLIPSE** (A0) trên cả ba benchmark Amazon Baby, Amazon Sports, và Amazon Electronics đã hoàn tất 100% 500 epochs:
+- **Seed 1:** `REUSED_VERIFIED` từ [`logs/GD6/STAIR-PEEC/`](../../logs/GD6/STAIR-PEEC/).
+- **Seed 2:** `VERIFIED_ARTIFACT` từ [`logs/ICAART/eclipse_seed2/`](../../logs/ICAART/eclipse_seed2/) (session: `20261018T083655Z_2b0f7924`).
+- **Seed 3:** `VERIFIED_ARTIFACT` từ [`logs/ICAART/eclipse_seed3/`](../../logs/ICAART/eclipse_seed3/) (session: `20261019T075435Z_d063f4c8`).
+
+**Kết quả tổng hợp tri-seed ($n=3$, Mean $\pm$ Sample SD):**
+- **Amazon Baby ($n=3$):** Recall@10 = $0.068356 \pm 0.000236$, Recall@20 = $0.104553 \pm 0.001484$, NDCG@10 = $0.037057 \pm 0.000232$, NDCG@20 = $\mathbf{0.046340 \pm 0.000241}$.
+- **Amazon Sports ($n=3$):** Recall@10 = $0.076792 \pm 0.000481$, Recall@20 = $0.114640 \pm 0.000164$, NDCG@10 = $0.042162 \pm 0.000112$, NDCG@20 = $\mathbf{0.051956 \pm 0.000156}$.
+- **Amazon Electronics ($n=3$):** Recall@10 = $0.046177 \pm 0.000212$, Recall@20 = $0.068247 \pm 0.000122$, NDCG@10 = $0.026050 \pm 0.000164$, NDCG@20 = $\mathbf{0.031759 \pm 0.000093}$.
+
+**Dấu vân tay đồ thị hiệu chuẩn ($S_{\mathrm{ECLIPSE}}$ SHA-256):** Khớp bitwise 100% trên cả ba hạt giống: Baby (`b801...`), Sports (`6b7b...`), Electronics (`43b9...`).
+**Dấu chân bộ nhớ (Peak Allocator):** Bitwise bất biến giữa các seed: Baby 145.17 MiB, Sports 223.71 MiB, Electronics 800.67 MiB.
+Phân tích chi tiết, bảng LaTeX và đối chiếu matched pairs xem tại [ECLIPSE_Full_Model_Multi_Seed_Analysis.md](ECLIPSE_Full_Model_Multi_Seed_Analysis.md).
 
 ## 9. Cách cấu hình và lệnh tham khảo
 
