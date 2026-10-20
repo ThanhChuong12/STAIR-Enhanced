@@ -536,10 +536,17 @@ def build_stair_icaart_graph(
     degrees = np.diff(R_csc.indptr).astype(np.int64)
     if full:
         # No half assignment or seeded hashing in the full-activity estimator.
-        user_bin, group_sizes = build_activity_strata(R_csr)
+        if evidence_mode == "pooled_global_excess":
+            # Inactive users never enter M_active. This is not a two-half control.
+            active_users = np.diff(R_csr.indptr) > 0
+            user_bin = np.where(active_users, 0, -1).astype(np.int64)
+            group_sizes = np.array([np.count_nonzero(active_users)], dtype=np.int64)
+        else:
+            user_bin, group_sizes = build_activity_strata(R_csr)
         half = None
         c, mu = candidate_pooled_statistics(
             R_csc, E_sem, user_bin, group_sizes, candidate_block,
+            null_scope=identity["null_scope"],
         )
         r = pooled_activity_score(
             c, mu, evidence_tau, evidence_mode, degrees=degrees,
@@ -605,7 +612,7 @@ def build_stair_icaart_graph(
         "evidence_tau": evidence_tau,
         "evidence_delta": evidence_delta,
         "evidence_candidate_block": candidate_block,
-        "evidence_activity_bins": "log2",
+        "evidence_activity_bins": settings["evidence_activity_bins"],
         "evidence_halves": identity["active_halves"],
         "evidence_placebo_seed": placebo_seed,
         "training_seed": int(getattr(cfg, "seed", 1)),
@@ -634,6 +641,33 @@ def build_stair_icaart_graph(
         "user_half_counts": None if half is None else [int(np.sum(half == 0)), int(np.sum(half == 1))],
         "graph_fingerprint": cal_audit["s_ica_fingerprint"],
     }
+
+    if evidence_mode == "pooled_global_excess":
+        m_active = int(group_sizes[0])
+        max_null_error = 0.0
+        for start in range(0, len(E_sem), candidate_block):
+            stop = min(start + candidate_block, len(E_sem))
+            left, right = E_sem[start:stop].T
+            expected_global = (degrees[left].astype(np.float64)
+                               * degrees[right].astype(np.float64))
+            if m_active:
+                expected_global /= m_active
+            else:
+                expected_global.fill(0.0)
+            error = np.abs(mu[start:stop] - expected_global)
+            max_null_error = max(max_null_error, float(error.max(initial=0.0)))
+            if not np.allclose(mu[start:stop], expected_global, rtol=1e-12, atol=1e-12):
+                raise ArithmeticError("Global-full null disagrees with active-user marginal formula")
+        manifest.update(
+            activity_conditioning=False,
+            num_activity_strata=0,
+            num_null_groups=1,
+            num_active_train_users=m_active,
+            num_inactive_train_users=n_users - m_active,
+            global_null_formula="n_i*n_j/M_active; binary TRAIN item marginals",
+            global_null_max_abs_formula_error=max_null_error,
+            global_null_check_scope="candidate-wise formula consistency, not statistical calibration",
+        )
 
     metadata = {**w8_audit, **cal_audit, **cf_audit, **manifest,
                 "build_elapsed_seconds": elapsed,

@@ -35,10 +35,12 @@ ALLOWED_EVIDENCE_MODES: Tuple[str, ...] = (
     "pooled_activity_excess",
     "pooled_activity_count",
     "pooled_activity_shuffle",
+    "pooled_global_excess",
 )
 
 FULL_ACTIVITY_MODES = frozenset((
     "pooled_activity_excess", "pooled_activity_count", "pooled_activity_shuffle",
+    "pooled_global_excess",  # Full-user pooling, without activity conditioning.
 ))
 EVIDENCE_CONTRACT_VERSION = 2
 
@@ -50,7 +52,7 @@ def evidence_identity(values: Mapping) -> Dict[str, Any]:
     return {
         "contract_version": EVIDENCE_CONTRACT_VERSION,
         "architecture": "STAIR-PEEC-versionICAART-R2" if full else "STAIR-REEC-versionICAART",
-        "null_scope": "full_activity" if full else (
+        "null_scope": "global_full" if mode == "pooled_global_excess" else "full_activity" if full else (
             "unstratified_halves" if mode == "unstratified_replication" else "half_activity"
         ),
         "active_partition": not full,
@@ -78,8 +80,9 @@ def validate_icaart_config(config: Any) -> Dict[str, Any]:
     if mode not in ALLOWED_EVIDENCE_MODES:
         raise ValueError(f"evidence_mode must be one of {ALLOWED_EVIDENCE_MODES}; got {mode!r}")
 
-    if values["evidence_activity_bins"] != "log2":
-        raise ValueError("evidence_activity_bins must be 'log2'")
+    expected_bins = "none" if mode == "pooled_global_excess" else "log2"
+    if values["evidence_activity_bins"] != expected_bins:
+        raise ValueError(f"{mode} requires evidence_activity_bins={expected_bins!r}")
 
     halves = values["evidence_halves"]
     full = mode in FULL_ACTIVITY_MODES

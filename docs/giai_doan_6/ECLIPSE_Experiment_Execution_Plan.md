@@ -102,7 +102,7 @@ Các giá trị trên lấy từ manifest seed 1 đã thực hiện, không ph�
 | Binary semantic | Bị khóa weighted; graph recovery còn hard-code weighted | Không phù hợp | Sửa routing raw semantic graph ở cả đường parent/reference và calibrator |
 | Count-only | Mode pooled_activity_count đã có | Full notebook khóa mode excess | Harness mode-aware, không dùng exporter khóa pooled_activity_excess |
 | Shuffled evidence | Mode pooled_activity_shuffle đã có | Full notebook khóa mode excess | Harness mode-aware; ghi placebo seed, strata và score histogram |
-| Global-full null | Chưa có mode riêng | Chưa hỗ trợ | Implement pooled global null mới; không thay bằng unstratified_replication |
+| Global-full null | Mode pooled_global_excess đã bổ sung, bins none/halves0 | Ba notebooks seeds1–3 Baby/Sports READY | Full-user global null trên active TRAIN users; declared source overlay, không dùng unstratified_replication |
 
 ### 3.1 Các vị trí code phải kiểm tra
 
@@ -312,12 +312,12 @@ Ledger ghi trạng thái theo từng job; các job chưa có artifact vẫn là 
 | ECL-shuffled_evidence-sports-s2 | shuffled_evidence | sports | 2 | Hiếu | P1 | PLANNED |
 | ECL-shuffled_evidence-sports-s3 | shuffled_evidence | sports | 3 | Hiếu | P1 | PLANNED |
 | ECL-shuffled_evidence-electronics-s1 | shuffled_evidence | electronics | 1 | Hiếu | P1 | PLANNED |
-| ECL-global_full_null-baby-s1 | global_full_null | baby | 1 | Chương | P1-CODE | PLANNED |
-| ECL-global_full_null-baby-s2 | global_full_null | baby | 2 | Chương | P1-CODE | PLANNED |
-| ECL-global_full_null-baby-s3 | global_full_null | baby | 3 | Chương | P1-CODE | PLANNED |
-| ECL-global_full_null-sports-s1 | global_full_null | sports | 1 | Chương | P1-CODE | PLANNED |
-| ECL-global_full_null-sports-s2 | global_full_null | sports | 2 | Chương | P1-CODE | PLANNED |
-| ECL-global_full_null-sports-s3 | global_full_null | sports | 3 | Chương | P1-CODE | PLANNED |
+| ECL-global_full_null-baby-s1 | global_full_null | baby | 1 | Chương | P1 | READY |
+| ECL-global_full_null-baby-s2 | global_full_null | baby | 2 | Chương | P1 | READY |
+| ECL-global_full_null-baby-s3 | global_full_null | baby | 3 | Chương | P1 | READY |
+| ECL-global_full_null-sports-s1 | global_full_null | sports | 1 | Chương | P1 | READY |
+| ECL-global_full_null-sports-s2 | global_full_null | sports | 2 | Chương | P1 | READY |
+| ECL-global_full_null-sports-s3 | global_full_null | sports | 3 | Chương | P1 | READY |
 
 
 ### 6.3 Ba job Electronics P2, chưa nằm trong 47 job
@@ -500,7 +500,7 @@ Giữ `--seed` đúng job, tau=2. Không đổi `--evidence-seed` thành trainin
 
 - w/o LC: lambda=0 chỉ được dùng **sau** khi named-arm validator chấp nhận riêng ablation. Hiện chỉ thêm `--lambda-nlgcl 0` sẽ bị từ chối.
 - Binary: không có một override YAML đủ để sửa toàn bộ đường graph hiện tại. Phải routing nhất quán như ENG-03.
-- Global-full: tên mode dự kiến chưa có trong registry. Không chạy lệnh chứa tên đó trước khi implement.
+- Global-full: native mode `pooled_global_excess`, bins `none`, halves0 đã có. Chỉ dùng notebooks Global-full với source overlay đã khai báo; checkout Full cũ không có mode này.
 
 ### 9.3 Quy tắc harness/notebook mới
 
@@ -630,7 +630,7 @@ Mục này là **yêu cầu nghiệm thu**, không khẳng định các notebook
 | Binary semantic | Mỗi directed modality occurrence weight1 trước sum→max-sym | Candidates/count/null/score như Full; binary W có thể1 hoặc2; PEEC/CSE/LC giữ. Cả parent/reference/calibrator phải binary | **Binary uncalibrated+CSE** |
 | Count-only | pooled_activity_count; score=c/(c+4) | delta1/tau2/halves0, W/CSE/LC như Full; không gọi score là excess/null-subtracted; raw null có thể vẫn tính | Như Full |
 | Shuffled | pooled_activity_shuffle; fixed placebo seed20261016 | Count/null/support như Full; score multiset theo strata giữ; đo placement/moved fraction nếu có, không ép singleton đổi | Như Full |
-| Global-full | Bỏ activity conditioning, giữ full user pooling | Chỉ chạy sau mode implementation được kiểm tra; không dùng split-half estimator giả làm global-full | Như Full |
+| Global-full | pooled_global_excess; bins none/halves0; μ=n_i*n_j/M_active | Counts/support/CF/training giữ; global_full metadata, one pool, inactive users excluded. Source extension đã có trong notebooks, không dùng estimator hai nửa | Như Full |
 
 Count/Shuffle có cùng delta không đồng nghĩa dose như Full; không sửa delta để thắng TEST. Final graph của w/o CSE/Binary/Count/Shuffle được phép khác Full, không xóa guard để chấp nhận tùy tiện hoặc bắt equality sai. Muốn chứng minh no-CF propagation có thể cần kiểm sparse operator hoặc builder contract; chỉ một flag eta0 chưa đủ chứng minh mọi implementation path đã dùng đúng nó.
 
@@ -971,3 +971,30 @@ Phần này thay các trạng thái lịch sử của A0/A1 ở trên, không x�
 - P0 tiếp theo: Hiếu bàn giao bảng/receipts A2/A3 theo cùng schema; hoàn thành/nhận Count/Shuffle đúng kế hoạch; lập external benchmark source/protocol matrix; cập nhật Example.tex đang còn single-seed/internal-version narrative.
 - Figures ưu tiên: architecture; component/evidence ablation khi đủ receipts; coverage + operator/probe dose. Paired EC effect và learning curves/nguồn lực có thể ở appendix. Export PDF vector + PNG300dpi + source data/captions, ghi actual n/units/errorbar scope.
 - Giữ kiến trúc đã chốt. Nếu controls không ủng hộ specific excess-evidence claim, điều chỉnh claim trung thực; không tune TEST để làm mọi arm thắng.
+
+
+## 20. Count-only seeds2–3 — notebooks READY (2026-10-20)
+
+Người dùng xác nhận Count-only seed1 hoàn tất Baby/Sports/Electronics. Tiếp tục **bốn run**: Baby+sports seed2 và Baby+Sports seed3; Electronics chỉ seed1 theo phạm vi đã chốt. Việc tạo notebook này không audit thêm artifacts Count-only seed1, không tự nâng trạng thái thực nghiệm các seed mới.
+
+- [Notebook seed2](../../notebook/P6/eclipse_count_only_seed2.ipynb) và [notebook seed3](../../notebook/P6/eclipse_count_only_seed3.ipynb): `SEED=2/3`, `SELECTED_DATASETS=('baby','sports')`, 64D/500epochs. Hai sections Electronics đã bỏ; guard từ chối chọn Electronics trong notebooks follow-up.
+- Giữ mode `pooled_activity_count`, delta1/tau2/halves0, eta.1/LC.01, per-dataset hyperparameters, pinned runtime source và fingerprints của seed1. Score c/(c+4), không null subtraction; không tune từ TEST.
+- Giữ engine/plots/ZIP và bản sửa empty preflight directory guard từ seed1. Snapshot trong archive là notebook đúng seed mới, không nhúng nhầm template seed1.
+- Xuất PDF vector/PNG300dpi/source data/captions cho learning curves, training memory, count-calibration diagnostics; session resource profile; native selected TEST/config/source/input provenance/checkpoints/stdout/ZIP và checksum. Actual n mỗi dataset trong một notebook vẫn1, không SD/p-value giả.
+- **READY_STATIC_CHECKED_NOT_EXECUTED**, chưa COMPLETED. Có thể chạy hai sessions/GPU riêng; mỗi notebook chạy Baby→Sports tuần tự. Sau khi nhận receipts cả ba Count seeds, tổng hợp matched Full-vs-Count Baby/Sports; Electronics n1.
+
+[Hướng dẫn chi tiết](ECLIPSE_Count_Only_Seeds2_3_Notebook_Guide.md), [build receipt](../../reports/eclipse_count_only_seeds2_3_notebooks/build_receipt.json). Notebook seed1 và source training giữ nguyên.
+
+
+## 21. Global-full null — source và notebooks READY (2026-10-20)
+
+Sáu job Global-full Baby/Sports seeds1–3 chuyển **P1-CODE/PLANNED → P1/READY**, không COMPLETED. Chương phụ trách; Hiếu đọc chéo. [Hướng dẫn đầy đủ](ECLIPSE_Global_Full_Null_Notebook_Guide.md).
+
+- [Seed1](../../notebook/P6/eclipse_global_full_null_seed1.ipynb), [seed2](../../notebook/P6/eclipse_global_full_null_seed2.ipynb), [seed3](../../notebook/P6/eclipse_global_full_null_seed3.ipynb): mỗi notebook Baby→Sports, 64D/500epochs. Electronics không thuộc arm này.
+- Mode `pooled_global_excess`, bins `none`, halves0. μ_global=n_i*n_j/M_active, chỉ active TRAIN users; score=[c−μ_global]+/(c+μ_global+4), delta1/tau2. Không dùng Count-only hoặc unstratified_replication.
+- Giữ WMSG/CSE eta.1/LC.01/MI/FSC/BSC và per-dataset settings. Counts/candidates/raw semantic/presence/CF phải khớp Full; null/assignment/score/final graph được phép khác. Reference dose vẫn weighted+CSE uncalibrated eta.1.
+- Bổ sung mode và graph/evidence wiring trong đúng ba source files. Notebook nhúng ba file có SHA, clone base Full commit5212263 vào **private checkout**, kiểm base rồi áp declared extension; native source digests/diff/base+overlay ID được lưu. Không cần push commit mới; không patch checkout Full/Count đang chạy.
+- Preflight/guards kiểm mode/global scope/no halves/M_active/one pool, identity nhất quán root/graph/checkpoint, unchanged training protocol, counts/data/source. Giữ bản sửa empty-preflight-directory guard và không tự xóa/resume/retry.
+- Giữ plots PDF/PNG300dpi/source data/captions, selected TEST/resources/diagnostics/checkpoints/ZIP+checksum. Thêm global-null audit (active/inactive users/formula/error/hashes). Mỗi session actual n=1/dataset, chưa SD/p-value nhiều seed.
+- [33 kiểm tra tĩnh mỗi notebook](../../reports/eclipse_global_full_null_notebooks/build_receipt.json) và [48 đối chiếu CPU toán học/config/guards](../../reports/eclipse_global_full_null_notebooks/validation.json) đạt. Không model/GPU/training/network/full test suite; chưa Kaggle smoke hoặc real Global metrics. READY không đồng nghĩa đã chạy.
+- Sau sáu run: audit rồi tổng hợp matched Full-vs-Global trên Baby/Sports, mean±sample SD và paired differences. Nếu Global không thua Full thì giảm claim riêng về activity conditioning; không sửa hyperparameters từ TEST để làm control thua.

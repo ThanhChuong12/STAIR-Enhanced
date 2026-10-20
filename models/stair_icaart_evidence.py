@@ -138,10 +138,14 @@ def candidate_pooled_statistics(
     user_bin: np.ndarray,
     group_sizes: np.ndarray,
     candidate_block: int = 8192,
+    *, null_scope: str = "full_activity",
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Compute full-user c[E], mu[E] on semantic candidates, without half-conditioned nulls.
 
-    mu_ij = sum_b n_ib*n_jb/M_b, using binary TRAIN presence. Integer counters
+    mu_ij = sum_b n_ib*n_jb/M_b, using binary TRAIN presence. With
+    null_scope='global_full', one pool contains all and only active TRAIN users,
+    giving mu_ij=n_i*n_j/M_active. Observed overlap counting is identical.
+    Integer counters
     are promoted before multiplication. Temporary expectation arrays are block-by-bin,
     never item-by-item. Posting searches execute in NumPy, not per-history pair loops.
     """
@@ -162,17 +166,23 @@ def candidate_pooled_statistics(
     pairs = pairs.astype(np.int64, copy=False)
     if len(np.unique(pairs[:, 0] * n_items + pairs[:, 1])) != len(pairs):
         raise ValueError("Candidate pairs must be unique")
+    if null_scope not in ("full_activity", "global_full"):
+        raise ValueError("Unknown full-user null scope")
     bins, sizes = np.asarray(user_bin), np.asarray(group_sizes)
     activity = np.bincount(matrix.indices, minlength=n_users)
     active = activity > 0
     expected_bins = np.full(n_users, -1, dtype=np.int64)
-    expected_bins[active] = np.floor(np.log2(activity[active])).astype(np.int64)
-    expected_sizes = np.bincount(expected_bins[active])
+    if null_scope == "global_full":
+        expected_bins[active] = 0
+        expected_sizes = np.array([np.count_nonzero(active)], dtype=np.int64)
+    else:
+        expected_bins[active] = np.floor(np.log2(activity[active])).astype(np.int64)
+        expected_sizes = np.bincount(expected_bins[active])
     if (bins.shape != (n_users,) or bins.dtype.kind not in "iu"
             or sizes.ndim != 1 or sizes.dtype.kind not in "iu"
             or not np.array_equal(bins, expected_bins)
             or not np.array_equal(sizes, expected_sizes)):
-        raise ValueError("Full-activity groups must match binary TRAIN histories exactly")
+        raise ValueError("Null groups must match the selected full-user TRAIN scope exactly")
 
     counts = np.zeros(len(pairs), dtype=np.int64)
     expected = np.zeros(len(pairs), dtype=np.float64)
