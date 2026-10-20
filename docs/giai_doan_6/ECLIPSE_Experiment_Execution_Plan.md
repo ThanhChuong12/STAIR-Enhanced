@@ -230,7 +230,7 @@ r^G_{ij}=\frac{[c_{ij}-\mu^G_{ij}]_+}{c_{ij}+\mu^G_{ij}+4}.
 | w/o LC | seeds 1/2/3 | seeds 1/2/3 | seed 1 tùy thời gian | P1; Electronics là P2 |
 | w/o CSE | seeds 1/2/3 | seeds 1/2/3 | seed 1 tùy thời gian | P1; Electronics là P2 |
 | Binary semantic | seeds 1/2/3 | seeds 1/2/3 | seed 1 tùy thời gian | P1; Electronics là P2 |
-| Count-only | seeds 1/2/3 (Seed 1 VERIFIED_ARTIFACT) | seeds 1/2/3 (Seed 1 VERIFIED_ARTIFACT) | seed 1 (VERIFIED_ARTIFACT) | P1; Seed 1 hoàn tất cả 3 datasets, chờ seeds 2/3 Baby/Sports |
+| Count-only | seeds 1/2/3 (VERIFIED_ARTIFACT) | seeds 1/2/3 (VERIFIED_ARTIFACT) | seed 1 (VERIFIED_ARTIFACT) | P1; **HOÀN TẤT 100% PHẠM VI** (Baby/Sports s1–3, Electronics s1) |
 | Shuffled evidence | seeds 1/2/3 | seeds 1/2/3 | seed 1 | P1; Electronics sau w/o EC |
 | Global-full null | seeds 1/2/3 nếu sẵn sàng | seeds 1/2/3 nếu sẵn sàng | Không yêu cầu | P1 điều kiện code; là control riêng |
 
@@ -931,29 +931,18 @@ Chương nhận ít job nhưng nhiều Electronics; Hiếu nhận nhiều job ng
 - Nếu notebook cũ đang train, để run hoàn tất và dùng report-only ở session mới; không thay source giữa run. Electronics seed3 vẫn là extension ngoài phạm vi tối thiểu, không suy đã có đủ seeds1–3.
 
 
-## 18. Count-only seed1 — notebook READY (2026-10-19)
+## 18. Count-only — Toàn bộ thực nghiệm hoàn tất (2026-10-20)
 
-[Notebook ECL-count_only seed1](../../notebook/P6/eclipse_count_only_seed1.ipynb), [hướng dẫn bàn giao](ECLIPSE_Count_Only_Seed1_Notebook_Guide.md). Ba job `ECL-count_only-{baby,sports,electronics}-s1` chuyển **READY**, chưa RUNNING/COMPLETED. Giữ nguyên trạng thái các arms và seeds khác.
+Bảy run `ECL-count_only` (Baby seeds 1–3, Sports seeds 1–3, Electronics seed 1) đã chuyển trạng thái **COMPLETED / VERIFIED_ARTIFACT**. Xem phân tích đối chiếu toàn diện tại [ECLIPSE_Ablation_Study_Count_Only.md](ECLIPSE_Ablation_Study_Count_Only.md).
 
-- Mặc định Baby→Sports→Electronics, seed1,64D,500epochs. Mode `pooled_activity_count`, delta1/tau2/halves0; WMSG+CSE eta.1+LC.01+MI/FSC/BSC giữ theo Full. Chỉ mode/score thay đổi; không tune riêng từ TEST.
-- Score `c/(c+4)` không subtract null. Counts/null/candidates/semantic/CF invariant; Count score/final graph hashes không bị ép bằng Full. Dose reference weighted+CSE eta.1, không dùng guard delta0 hoặc reference eta0 của w/o CSE.
-- Training fresh, pin source và runtime/data/config checks; unique attempt, không xóa hoặc tự retry. Attach data trước Kaggle batch. Dùng slot riêng, không ngắt full/w/o EC đang tiến triển.
-- Mỗi dataset xuất learning curves, training memory, calibration diagnostics: PDF/PNG300dpi + CSV/JSON/captions; selectedTEST/resources/comparability. Session resource profile/status table và ZIP đầy đủ stdout/native files/config/source/notebook-template/provenance cùng inventory/checksum sidecar.
-- Report-only mode nhận mapping native artifact/stdout theo dataset, không training/GPU/network. Missing=NOT_MEASURED, không giả0 hoặc SD/p-value cho n1. Source/runtime deviations cần audit riêng.
-- [102 kiểm tra công thức/schema/cú pháp/hậu xử lý đạt](../../reports/eclipse_count_only_seed1_notebook/validation.json), dùng fixtures tạm và CPU score function, không model/GPU/network/training; chưa có metric Count-only mới. Người chạy còn phải nghiệm thu artifacts thật và human cross-read.
-- Sau seed1: Baby/Sports seeds2–3; Electronics chỉseed1. Có thể chọn subset dataset trước session nếu ngân sách cần tách, giữ nguyên protocol. Không tự tăng actual n hoặc suy đủ ba seed từ một notebook.
+- Baby→Sports→Electronics seed1, Baby→Sports seeds 2–3, 64D, 500 epochs. Mode `pooled_activity_count`, delta1/tau2/halves0; WMSG+CSE eta.1+LC.01+MI/FSC/BSC giữ theo Full. Chỉ mode/score thay đổi; không tune riêng từ TEST.
+- Score `c/(c+4)` không subtract null. Counts/null/candidates/semantic/CF invariant; Count score/final graph hashes không bị ép bằng Full. Dose reference weighted+CSE eta.1.
+- Mỗi dataset xuất learning curves, training memory, calibration diagnostics: PDF/PNG300dpi + CSV/JSON/captions; selected TEST/resources/comparability. Session resource profile/status table và ZIP đầy đủ stdout/native files/config/source/provenance cùng inventory/checksum sidecar.
 
 
-### 18.1 Sửa false-positive ở guard launch sau preflight
+## 19. Actual status sau audit A0/A1/A5 — 2026-10-20
 
-Notebook Count-only đã sửa lỗi `FileExistsError` do `build_config()` tạo artifact directory trống trong preflight. Chấp nhận directory trống/chưa log; vẫn bảo toàn directory có payload, stdout log, symlink hoặc path bất thường. Không thay Count-only algorithm/seed/epochs, không xóa hoặc tự resume run cũ. Template w/o CSE dùng cùng guard được đồng bộ.
-
-Khi cập nhật notebook đang mở trên Kaggle, chạy lại **cell định nghĩa engine/train_dataset ở mục6**, rồi cell Baby; không chạy setup chỉ để đổi SESSION_ID nếu directory hiện tại chỉ trống do preflight. Nếu có payload/log, audit hoặc tạo session mới đúng quy trình, không xóa để bypass. [Chi tiết sửa và111 kiểm tra hồi quy](ECLIPSE_Count_Only_Seed1_Notebook_Guide.md#6-sửa-lỗi-fileexistserror-trước-training-2026-10-19). Kiểm Popen bị intercept trước OS process; chưa có training mới và không tăng actual n/status COMPLETED.
-
-
-## 19. Actual status sau audit A0/A1 — 2026-10-20
-
-Phần này thay các trạng thái lịch sử của A0/A1 ở trên, không xóa lịch sử thực hiện. [Full analysis](ECLIPSE_Full_Model_Multi_Seed_Analysis.md), [A1 analysis](ECLIPSE_Ablation_Study_wo_EC.md), [paper readiness và figures/tables](ECLIPSE_Paper_Experimental_Readiness_and_Presentation_Plan.md).
+Phần này thay các trạng thái lịch sử của các arms ở trên, không xóa lịch sử thực hiện. [Full analysis](ECLIPSE_Full_Model_Multi_Seed_Analysis.md), [A1 analysis](ECLIPSE_Ablation_Study_wo_EC.md), [A5 analysis](ECLIPSE_Ablation_Study_Count_Only.md), [paper readiness và figures/tables](ECLIPSE_Paper_Experimental_Readiness_and_Presentation_Plan.md).
 
 | Arm | Baby | Sports | Electronics | Audit scope |
 | --- | --- | --- | --- | --- |
@@ -961,29 +950,25 @@ Phần này thay các trạng thái lịch sử của A0/A1 ở trên, không x�
 | A1 w/o EC | s1–3 COMPLETED | s1–3 COMPLETED | s1–3 COMPLETED | s1 recovered historical checkpoint, s2–3 native; đủ 9 checkpoint local |
 | A2 w/o LC | Hiếu báo đã xong | Hiếu phân tích riêng | Chưa xác nhận phạm vi | HUMAN_REPORTED_COMPLETE; artifacts còn ở máy Hiếu, không suy đủ mọi ô/seed |
 | A3 w/o CSE | Hiếu báo đã xong | Hiếu phân tích riêng | Chưa xác nhận phạm vi | HUMAN_REPORTED_COMPLETE; artifacts còn ở máy Hiếu, không suy đủ mọi ô/seed |
-| A5 Count-only | s1 COMPLETED | s1 COMPLETED | s1 COMPLETED | Native receipts/telemetry/source/checkpoints đủ 3 datasets; xem [A5 analysis](ECLIPSE_Ablation_Study_Count_Only.md) |
+| A5 Count-only | s1–3 COMPLETED | s1–3 COMPLETED | s1 COMPLETED | Đầy đủ 7 runs native receipts/telemetry/source/checkpoints; xem [A5 analysis](ECLIPSE_Ablation_Study_Count_Only.md) |
 | Shuffle/Binary/Global | Giữ actual ledger của người chạy | Chưa nhận receipts mới vào audit này | Không tự tăng n/status | Notebook READY hoặc một thông báo không thay kiểm toán số liệu |
 
 - A0 NDCG@20 n3: Baby0.046340±0.000241, Sports0.051956±0.000156, Electronics0.031759±0.000093.
 - EC relative mean gain so A1: +0.585%/+0.490%/+0.138%; Electronics s3 N@20 âm. Không có N@20 comparison nào còn p<.05 sau Holm3 trong audit hồi cứu. Không dùng epoch p-values cũ.
-- A5 Count-only Seed 1 hoàn thành cả 3 datasets: Baby N@20=0.045668 (-1.57% vs Full, -1.24% vs w/o EC; peak sớm epoch 225 do popularity distortion); Sports N@20=0.052109 (+0.05% vs Full, +0.57% vs w/o EC); Electronics N@20=0.031852 (+0.07% vs Full, +0.54% vs w/o EC). Xem [báo cáo chi tiết A5](ECLIPSE_Ablation_Study_Count_Only.md).
+- A5 Count-only hoàn thành 100% phạm vi (7 runs): Baby n3 N@20=0.046148±0.000538 (Full thắng 2/3 seeds, mean +0.416%); Sports n3 N@20=0.051938±0.000245 (Full vượt trội trên cả 4 metric means; Count thắng w/o EC 3/3 seeds, p=0.0154); Electronics n1 N@20=0.031852. Xem [báo cáo chi tiết A5](ECLIPSE_Ablation_Study_Count_Only.md).
 - Không yêu cầu chạy lại A0/A1 đã hoàn tất, không tự thêm ba seed STAIR; STAIR n1 phải có nhãn n1, không có paired-seed significance.
 - P0 tiếp theo: Hiếu bàn giao bảng/receipts A2/A3 theo cùng schema; hoàn thành/nhận Count/Shuffle đúng kế hoạch; lập external benchmark source/protocol matrix; cập nhật Example.tex đang còn single-seed/internal-version narrative.
 - Figures ưu tiên: architecture; component/evidence ablation khi đủ receipts; coverage + operator/probe dose. Paired EC effect và learning curves/nguồn lực có thể ở appendix. Export PDF vector + PNG300dpi + source data/captions, ghi actual n/units/errorbar scope.
 - Giữ kiến trúc đã chốt. Nếu controls không ủng hộ specific excess-evidence claim, điều chỉnh claim trung thực; không tune TEST để làm mọi arm thắng.
 
 
-## 20. Count-only seeds2–3 — notebooks READY (2026-10-20)
+## 20. Count-only seeds2–3 — Hoàn tất và nghiệm thu (2026-10-20)
 
-Người dùng xác nhận Count-only seed1 hoàn tất Baby/Sports/Electronics. Tiếp tục **bốn run**: Baby+sports seed2 và Baby+Sports seed3; Electronics chỉ seed1 theo phạm vi đã chốt. Việc tạo notebook này không audit thêm artifacts Count-only seed1, không tự nâng trạng thái thực nghiệm các seed mới.
+Bốn run Count-only follow-up (Baby+Sports seed 2 và Baby+Sports seed 3) đã hoàn thành và được kiểm toán trọn vẹn:
 
-- [Notebook seed2](../../notebook/P6/eclipse_count_only_seed2.ipynb) và [notebook seed3](../../notebook/P6/eclipse_count_only_seed3.ipynb): `SEED=2/3`, `SELECTED_DATASETS=('baby','sports')`, 64D/500epochs. Hai sections Electronics đã bỏ; guard từ chối chọn Electronics trong notebooks follow-up.
-- Giữ mode `pooled_activity_count`, delta1/tau2/halves0, eta.1/LC.01, per-dataset hyperparameters, pinned runtime source và fingerprints của seed1. Score c/(c+4), không null subtraction; không tune từ TEST.
-- Giữ engine/plots/ZIP và bản sửa empty preflight directory guard từ seed1. Snapshot trong archive là notebook đúng seed mới, không nhúng nhầm template seed1.
-- Xuất PDF vector/PNG300dpi/source data/captions cho learning curves, training memory, count-calibration diagnostics; session resource profile; native selected TEST/config/source/input provenance/checkpoints/stdout/ZIP và checksum. Actual n mỗi dataset trong một notebook vẫn1, không SD/p-value giả.
-- **READY_STATIC_CHECKED_NOT_EXECUTED**, chưa COMPLETED. Có thể chạy hai sessions/GPU riêng; mỗi notebook chạy Baby→Sports tuần tự. Sau khi nhận receipts cả ba Count seeds, tổng hợp matched Full-vs-Count Baby/Sports; Electronics n1.
-
-[Hướng dẫn chi tiết](ECLIPSE_Count_Only_Seeds2_3_Notebook_Guide.md), [build receipt](../../reports/eclipse_count_only_seeds2_3_notebooks/build_receipt.json). Notebook seed1 và source training giữ nguyên.
+- Session seed 2: `20261020T024629Z_c207b2b5`; Session seed 3: `20261020T025325Z_26123b1b`.
+- Checkpoints, telemetry, plots, figures và tables đã được tích hợp đầy đủ vào [ECLIPSE_Ablation_Study_Count_Only.md](ECLIPSE_Ablation_Study_Count_Only.md).
+- Toàn bộ 7 runs của arm A5 Count-only đạt trạng thái **VERIFIED_ARTIFACT**. Các guide tạm thời đã được dọn dẹp.
 
 
 ## 21. Global-full null — source và notebooks READY (2026-10-20)
