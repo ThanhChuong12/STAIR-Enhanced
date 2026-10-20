@@ -16,7 +16,7 @@ ECLIPSE là phương pháp cuối của nhóm. MI/FSC/BSC/AdamW/scorer có ngu�
 | A1 w/o EC, ba tập, seeds 1–3 | 9 receipts/checkpoints; s1 recovered historical run | Paired analysis; công khai provenance khác revision ở s1 |
 | A2 w/o LC / A3 w/o CSE | **HUMAN_REPORTED_COMPLETE**, artifacts ở máy Hiếu; Hiếu phân tích riêng | Chờ bảng/receipts; không tự suy phạm vi hoặc điền metric |
 | A5 Count-only | Hoàn tất 100% phạm vi (7 runs): Baby seeds 1–3, Sports seeds 1–3, Electronics seed 1 | [Audit A5](ECLIPSE_Ablation_Study_Count_Only.md); Baby/Sports n=3, Electronics n=1; 7 runs COMPLETED |
-| A7 Global-full null | Đã tiếp nhận receipts 4 runs (Baby seeds 1–2, Sports seeds 1–2; $n=2$ per dataset) | [Audit A7](ECLIPSE_Ablation_Study_Global_Full_Null.md); Baby/Sports $n=2$, Seed 3 READY |
+| A7 Global-full null | Hoàn tất 100% phạm vi (6 runs): Baby seeds 1–3, Sports seeds 1–3 ($n=3$ per dataset) | [Audit A7](ECLIPSE_Ablation_Study_Global_Full_Null.md); Baby/Sports $n=3$, 6 runs COMPLETED |
 | Binary semantic / Shuffled evidence | Chưa tiếp nhận receipts mới của các arm này trong audit | Notebook/plan READY; ghi actual n khi nhận receipts |
 | STAIR tái lập | Có nguồn lịch sử, ngoài phạm vi 18-run audit này | Chỉ dùng số/protocol được kiểm tra, ghi n thực tế |
 | Published baselines khác | Chưa lập source/protocol matrix trong lần này | Không nhập số khác splits như cùng một protocol |

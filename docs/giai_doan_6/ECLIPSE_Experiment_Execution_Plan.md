@@ -102,7 +102,7 @@ Các giá trị trên lấy từ manifest seed 1 đã thực hiện, không ph�
 | Binary semantic | Bị khóa weighted; graph recovery còn hard-code weighted | Không phù hợp | Sửa routing raw semantic graph ở cả đường parent/reference và calibrator |
 | Count-only | Mode pooled_activity_count đã có | Full notebook khóa mode excess | Harness mode-aware, không dùng exporter khóa pooled_activity_excess |
 | Shuffled evidence | Mode pooled_activity_shuffle đã có | Full notebook khóa mode excess | Harness mode-aware; ghi placebo seed, strata và score histogram |
-| Global-full null | Mode pooled_global_excess đã bổ sung, bins none/halves0 | Seeds 1 & 2 Baby/Sports COMPLETED ($n=2$ per dataset, đã phân tích); Seed 3 READY | Full-user global null trên active TRAIN users; declared source overlay, không dùng unstratified_replication |
+| Global-full null | Mode pooled_global_excess đã bổ sung, bins none/halves0 | Toàn bộ 6 runs Baby/Sports seeds 1–3 COMPLETED ($n=3$ per dataset, đã phân tích) | Full-user global null trên active TRAIN users; declared source overlay, không dùng unstratified_replication |
 
 ### 3.1 Các vị trí code phải kiểm tra
 
@@ -314,10 +314,10 @@ Ledger ghi trạng thái theo từng job; các job chưa có artifact vẫn là 
 | ECL-shuffled_evidence-electronics-s1 | shuffled_evidence | electronics | 1 | Hiếu | P1 | PLANNED |
 | ECL-global_full_null-baby-s1 | global_full_null | baby | 1 | Chương | P1 | COMPLETED |
 | ECL-global_full_null-baby-s2 | global_full_null | baby | 2 | Chương | P1 | COMPLETED |
-| ECL-global_full_null-baby-s3 | global_full_null | baby | 3 | Chương | P1 | READY |
+| ECL-global_full_null-baby-s3 | global_full_null | baby | 3 | Chương | P1 | COMPLETED |
 | ECL-global_full_null-sports-s1 | global_full_null | sports | 1 | Chương | P1 | COMPLETED |
 | ECL-global_full_null-sports-s2 | global_full_null | sports | 2 | Chương | P1 | COMPLETED |
-| ECL-global_full_null-sports-s3 | global_full_null | sports | 3 | Chương | P1 | READY |
+| ECL-global_full_null-sports-s3 | global_full_null | sports | 3 | Chương | P1 | COMPLETED |
 
 
 ### 6.3 Ba job Electronics P2, chưa nằm trong 47 job
@@ -971,17 +971,17 @@ Bốn run Count-only follow-up (Baby+Sports seed 2 và Baby+Sports seed 3) đã 
 - Toàn bộ 7 runs của arm A5 Count-only đạt trạng thái **VERIFIED_ARTIFACT**. Các guide tạm thời đã được dọn dẹp.
 
 
-## 21. Global-full null — Seeds 1–2 COMPLETED ($n=2$), Seed 3 READY (2026-10-20)
+## 21. Global-full null — Toàn bộ 6 runs COMPLETED ($n=3$), hoàn tất kiểm toán đa hạt giống (2026-10-20)
 
-Bốn job Global-full Baby/Sports seeds 1–2 đã **COMPLETED**, kiểm toán toàn diện và phân tích chi tiết trong [ECLIPSE_Ablation_Study_Global_Full_Null.md](ECLIPSE_Ablation_Study_Global_Full_Null.md). Hai job seed 3 giữ trạng thái **READY** trong [hướng dẫn](ECLIPSE_Global_Full_Null_Notebook_Guide.md).
+Toàn bộ sáu job Global-full Baby/Sports seeds 1–3 đã **COMPLETED**, kiểm toán toàn diện và phân tích chi tiết trong [ECLIPSE_Ablation_Study_Global_Full_Null.md](ECLIPSE_Ablation_Study_Global_Full_Null.md). Các guide tạm thời đã được dọn dẹp khỏi repository.
 
 - **Trạng thái thực nghiệm:**
   - Seed 1 (Baby ep=485, Sports ep=500): COMPLETED tại `logs/ICAART/eclipse_global_full_null_seed1/`
   - Seed 2 (Baby ep=450, Sports ep=470): COMPLETED tại `logs/ICAART/eclipse_global_full_null_seed2/`
-  - Seed 3: Sẵn sàng thực thi tại [eclipse_global_full_null_seed3.ipynb](../../notebook/P6/eclipse_global_full_null_seed3.ipynb)
+  - Seed 3 (Baby ep=480, Sports ep=500): COMPLETED tại `logs/ICAART/eclipse_global_full_null_seed3/`
 - Mode `pooled_global_excess`, bins `none`, halves0. $\mu_{\text{global}}=\frac{n_i n_j}{M_{\text{active}}}$ trên active TRAIN users; score $[c-\mu_{\text{global}}]_+/(c+\mu_{\text{global}}+4)$, $\delta=1$, $\tau=2$. Không dùng Count-only hoặc unstratified_replication.
-- Giữ WMSG/CSE eta.1/LC.01/MI/FSC/BSC và per-dataset settings. Counts/candidates/raw semantic/presence/CF khớp 100% Full; graph fingerprint bất biến trên từng dataset (`14aebbb...` trên Baby, `dd5b64f...` trên Sports).
+- Giữ WMSG/CSE eta.1/LC.01/MI/FSC/BSC và per-dataset settings. Counts/candidates/raw semantic/presence/CF khớp 100% Full; graph fingerprint bất biến tuyệt đối trên từng dataset (`14aebbb...` trên Baby, `dd5b64f...` trên Sports).
 - Sai số công thức kiểm toán đạt giới hạn chính xác số thực dấu phẩy động: $2.22 \times 10^{-16}$.
-- **Kết quả khoa học chính ($n=2$):**
-  - So với w/o EC (A1): Global-full null thắng tuyệt đối 16/16 chỉ số ghép cặp (+1.067% NDCG@20 trên Baby; +0.597% trên Sports).
-  - So với Full ECLIPSE (A0): Global-full null đạt hiệu năng tương đương hoặc hơi nhỉnh hơn (+0.220% NDCG@20 trên Baby; +0.007% trên Sports), chứng minh hiệu quả cốt lõi của PEEC nằm ở nguyên lý excess evidence subtraction ($[c - \mu]_+$), trong khi phân tầng hoạt độ đóng vai trò điều hòa bảo thủ cắt tỉa cạnh ngẫu nhiên.
+- **Kết quả khoa học chính ($n=3$):**
+  - So với w/o EC (A1): Global-full null vượt trội rõ nét với tỷ lệ thắng 6/6 hạt giống trên NDCG@20 (+0.757% trên Baby; +0.514% trên Sports với $p=0.0311 < 0.05$; trên Baby NDCG@10 đạt $p=0.0425 < 0.05$).
+  - So với Full ECLIPSE (A0): Global-full null đạt hiệu năng tương đương, thậm chí thắng 3/3 hạt giống trên NDCG@20 (+0.171% trên Baby; +0.025% trên Sports; $p > 0.20$), chứng minh hiệu quả cốt lõi của PEEC nằm ở nguyên lý excess evidence subtraction ($[c - \mu]_+$), trong khi phân tầng hoạt độ đóng vai trò điều hòa bảo thủ cắt tỉa cạnh ngẫu nhiên.
