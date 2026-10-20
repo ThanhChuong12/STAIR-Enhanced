@@ -1,0 +1,21 @@
+{
+  "status": "ANALYZED_ARTIFACTS_ONLY",
+  "raw_runs": 18,
+  "checks": 676,
+  "passed": 676,
+  "failed": [],
+  "scope": "JSON/log/config/Git-source/available-checkpoint byte audit; no model evaluation or training rerun.",
+  "missing_full_seed1_checkpoints": [
+    "logs/GD6/STAIR-PEEC/stair_icaart/baby_STAIR_ICAART_pooled_activity_excess_d1.0_seed1",
+    "logs/GD6/STAIR-PEEC/stair_icaart/sports_STAIR_ICAART_pooled_activity_excess_d1.0_seed1",
+    "logs/GD6/STAIR-PEEC/electronics/stair_icaart/electronics_STAIR_ICAART_pooled_activity_excess_d1.0_seed1"
+  ],
+  "hieu_arms": "A2/A3 human-reported complete; artifacts not local, metrics/scope not audited.",
+  "legacy_wo_ec_seed1": "Recovered equivalent uncalibrated checkpoints; different source revisions. See prior recovery audit; not identical-source reruns.",
+  "notes": [
+    "Sample SD uses ddof=1; SD itself is not an unbiased estimator.",
+    "n=3 paired t tests are exploratory and assume normal independent seed differences.",
+    "Holm families defined for this retrospective audit, not a preregistration.",
+    "Recorded matching hashes establish artifact correspondence, not absence of leakage or independent metric reproduction."
+  ]
+}

@@ -1,344 +1,157 @@
-# ECLIPSE Full Model (A0) — Tri-Seed Experimental Analysis (Seeds 1–3)
+# ECLIPSE Full Model (A0) — Audit ba seed và mức sẵn sàng cho paper
 
-## Material Passport
+**Cập nhật 2026-10-20 — ANALYZED_ARTIFACTS_ONLY.** Báo cáo này thay thế kết luận của bản trước. Phân tích JSON/log/config, đối chiếu source ở Git commit đã ghi nhận và hash các checkpoint đang có; không training, không chạy test mô hình, không nạp checkpoint để đánh giá lại. 676/676 đối chiếu dữ liệu/provenance đạt trong [audit machine-readable](../../reports/eclipse_multiseed_paper_audit_20261020/audit_acceptance.json). Điều này không đồng nghĩa độc lập tái lập metric hay chứng minh không leakage.
 
-- **Date:** 2026-10-20, Asia/Saigon.
-- **Verification Status: ANALYZED & VERIFIED.** Đối chiếu đầy đủ JSON/CSV/logs, cấu hình, digests của source Git objects và SHA-256 byte-level checkpoints của toàn bộ ba hạt giống huấn luyện độc lập ($n=3$).
-- **Artifact acceptance:**
-  - **Seed 1:** `REUSED_VERIFIED` / `HISTORICAL_VERIFIED` trên cả 3 datasets từ checkpoint gốc 500 epochs tại [`logs/GD6/STAIR-PEEC/`](../../logs/GD6/STAIR-PEEC/).
-  - **Seed 2:** `VERIFIED_ARTIFACT` trên cả 3 datasets từ phiên huấn luyện độc lập mới 500 epochs tại [`logs/ICAART/eclipse_seed2/`](../../logs/ICAART/eclipse_seed2/) (session: `20261018T083655Z_2b0f7924`).
-  - **Seed 3:** `VERIFIED_ARTIFACT` trên cả 3 datasets từ phiên huấn luyện độc lập mới 500 epochs tại [`logs/ICAART/eclipse_seed3/`](../../logs/ICAART/eclipse_seed3/) (session: `20261019T075435Z_d063f4c8`).
-- **Quy mô mẫu:** Đạt đầy đủ $n = 3$ training seeds độc lập (`seed 1`, `seed 2`, `seed 3`) cho nhánh chuẩn **A0 Full ECLIPSE** trên toàn bộ 3 benchmark tiêu chuẩn: Amazon Baby, Amazon Sports, Amazon Electronics (550 MMRec splits).
-- **Primary endpoint:** NDCG@20. Secondary: Recall@20; đồng thời báo cáo chi tiết đầy đủ Recall@10 và NDCG@10.
-- **Nguồn dữ liệu:**
-  - Seed 3 artifacts: [`logs/ICAART/eclipse_seed3/`](../../logs/ICAART/eclipse_seed3/).
-  - Seed 2 artifacts: [`logs/ICAART/eclipse_seed2/`](../../logs/ICAART/eclipse_seed2/).
-  - Seed 1 reference: [`docs/giai_doan_6/STAIR-PEEC_Experiment.md`](STAIR-PEEC_Experiment.md), [`logs/GD6/STAIR-PEEC/run_manifest.json`](../../logs/GD6/STAIR-PEEC/run_manifest.json).
-  - Đối chuẩn cắt bỏ w/o EC: [`docs/giai_doan_6/ECLIPSE_Ablation_Study_wo_EC.md`](ECLIPSE_Ablation_Study_wo_EC.md).
-- **Mã nguồn giải thuật:** Khóa cứng tại commit Git [`5212263e87c5c1cfe6e48c91afa90201a48f5929`](https://github.com/ThanhChuong12/STAIR-Enhanced/commit/5212263).
-- **Môi trường runtime:** Python 3.13.15, PyTorch 2.11.0+cu128, FreeRec 0.9.7, NVIDIA Tesla T4 (Kaggle Cloud Environment), `runtime_deviations: {}`.
+## 1. Kết luận chính
 
----
+- [OBSERVATION] Có đủ **9 native selected-TEST receipts**, tương ứng 3 training seeds × 3 datasets của A0 Full ECLIPSE; cả 9 có telemetry 500 epochs và status COMPLETED.
+- [OBSERVATION] Mean NDCG@20 là **0.046340 / 0.051956 / 0.031759** trên Baby/Sports/Electronics. Đây là thống kê thực nghiệm có thể đưa vào bảng paper, kèm sample SD và n=3.
+- [OBSERVATION] So với A1 w/o EC matched seeds, NDCG@20 tăng trung bình **0.585% / 0.490% / 0.138%**. Có 8/9 chênh lệch seed–dataset dương; Electronics seed 3 âm. Đây là xu hướng nhỏ, không phải bằng chứng tăng mạnh hoặc có ý nghĩa thống kê trên mọi tập.
+- [FACT về hồ sơ] **Ba best_model.pt của A0 seed 1 chưa có ở workspace**. Metric receipts/log vẫn đọc được; không cần tự chạy lại chỉ vì thiếu file. Cần thu hồi checkpoint gốc để hoàn chỉnh gói tái lập hoặc đánh giá per-user. Sáu checkpoint A0 seeds2–3 đã được hash bytes.
+- A2/A3: Hiếu thông báo đã chạy xong, artifacts còn trên máy Hiếu và Hiếu phân tích riêng. Báo cáo này không xác nhận phạm vi/metric hai arms đó.
+- **Quyết định:** A0 đã đủ cho một hàng kết quả n=3; chưa đủ để kết luận toàn bộ paper sẵn sàng nộp. Cần benchmark bên ngoài có protocol rõ, ablations đã kiểm toán, Count/Shuffle để bảo vệ vai trò excess evidence. Không cần mở kiến trúc mới vì audit này.
 
-## 1. Tóm Tắt Tổng Quan & Kết Luận Then Chốt
+## 2. Nguồn và phạm vi kiểm toán
 
-Báo cáo này phân tích chi tiết toàn diện kết quả thực nghiệm của **Mô Hình Đầy Đủ (A0 Full ECLIPSE)** sau khi hoàn thành trọn vẹn cả 3 hạt giống huấn luyện độc lập ($n=3$ seeds: 1, 2, 3) trên toàn bộ ba tập dữ liệu benchmark đa phương thức. Đây là nhánh chuẩn (anchor / full model) của toàn bộ công trình nghiên cứu, đóng vai trò là mốc đối chuẩn tối thượng cho toàn bộ các nhánh cắt bỏ (ablation arms).
+| Arm/seed | Nguồn | Trạng thái chấp nhận |
+| --- | --- | --- |
+| A0 s1 | `logs/GD6/STAIR-PEEC/stair_icaart/`; Electronics dùng nhánh `electronics/stair_icaart/` | Selected metrics/log/telemetry/source kiểm tra được; checkpoint thiếu local |
+| A0 s2 | `logs/ICAART/eclipse_seed2/` | Receipts, config SHA, source SHA và checkpoint bytes đã đối chiếu |
+| A0 s3 | `logs/ICAART/eclipse_seed3/` | Receipts, config SHA, source SHA và checkpoint bytes đã đối chiếu |
+| A1 s1 | Gói `eclipse_wo_ec_seed1_reuse_20261018T152158Z_69603726` | Checkpoint uncalibrated tái sử dụng; xem báo cáo recovery, không phải rerun cùng commit |
+| A1 s2/s3 | `logs/ICAART/eclipse_wo_ec_seed2/`, `eclipse_wo_ec_seed3/` | Native receipts + config/source/checkpoint đối chiếu được |
 
-### Các phát hiện thực nghiệm then chốt:
+Electronics Full seed 1 có hai bản sao thư mục với selected receipt giống nhau; chỉ tính **một** run. Các chỉ số nằm trong `selected_metrics.json`, không lấy từ bảng benchmark cũ hoặc TEST terminal-epoch nếu khác checkpoint được VALID chọn.
 
-1. **Hiệu năng vượt trội và ổn định qua toàn bộ bộ ba hạt giống ($n=3$ seeds):**
-   - **Amazon Baby ($19,445$ users, $7,050$ items):**
-     - Seed 1: Recall@10 = $0.068619$, Recall@20 = $0.106107$, NDCG@10 = $0.036798$, NDCG@20 = $0.046398$ (ep 480).
-     - Seed 2: Recall@10 = $0.068161$, Recall@20 = $0.104401$, NDCG@10 = $0.037245$, NDCG@20 = $0.046547$ (ep 450).
-     - Seed 3: Recall@10 = $0.068289$, Recall@20 = $0.103151$, NDCG@10 = $0.037128$, NDCG@20 = $0.046075$ (ep 480).
-     - **Giá trị trung bình ($n=3$):** $\text{NDCG@20} = \mathbf{0.046340 \pm 0.000241}$, $\text{Recall@10} = \mathbf{0.068356 \pm 0.000236}$, $\text{Recall@20} = \mathbf{0.104553 \pm 0.001484}$, $\text{NDCG@10} = \mathbf{0.037057 \pm 0.000232}$.
-   - **Amazon Sports ($35,598$ users, $18,357$ items):**
-     - Seed 1: Recall@10 = $0.076243$, Recall@20 = $0.114500$, NDCG@10 = $0.042185$, NDCG@20 = $0.052082$ (ep 500).
-     - Seed 2: Recall@10 = $0.077139$, Recall@20 = $0.114820$, NDCG@10 = $0.042040$, NDCG@20 = $0.051781$ (ep 470).
-     - Seed 3: Recall@10 = $0.076994$, Recall@20 = $0.114600$, NDCG@10 = $0.042261$, NDCG@20 = $0.052004$ (ep 500).
-     - **Giá trị trung bình ($n=3$):** $\text{NDCG@20} = \mathbf{0.051956 \pm 0.000156}$, $\text{Recall@10} = \mathbf{0.076792 \pm 0.000481}$, $\text{Recall@20} = \mathbf{0.114640 \pm 0.000164}$, $\text{NDCG@10} = \mathbf{0.042162 \pm 0.000112}$.
-   - **Amazon Electronics ($192,403$ users, $63,001$ items):**
-     - Seed 1: Recall@10 = $0.046401$, Recall@20 = $0.068113$, NDCG@10 = $0.026214$, NDCG@20 = $0.031831$ (ep 485).
-     - Seed 2: Recall@10 = $0.046149$, Recall@20 = $0.068353$, NDCG@10 = $0.026052$, NDCG@20 = $0.031793$ (ep 475).
-     - Seed 3: Recall@10 = $0.045980$, Recall@20 = $0.068275$, NDCG@10 = $0.025885$, NDCG@20 = $0.031654$ (ep 340).
-     - **Giá trị trung bình ($n=3$):** $\text{NDCG@20} = \mathbf{0.031759 \pm 0.000093}$, $\text{Recall@10} = \mathbf{0.046177 \pm 0.000212}$, $\text{Recall@20} = \mathbf{0.068247 \pm 0.000122}$, $\text{NDCG@10} = \mathbf{0.026050 \pm 0.000164}$.
+Source commit A0 cả 9 run: `5212263e87c5c1cfe6e48c91afa90201a48f5929`. Runtime manifests ghi Python3.13.15, PyTorch2.11.0+cu128, FreeRec0.9.7, TeslaT4. Đối chiếu source SHA theo Git objects tại commit đã ghi, không giả current HEAD là mã đã chạy. File hash chỉ kiểm tra correspondence với manifest; chưa đọc lại feature/split bytes gốc ở môi trường training.
 
-2. **Tính ổn định cực cao trên quy mô lớn (Ultra-Low Multi-Seed Variance):**
-   - Độ lệch chuẩn mẫu ($s$) của Full ECLIPSE trên tập dữ liệu quy mô lớn nhất **Amazon Electronics** (với gần 200,000 users) đạt mức thấp kỷ lục: $s = 0.000093$ trên NDCG@20 (hệ số biến thiên $CV \approx 0.29\%$) và $s = 0.000122$ trên Recall@20 ($CV \approx 0.18\%$).
-   - Trên Amazon Sports, độ lệch chuẩn $s = 0.000156$ trên NDCG@20 ($CV \approx 0.30\%$).
-   - Trên Amazon Baby, độ lệch chuẩn $s = 0.000241$ trên NDCG@20 ($CV \approx 0.52\%$).
-   - Kết quả này chứng minh cấu trúc lan truyền đa phương thức của ECLIPSE có khả năng chống nhiễu ngẫu nhiên khởi tạo xuất sắc, tạo ra quá trình tối ưu hóa nhất quán giữa các lần chạy độc lập.
+## 3. Kết quả TEST tại checkpoint VALID chọn
 
-3. **Tính xác định tuyệt đối của đồ thị hiệu chuẩn (Bitwise Determinism):**
-   - Mã băm SHA-256 của toán tử kề hiệu chuẩn $S_{\mathrm{ECLIPSE}}$ trùng khớp $100\%$ từng bit trên toàn bộ 3 seeds độc lập ở cả 3 datasets:
-     - Baby: `b8013795d439064965dcd6946a44751d9a275ca0cefdc5231192066582d757a8`
-     - Sports: `6b7be789b969cd17a17459deea25bfdf5bfcf518a008b02b7c2925a2d3f88f6c`
-     - Electronics: `43b9d0d255d7c7e72322fbeb834b0bc08206fcb236680db373aa30b6b6040242`
-   - Điều này xác nhận quy trình tiền xử lý đồ thị hoàn toàn tiền định, không có rò rỉ ngẫu nhiên, bảo đảm mọi biến thiên chỉ đến từ việc xáo trộn mini-batch và khởi tạo trọng số mạng nơ-ron.
+| Dataset | Seed | Selected epoch | RECALL@10 | RECALL@20 | NDCG@10 | NDCG@20 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Baby | 1 | 480 | 0.06861877 | 0.10610716 | 0.03679847 | 0.04639788 |
+| Baby | 2 | 450 | 0.06816122 | 0.10440073 | 0.03724547 | 0.04654667 |
+| Baby | 3 | 480 | 0.06828927 | 0.10315081 | 0.03712785 | 0.04607514 |
+| Sports | 1 | 500 | 0.07624275 | 0.11450039 | 0.04218513 | 0.05208228 |
+| Sports | 2 | 470 | 0.07713924 | 0.11482047 | 0.04203995 | 0.05178147 |
+| Sports | 3 | 500 | 0.07699431 | 0.11460018 | 0.04226106 | 0.05200424 |
+| Electronics | 1 | 485 | 0.04640054 | 0.06811273 | 0.02621387 | 0.03183061 |
+| Electronics | 2 | 475 | 0.04614907 | 0.06835274 | 0.02605182 | 0.03179316 |
+| Electronics | 3 | 340 | 0.04598017 | 0.06827527 | 0.02588534 | 0.03165399 |
 
-4. **Ưu thế nhất quán trước biến thể cắt bỏ w/o EC trên các hạt giống đã đối chuẩn:**
-   - Đối chiếu ghép cặp từng hạt giống (*matched seed-by-seed comparison*) giữa Full ECLIPSE và w/o EC:
-     - **Seed 1:** Full ECLIPSE thắng **12 / 12 ô metrics** (4 metrics $\times$ 3 datasets).
-     - **Seed 2:** Full ECLIPSE tiếp tục thắng trọn vẹn **12 / 12 ô metrics**.
-     - **Tổng cộng 2 matched seeds đã đo:** Full ECLIPSE đạt tỷ lệ thắng **24 / 24 comparisons**.
-     - Nhánh w/o EC Seed 3 hiện đang được huấn luyện; khi có đủ receipt, sẽ thực hiện kiểm định Paired t-test chính thức trên toàn bộ 3 cặp mẫu matched.
+Giữ toàn bộ precision gốc trong [selected_test_runs.csv](../../reports/eclipse_multiseed_paper_audit_20261020/selected_test_runs.csv). Bảng hiển thị 8 chữ số; thống kê tính trên số gốc, không tính lại từ số làm tròn.
 
-5. **Hiệu suất tính toán & Dấu chân bộ nhớ (Resource Footprint):**
-   - Tổng thời gian `Coach.fit` cho 500 epochs của Seed 3 là **$37,137.64$ giây ($\approx 10.32$ GPU hours)** (Baby: 19.44m, Sports: 41.66m, Electronics: 9.30h), hoàn toàn tương thích với Seed 1 ($9.79$h) và Seed 2 ($9.90$h).
-   - Bộ nhớ cấp phát đỉnh của PyTorch Allocator (`peak_training_allocated_mib`) bất biến bitwise tuyệt đối trên cả 3 seeds: **Baby 145.17 MiB**, **Sports 223.71 MiB**, **Electronics 800.67 MiB**, chứng minh mô hình không có bất kỳ rò rỉ bộ nhớ nào.
+### 3.1 Mean ± sample standard deviation
 
----
+| Dataset | Arm | n | RECALL@10 | RECALL@20 | NDCG@10 | NDCG@20 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Baby | full | 3 | 0.068356 ± 0.000236 | 0.104553 ± 0.001484 | 0.037057 ± 0.000232 | 0.046340 ± 0.000241 |
+| Sports | full | 3 | 0.076792 ± 0.000481 | 0.114640 ± 0.000164 | 0.042162 ± 0.000112 | 0.051956 ± 0.000156 |
+| Electronics | full | 3 | 0.046177 ± 0.000212 | 0.068247 ± 0.000122 | 0.026050 ± 0.000164 | 0.031759 ± 0.000093 |
 
-## 2. Đặc Tả Kiến Trúc & Tính Bất Biến Đồ Thị (Architecture & Determinism)
+Với mỗi dataset/metric: mean = ΣM_s/3; sample SD = sqrt(Σ(M_s−mean)²/(3−1)). Sample SD không phải confidence interval và bản thân SD không phải estimator không chệch. Không dùng epoch như các quan sát độc lập. SD nhỏ tuyệt đối không tự chứng minh gain vượt seed variance; phải xét paired differences. Không gộp ba dataset thành chín training replications của cùng một population.
 
-### 2.1. Bản chất giải thuật Full ECLIPSE (A0)
-Full ECLIPSE là mô hình lan truyền đồ thị đa phương thức cải tiến kết hợp 5 cơ chế hiệp đồng:
-1. **WMSG (Weighted Multimodal Semantic Graph):** Trọng số kề liên tục $W_{ij} = \max(B_{ij}, B_{ji})$ với $B_{ij} = \sum_m \max(0, \cos(e_i^{(m)}, e_j^{(m)}))^2 \cdot \mathbf{1}[j \in K_m(i)]$, bảo toàn trọn vẹn cường độ tương đồng hình học đa phương thức, loại bỏ binarization thô bạo.
-2. **PEEC (Pooled Activity Excess-Evidence Calibration):** Liều hiệu chuẩn $\delta = 1.0$, tham số điều chuẩn $\tau = 2.0$ ($2\tau = 4.0$). Bằng chứng đồng xuất hiện hành vi vượt kỳ vọng ngẫu nhiên gộp trên toàn bộ các tầng hoạt tính người dùng ($H=0$):
-   \[
-   r_{ij} = \frac{[c_{ij} - \mu^F_{ij}]_+}{c_{ij} + \mu^F_{ij} + 4.0},\qquad
-   W^{(1)}_{ij} = W_{ij} \exp(1.0 \cdot r_{ij}).
-   \]
-3. **CSE (Collaborative Support Expansion):** Mở rộng hỗ trợ với toán tử hiệp đồng cộng tác $\bar S_{CF}$ theo trọng số $\eta = 0.1$:
-   \[
-   S_{\mathrm{ECLIPSE}} = (1 - \eta) \mathcal{N}(W^{(1)}) + \eta \bar S_{CF} = 0.9 \, \mathcal{N}(W^{(1)}) + 0.1 \, \bar S_{CF}.
-   \]
-4. **LC (Layer-Contrastive Objective):** Hàm mất mát tương phản tầng kề đầu tiên giữa biểu diễn nhúng đầu vào $E^{(0)}$ và tầng truyền tin thứ nhất $E^{(1)}$ ($\lambda_{nlgcl} = 0.01, \tau_{cl} = 0.2$).
-5. **BSC (Backward Stepwise Convolution):** Lọc phổ gradient thích ứng trên hướng cập nhật AdamW của tham số item.
+## 4. Protocol thực tế và comparability
 
-### 2.2. Kiểm định tính bất biến mã băm đồ thị (Bitwise Determinism)
-Khâu xây dựng đồ thị hiệu chuẩn diễn ra hoàn toàn offline trên CPU. Do các tương tác TRAIN và vector đặc trưng đa phương thức là cố định, dấu vân tay SHA-256 của toán tử kề hiệu chuẩn $S_{\mathrm{ECLIPSE}}$ trùng khớp tuyệt đối giữa cả 3 seed độc lập:
+- 64D, FSC L=3, 500 training epochs/run; evaluation mỗi 5 epochs; chọn max VALID NDCG@20 rồi báo TEST. Native VALID events xác nhận selected epoch A0.
+- WMSG floor-power: f(a)=0.05+0.95[max(0,a)]² trên candidates text k=5, visual k=1. Cộng modality trước max-symmetrization. Không có inverse-frequency hub formula trong arm này.
+- CSE: co-occurrence c≥2; Shrunk Ochiai q=c/(c+5)·c/sqrt(n_i n_j); top-5 outgoing rồi max-union; η=.1. LC λ=.01. MI/FSC/BSC và dot-product scorer kế thừa STAIR; ECLIPSE gồm các mở rộng đồ thị/objective đã nêu trong Method, PEEC là cơ chế calibration trung tâm.
+- PEEC `pooled_activity_excess`, activity bins log2, halves0, δ1, τ2 ⇒ denominator c+μ+4. μ từ toàn bộ tầng activity, chỉ TRAIN. **Ghi chú:** đây là expected-overlap reference có giả định, không phải calibrated probability hay causal significance.
+- A0 và A1 cùng feature/split/candidate/data fingerprints và backbone config sau khi bỏ seed. A1 modern s2–3 có cùng raw semantic/count/null/score/CF hashes với A0, khác calibration delta và final operator. A1 s1 có source revisions khác; xem audit recovery về equivalence, không khẳng định RNG trajectory giống nhau.
+- Full graph fingerprint giống nhau qua ba seed của mỗi dataset. Đây là recorded static operator identity; không chứng minh toàn bộ training deterministic hoặc không có leakage.
 
-| Tập Dữ Liệu | Dấu Vân Tay Đồ Thị Hiệu Chuẩn ($S_{\mathrm{ECLIPSE}}$ SHA-256) | Trạng Thái Giữa Seeds 1, 2 và 3 |
-|---|---|:---:|
-| **Amazon Baby** | `b8013795d439064965dcd6946a44751d9a275ca0cefdc5231192066582d757a8` | **Trùng khớp 100% (Bitwise Identical)** |
-| **Amazon Sports** | `6b7be789b969cd17a17459deea25bfdf5bfcf518a008b02b7c2925a2d3f88f6c` | **Trùng khớp 100% (Bitwise Identical)** |
-| **Amazon Electronics** | `43b9d0d255d7c7e72322fbeb834b0bc08206fcb236680db373aa30b6b6040242` | **Trùng khớp 100% (Bitwise Identical)** |
+## 5. Đóng góp riêng của calibration: A0 vs A1
 
-Kiểm tra này xác nhận rằng sự biến thiên giữa các hạt giống huấn luyện hoàn toàn xuất phát từ sự ngẫu nhiên nội tại của quá trình tối ưu hóa mạng nơ-ron (RNG parameter initialization và DataLoader shuffling), bảo đảm tính khách quan khoa học cao nhất.
+| Dataset | Full N@20 | w/o EC N@20 | Δ absolute | Δ relative | Seed wins | p t-test raw | p Holm (3) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Baby | 0.046340 ± 0.000241 | 0.046070 ± 0.000162 | +0.00026963 | +0.585% | 3/3 | 0.2745 | 0.5490 |
+| Sports | 0.051956 ± 0.000156 | 0.051703 ± 0.000229 | +0.00025326 | +0.490% | 3/3 | 0.0446 | 0.1339 |
+| Electronics | 0.031759 ± 0.000093 | 0.031715 ± 0.000030 | +0.00004377 | +0.138% | 2/3 | 0.5734 | 0.5734 |
 
----
+CI và cả12 metric comparisons: [A1 report](ECLIPSE_Ablation_Study_wo_EC.md), [statistics CSV](../../reports/eclipse_multiseed_paper_audit_20261020/paired_statistics.csv). Paired t-tests n=3, df=2 chỉ thăm dò, giả định các seed differences độc lập và gần normal. Holm cho ba N@20 comparisons là family định nghĩa trong audit hồi cứu, không preregistration. **Không dataset nào đạt p_Holm<.05**. Sports unadjusted t-CI loại 0 nhưng chưa có family-wise significance. Exact sign-flip hai phía p=.25/.25/.75; độ phân giải n=3 thấp.
 
-## 3. Kết Quả Thực Nghiệm TEST — Nguồn Số Liệu Gốc
+Không gọi Electronics “equivalent/parity đã chứng minh”: chưa có equivalence margin/test. 32/36 metric cells thắng không phải32 thí nghiệm độc lập. A0 có stability mô tả qua seed; incremental EC benefit còn nhỏ và bất định. Comparison với published baselines phải được đánh giá riêng.
 
-Bảng dưới đây tổng hợp đầy đủ số liệu đo lường TEST trích xuất trực tiếp từ các tệp hóa đơn gốc `selected_metrics.json` và bảng `tables/eclipse_seed3_selected_test.csv`, được đánh giá tại checkpoint tối ưu theo tiêu chuẩn **Validation NDCG@20**:
+## 6. Chi phí: đo đúng phạm vi
 
-| Dataset | Seed | Selected Epoch | TEST Recall@10 | TEST Recall@20 | TEST NDCG@10 | TEST NDCG@20 | Preproc (s) | Coach.fit (s) | Peak Alloc (MiB) |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Baby** | 1 | 480 | 0.06861877 | 0.10610716 | 0.03679847 | 0.04639788 | ~23.5 | 1,172.50 | 145.17 |
-| **Baby** | 2 | 450 | 0.06816122 | 0.10440073 | 0.03724547 | 0.04654667 | 23.66 | 1,160.48 | 145.17 |
-| **Baby** | 3 | 480 | 0.06828927 | 0.10315081 | 0.03712785 | 0.04607514 | 22.86 | 1,166.38 | 145.17 |
-| **Sports** | 1 | 500 | 0.07624275 | 0.11450039 | 0.04218513 | 0.05208228 | ~47.2 | 2,512.10 | 223.71 |
-| **Sports** | 2 | 470 | 0.07713924 | 0.11482047 | 0.04203995 | 0.05178147 | 46.64 | 2,469.78 | 223.71 |
-| **Sports** | 3 | 500 | 0.07699431 | 0.11460018 | 0.04226106 | 0.05200424 | 46.16 | 2,499.85 | 223.71 |
-| **Electronics** | 1 | 485 | 0.04640054 | 0.06811273 | 0.02621387 | 0.03183061 | ~285.0 | 31,840.20 | 800.67 |
-| **Electronics** | 2 | 475 | 0.04614907 | 0.06835274 | 0.02605182 | 0.03179316 | 287.60 | 32,006.65 | 800.67 |
-| **Electronics** | 3 | 340 | 0.04598017 | 0.06827527 | 0.02588534 | 0.03165399 | 279.32 | 33,471.41 | 800.67 |
+| Dataset | Seed | Preprocess (s) | Coach.fit (s) | Σ epoch train (s) | Peak allocated (MiB) | Peak reserved (MiB) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Baby | 1 | 25.70 | 1214.19 | 1156.66 | 145.17 | 244.00 |
+| Baby | 2 | 23.66 | 1160.48 | 1105.06 | 145.17 | 244.00 |
+| Baby | 3 | 22.86 | 1166.38 | 1111.82 | 145.17 | 244.00 |
+| Sports | 1 | 51.32 | 2520.87 | 2371.07 | 223.71 | 458.00 |
+| Sports | 2 | 46.64 | 2469.78 | 2320.93 | 223.71 | 458.00 |
+| Sports | 3 | 46.16 | 2499.85 | 2353.33 | 223.71 | 458.00 |
+| Electronics | 1 | 270.76 | 31999.03 | 30071.28 | 800.67 | 1578.00 |
+| Electronics | 2 | 287.60 | 32006.65 | 30099.64 | 800.67 | 1578.00 |
+| Electronics | 3 | 279.32 | 33471.41 | 31594.48 | 800.67 | 1578.00 |
 
-*Ghi chú:*
-- Toàn bộ các checkpoint được lựa chọn đều diễn ra trong khoảng epoch 340–500 trên thang budget 500 epochs, khẳng định quá trình học đã hội tụ đầy đủ.
-- Số liệu trích xuất chính xác theo 8 chữ số thập phân từ hóa đơn gốc của hệ thống.
+### 6.1 Tóm tắt ba seed
 
----
+| Dataset | Preprocess mean ± SD (s) | Fit mean ± SD (s) | Allocated peak (MiB) | Reserved peak (MiB) |
+| --- | --- | --- | --- | --- |
+| Baby | 24.07 ± 1.47 | 1180.35 ± 29.46 | 145.17 | 244.00 |
+| Sports | 48.04 ± 2.85 | 2496.83 ± 25.68 | 223.71 | 458.00 |
+| Electronics | 279.23 ± 8.42 | 32492.36 ± 847.89 | 800.67 | 1578.00 |
 
-## 4. Biến Thiên Đa Seed & Thống Kê Tổng Hợp ($n = 3$ Seeds)
+- `Coach.fit` lấy từ stdout original; tổng epoch-train seconds từ telemetry là timer khác. Electronics s1: fit31999.03s (=533.32phút), epoch sum30071.28s (=501.19phút). Không dùng501.19phút làm toàn bộ fit.
+- Allocated/reserved lấy max training telemetry. Electronics **800.67MiB allocated**, 1578MiB reserved; không được gọi “<800MiB” hoặc toàn bộ process chỉ800MiB. Chưa bao gồm đầy đủ driver/evaluation/inference peaks.
+- Equal allocator peaks qua seed không chứng minh không memory leak; không có slope/RSS/process-wide trace trong audit này. Có thể nói các run hoàn tất và reported training allocator peaks như bảng.
+- Preprocessing bao gồm các bước trong timer manifest, chịu ảnh hưởng CPU/cache; chưa đo overhead EC thuần bằng cùng máy, cùng cache và repeated profiling. Không tuyên bố zero preprocessing cost hoặc chính xác cùng fit time.
+- “0 additional trainable parameters” chỉ so với A1 cùng framework, không có nghĩa mô hình không có embedding parameters. Không suy chi phí toàn ECLIPSE bằng STAIR gốc từ ablation này.
 
-Bảng tổng hợp giá trị trung bình mẫu ($\bar M$) và độ lệch chuẩn mẫu không chệch ($s$, sample SD với $\text{ddof}=1$) qua toàn bộ 3 hạt giống độc lập ($n=3$):
+## 7. Diagnostics cơ chế từ manifest
 
-| Tập Dữ Liệu | $n$ | Seeds | Recall@10 (Mean $\pm$ SD) | Recall@20 (Mean $\pm$ SD) | NDCG@10 (Mean $\pm$ SD) | NDCG@20 (Mean $\pm$ SD) |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Amazon Baby** | 3 | 1, 2, 3 | $0.068356 \pm 0.000236$ | $0.104553 \pm 0.001484$ | $0.037057 \pm 0.000232$ | **$0.046340 \pm 0.000241$** |
-| **Amazon Sports** | 3 | 1, 2, 3 | $0.076792 \pm 0.000481$ | $0.114640 \pm 0.000164$ | $0.042162 \pm 0.000112$ | **$0.051956 \pm 0.000156$** |
-| **Amazon Electronics** | 3 | 1, 2, 3 | $0.046177 \pm 0.000212$ | $0.068247 \pm 0.000122$ | $0.026050 \pm 0.000164$ | **$0.031759 \pm 0.000093$** |
+| Dataset | Unique candidate pairs | r>0 pairs | Coverage | Weighted coverage | max r | Operator dose | Polynomial probe dose | Median coeff ratio on r=0 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Baby | 29926 | 3106 | 10.379% | 12.175% | 0.790917 | 7.129% | 2.365% | 0.986281 |
+| Sports | 78872 | 7894 | 10.009% | 11.754% | 0.870763 | 7.106% | 2.174% | 0.986214 |
+| Electronics | 271356 | 19648 | 7.241% | 8.493% | 0.924703 | 6.207% | 1.656% | 0.992607 |
 
-### Mã nguồn LaTeX chính thức cho bài báo khoa học:
-```latex
-\begin{tabular}{lcrrrr}
-\toprule
-Dataset & Seeds & R@10 & R@20 & N@10 & N@20 \\
-\midrule
-Amazon Baby & 3 & $0.068356 \pm 0.000236$ & $0.104553 \pm 0.001484$ & $0.037057 \pm 0.000232$ & $0.046340 \pm 0.000241$ \\
-Amazon Sports & 3 & $0.076792 \pm 0.000481$ & $0.114640 \pm 0.000164$ & $0.042162 \pm 0.000112$ & $0.051956 \pm 0.000156$ \\
-Amazon Electronics & 3 & $0.046177 \pm 0.000212$ & $0.068247 \pm 0.000122$ & $0.026050 \pm 0.000164$ & $0.031759 \pm 0.000093$ \\
-\bottomrule
-\end{tabular}
-% Uncertainty is sample SD (ddof=1) over n=3 independent training seeds. Primary endpoint: N@20.
-```
+Operator dose = ||S_PEEC−S_noEC||_F/||S_noEC||_F. Polynomial dose là fixed Rademacher probe tại coordinate32, dimension8, seed20261016, L3; **không đo actual Adam-direction perturbation**. Số lặp qua ba seeds vì cùng graph/probe, không phải ba graph samples độc lập. [CSV](../../reports/eclipse_multiseed_paper_audit_20261020/mechanism_diagnostics.csv).
 
----
+[OBSERVATION] Calibration thay đổi toán tử và polynomial probe khác 0; r=0 vẫn bị ảnh hưởng gián tiếp qua degree normalization. [INTERPRETATION] Electronics có coverage và probe dose nhỏ hơn, đồng thời EC mean gain nhỏ hơn. Ba dataset không đủ chứng minh quan hệ nhân quả hoặc quy luật dose→metric. [HYPOTHESIS] Excess evidence đặt đúng cạnh hữu ích hơn raw count/placebo; **cần Count-only và Shuffled evidence** để kiểm tra, A0–A1 chưa trả lời.
 
-## 5. Đối Chiếu Ghép Cặp Từng Hạt Giống: Full ECLIPSE vs ECLIPSE w/o EC
+## 8. Kiểm tra learning curves và checkpoint selection
 
-Do cả hai nhánh **Full ECLIPSE** ($\delta=1.0$) và **ECLIPSE w/o EC** ($\delta=0.0$) đã hoàn tất trọn vẹn ở **Seed 1** và **Seed 2** trên cùng môi trường phần cứng Tesla T4, ta có thể đối chiếu ghép cặp trực tiếp (*matched pairwise comparison*):
+Tất cả A0 có500 telemetry rows, losses hữu hạn và loss identity khớp tolerance1e−7. Đây là sanity check, không chứng minh gradients không collapse hoặc đã hội tụ. Sports s1/s3 selected epoch500 chạm budget, không chứng minh optimum đã đạt. Electronics s3 chọn340, s1/s2 chọn485/475: thể hiện selection variability, chưa đủ kết luận overfit.
 
-### 5.1. Bảng đối chiếu matched Seed 1
-| Tập Dữ Liệu | Chỉ Số | Full ECLIPSE (s1) | w/o EC (s1) | Chênh Lệch Tuyệt Đối ($\Delta_1$) | Mức Tăng Tương Đối (%) |
-|---|---|:---:|:---:|:---:|:---:|
-| **Baby** | Recall@10 | **0.068619** | 0.067481 | +0.001138 | **+1.687%** |
-| | Recall@20 | **0.106107** | 0.105436 | +0.000671 | **+0.637%** |
-| | NDCG@10 | **0.036798** | 0.036476 | +0.000322 | **+0.883%** |
-| | NDCG@20 | **0.046398** | 0.046243 | +0.000154 | **+0.334%** |
-| **Sports** | Recall@10 | **0.076243** | 0.076185 | +0.000058 | **+0.076%** |
-| | Recall@20 | **0.114500** | 0.114248 | +0.000252 | **+0.221%** |
-| | NDCG@10 | **0.042185** | 0.041970 | +0.000215 | **+0.513%** |
-| | NDCG@20 | **0.052082** | 0.051816 | +0.000267 | **+0.514%** |
-| **Electronics** | Recall@10 | **0.046401** | 0.046034 | +0.000367 | **+0.797%** |
-| | Recall@20 | **0.068113** | 0.067961 | +0.000152 | **+0.223%** |
-| | NDCG@10 | **0.026214** | 0.026004 | +0.000210 | **+0.808%** |
-| | NDCG@20 | **0.031831** | 0.031681 | +0.000150 | **+0.472%** |
+Learning curves ưu tiên VALID và selected epoch từng seed. Không dùng TEST để chọn epoch/hyperparameter hoặc dùng terminal TEST thay selected TEST. Loss plots tách BPR/raw LC/weighted LC với scale đọc được. Không bootstrap epochs để tạo p-values.
 
-### 5.2. Bảng đối chiếu matched Seed 2
-| Tập Dữ Liệu | Chỉ Số | Full ECLIPSE (s2) | w/o EC (s2) | Chênh Lệch Tuyệt Đối ($\Delta_2$) | Mức Tăng Tương Đối (%) |
-|---|---|:---:|:---:|:---:|:---:|
-| **Baby** | Recall@10 | **0.068161** | 0.067325 | +0.000836 | **+1.242%** |
-| | Recall@20 | **0.104401** | 0.103610 | +0.000791 | **+0.764%** |
-| | NDCG@10 | **0.037245** | 0.036630 | +0.000616 | **+1.681%** |
-| | NDCG@20 | **0.046547** | 0.045923 | +0.000624 | **+1.359%** |
-| **Sports** | Recall@10 | **0.077139** | 0.076144 | +0.000995 | **+1.307%** |
-| | Recall@20 | **0.114820** | 0.114324 | +0.000497 | **+0.434%** |
-| | NDCG@10 | **0.042040** | 0.041547 | +0.000493 | **+1.186%** |
-| | NDCG@20 | **0.051781** | 0.051440 | +0.000342 | **+0.665%** |
-| **Electronics** | Recall@10 | **0.046149** | 0.046048 | +0.000102 | **+0.220%** |
-| | Recall@20 | **0.068353** | 0.068167 | +0.000185 | **+0.272%** |
-| | NDCG@10 | **0.026052** | 0.026011 | +0.000041 | **+0.158%** |
-| | NDCG@20 | **0.031793** | 0.031735 | +0.000058 | **+0.183%** |
+### 8.1 Learning-dynamics summary từ native telemetry
 
-### 5.3. Bảng đối chiếu matched Seed 3
-| Tập Dữ Liệu | Chỉ Số | Full ECLIPSE (s3) | w/o EC (s3) | Chênh Lệch Tuyệt Đối ($\Delta_3$) | Mức Tăng Tương Đối (%) | Kết Quả |
-|---|---|:---:|:---:|:---:|:---:|:---:|
-| **Baby** | Recall@10 | **0.068289** | 0.067559 | +0.000730 | **+1.081%** | Full thắng |
-| | Recall@20 | 0.103151 | **0.103228** | -0.000077 | -0.075% | w/o EC thắng |
-| | NDCG@10 | **0.037128** | 0.036886 | +0.000242 | **+0.656%** | Full thắng |
-| | NDCG@20 | **0.046075** | 0.046045 | +0.000030 | **+0.066%** | Full thắng |
-| **Sports** | Recall@10 | **0.076994** | 0.076378 | +0.000616 | **+0.807%** | Full thắng |
-| | Recall@20 | **0.114600** | 0.114415 | +0.000185 | **+0.162%** | Full thắng |
-| | NDCG@10 | **0.042261** | 0.041993 | +0.000268 | **+0.639%** | Full thắng |
-| | NDCG@20 | **0.052004** | 0.051853 | +0.000151 | **+0.292%** | Full thắng |
-| **Electronics** | Recall@10 | **0.045980** | 0.045806 | +0.000175 | **+0.381%** | Full thắng |
-| | Recall@20 | 0.068275 | **0.068372** | -0.000097 | -0.142% | w/o EC thắng |
-| | NDCG@10 | 0.025885 | **0.025897** | -0.000012 | -0.047% | w/o EC thắng |
-| | NDCG@20 | 0.031654 | **0.031730** | -0.000076 | -0.241% | w/o EC thắng |
+| Dataset | Seed | VALID selected N@20 | VALID epoch500 N@20 | Loss epoch1 | BPR epoch500 | λLC epoch500 | Total loss epoch500 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Baby | 1 | 0.044176 | 0.043783 | 0.686816 | 0.135588 | 0.052792 | 0.188380 |
+| Baby | 2 | 0.044040 | 0.043864 | 0.686830 | 0.135434 | 0.052788 | 0.188222 |
+| Baby | 3 | 0.044157 | 0.043620 | 0.686820 | 0.136038 | 0.052785 | 0.188823 |
+| Sports | 1 | 0.050221 | 0.050221 | 0.667559 | 0.023708 | 0.046966 | 0.070674 |
+| Sports | 2 | 0.050312 | 0.050143 | 0.667688 | 0.023730 | 0.046970 | 0.070700 |
+| Sports | 3 | 0.050519 | 0.050519 | 0.667525 | 0.023663 | 0.046970 | 0.070633 |
+| Electronics | 1 | 0.031175 | 0.031115 | 0.686983 | 0.033227 | 0.063916 | 0.097143 |
+| Electronics | 2 | 0.031151 | 0.031094 | 0.686985 | 0.033205 | 0.063917 | 0.097122 |
+| Electronics | 3 | 0.031064 | 0.030996 | 0.687001 | 0.033140 | 0.063914 | 0.097054 |
 
-### 5.4. Bảng Tổng Hợp Tri-Seed & Kiểm Định Thống Kê Ghép Cặp (Paired t-test, $n=3$)
+Bảng này là **VALID và training losses**, không thay bảng selected TEST. Epoch500 là event VALID trước restore, không phải event reevaluation cuối file ở selected checkpoint. VALID giảm từ đỉnh đến epoch500 ở một số seed là quan sát model selection, không tự chứng minh overfit hoặc cơ chế EC. Loss hữu hạn không chứng minh gradient không collapse khi chưa đo gradient. Giá trị đầy đủ và source hashes ở CSV.
 
-| Tập Dữ Liệu | Chỉ Số | ECLIPSE w/o EC ($n=3$) | Full ECLIPSE ($n=3$) | Chênh Lệch Trung Bình ($\bar\Delta$) | Mức Tăng (%) | $t$-statistic | $p$-value | Ý Nghĩa Thống Kê |
-|---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Amazon Baby** | Recall@10 | $0.067455 \pm 0.000119$ | $\mathbf{0.068356 \pm 0.000236}$ | $+0.000902$ | **+1.34%** | $t = 7.376$ | **$p = 0.0179$** | **$p < 0.05$ (Significant)** |
-| | Recall@20 | $0.104091 \pm 0.001180$ | $\mathbf{0.104553 \pm 0.001484}$ | $+0.000462$ | +0.44% | $t = 1.699$ | $p = 0.2315$ | Không có ý nghĩa |
-| | NDCG@10 | $0.036664 \pm 0.000207$ | $\mathbf{0.037057 \pm 0.000232}$ | $+0.000393$ | **+1.07%** | $t = 3.461$ | $p = 0.0743$ | Tiệm cận ý nghĩa |
-| | **NDCG@20** | $0.046070 \pm 0.000162$ | $\mathbf{0.046340 \pm 0.000241}$ | $+0.000270$ | **+0.59%** | $t = 1.491$ | $p = 0.2745$ | Thắng 3/3 seeds |
-| **Amazon Sports** | Recall@10 | $0.076236 \pm 0.000125$ | $\mathbf{0.076792 \pm 0.000481}$ | $+0.000556$ | **+0.73%** | $t = 2.043$ | $p = 0.1777$ | Thắng 3/3 seeds |
-| | Recall@20 | $0.114329 \pm 0.000084$ | $\mathbf{0.114640 \pm 0.000164}$ | $+0.000311$ | **+0.27%** | $t = 3.287$ | $p = 0.0814$ | Tiệm cận ý nghĩa |
-| | NDCG@10 | $0.041837 \pm 0.000251$ | $\mathbf{0.042162 \pm 0.000112}$ | $+0.000326$ | **+0.78%** | $t = 3.825$ | $p = 0.0621$ | Tiệm cận ý nghĩa |
-| | **NDCG@20** | $0.051703 \pm 0.000229$ | $\mathbf{0.051956 \pm 0.000156}$ | $+0.000253$ | **+0.49%** | $t = 4.574$ | **$p = 0.0446$** | **$p < 0.05$ (Significant)** |
-| **Amazon Electronics** | Recall@10 | $0.045962 \pm 0.000136$ | $\mathbf{0.046177 \pm 0.000212}$ | $+0.000214$ | **+0.47%** | $t = 2.709$ | $p = 0.1135$ | Thắng 3/3 seeds |
-| | Recall@20 | $0.068167 \pm 0.000206$ | $\mathbf{0.068247 \pm 0.000122}$ | $+0.000080$ | +0.12% | $t = 0.899$ | $p = 0.4636$ | Thắng 2/3 seeds |
-| | NDCG@10 | $0.025971 \pm 0.000063$ | $\mathbf{0.026050 \pm 0.000164}$ | $+0.000080$ | +0.31% | $t = 1.190$ | $p = 0.3562$ | Thắng 2/3 seeds |
-| | **NDCG@20** | $0.031715 \pm 0.000030$ | $\mathbf{0.031759 \pm 0.000093}$ | $+0.000044$ | +0.14% | $t = 0.667$ | $p = 0.5734$ | Thắng 2/3 seeds |
+## 9. Đính chính so với báo cáo trước
 
-### 5.5. Nhận định khoa học về đóng góp của cơ chế EC:
-- **Tỷ lệ thắng áp đảo qua các cặp matched seed:** Full ECLIPSE thắng **32 / 36 ô so sánh (88.9%)**. Trên NDCG@20 thắng 8/9 seeds (88.9%), trên Recall@10 thắng 9/9 seeds (100% sweep).
-- **Ý nghĩa thống kê:** Đạt mức ý nghĩa $p < 0.05$ trên **Sports NDCG@20** ($p = 0.0446$) và **Baby Recall@10** ($p = 0.0179$), khẳng định cơ chế hiệu chuẩn bằng chứng gộp (PEEC) đóng vai trò điều hòa quan trọng, nâng cao chất lượng phân hạng đa phương thức một cách thực chất.
+1. Bỏ nhãn VERIFIED theo nghĩa tái lập mô hình: ba checkpoint A0s1 còn thiếu, không thể claim hash đủ chín checkpoints.
+2. Giữ các mean/SD cơ bản đúng, bỏ “record variance”, “loại trừ may mắn”, “graph lớn làm SD nhỏ”. SD không đủ chứng minh cơ chế.
+3. Sửa preprocessing/fit và tách epoch-sum khỏi fit. Không dùng một seed để lập bảng nguồn lực như số trung bình.
+4. Sửa Sports/Electronics rmax và dose theo manifest; Electronics rmax=.924703, operator dose6.207%, không suy từ narrative.
+5. BSC lọc **Adam-preconditioned total-loss item directions**, không phải trực tiếp raw gradient hay embeddings forward. Bound fixed operator không bảo đảm Adam convergence.
+6. S3 A1 đã có thật, bỏ ghi chú “đang training”. Thu hồi bảng p-values từ convergence windows trong báo cáo seed1.
 
----
+Bản trước được giữ ở [before_revision](../../reports/eclipse_multiseed_paper_audit_20261020/before_revision/). Không thay đổi raw logs/artifacts hoặc code training.
 
-## 6. Động Lực Học Quá Trình Huấn Luyện & Chẩn Đoán Cơ Chế (Diagnostics)
+## 10. Chuyển giao cho paper
 
-### 6.1. Quỹ đạo hội tụ hàm mất mát (Loss Trajectories)
-Dữ liệu trích xuất từ telemetry của Seed 3:
-- **Baby:** BPR Loss giảm đều đặn từ $0.629643$ (epoch 1) $\to 0.136038$ (epoch 500); LC/NLGCL Loss thu hẹp từ $5.717634 \to 5.278508$.
-- **Sports:** BPR Loss giảm mạnh từ $0.612702$ (epoch 1) $\to 0.023663$ (epoch 500); LC/NLGCL Loss giảm từ $5.482308 \to 4.697022$.
-- **Electronics:** BPR Loss giảm từ $0.617959$ (epoch 1) $\to 0.033140$ (epoch 500); LC/NLGCL Loss từ $6.904218 \to 6.391396$.
+Đọc [kế hoạch evidence/figures/tables và review manuscript](ECLIPSE_Paper_Experimental_Readiness_and_Presentation_Plan.md). Không đặt các version nội bộ làm external baselines. Dùng **ECLIPSE** là phương pháp cuối, A1/A2/A3 và các controls là ablations; STAIR được dẫn nguồn cho MI/FSC/BSC/scorer. Main table cần external benchmark evidence phân biệt published/reproduced, protocol, actual n; không bắt buộc chạy lại ba seed STAIR nếu nhóm đã quyết định giữ n=1, nhưng phải công khai giới hạn thống kê đó.
 
-Tổng loss tuân thủ chính xác hệ số $\mathcal{L} = \mathcal{L}_{\mathrm{BPR}} + 0.01 \cdot \mathcal{L}_{\mathrm{LC}}$ trên toàn bộ 500 epochs mà không gặp bất kỳ hiện tượng phân kỳ (divergence) hoặc gradient vanishing nào.
+### Dữ liệu đầu ra có thể sử dụng
 
-### 6.2. Chẩn đoán hiệu chuẩn bằng chứng (Calibration Mechanism Diagnostics)
-Trích xuất từ các tệp hóa đơn cơ chế `eclipse_<dataset>_seed3_mechanism.json`:
-- **Độ phủ cạnh có bằng chứng dương ($r_{ij} > 0$):**
-  - Baby: $3,106$ cạnh ($10.38\%$ số cạnh ứng viên), độ phủ theo trọng số $= 12.17\%$. Điểm $r_{\max} = 0.7909$, $r_{\mathrm{pos\_mean}} = 0.2330$.
-  - Sports: $7,894$ cạnh ($10.01\%$ số cạnh ứng viên), độ phủ theo trọng số $= 11.75\%$. Điểm $r_{\max} = 0.8241$, $r_{\mathrm{pos\_mean}} = 0.2291$.
-  - Electronics: $19,648$ cạnh ($7.24\%$ số cạnh ứng viên), độ phủ theo trọng số $= 8.49\%$. Điểm $r_{\max} = 0.7684$, $r_{\mathrm{pos\_mean}} = 0.2185$.
-- **Liều lượng toán tử (Relative Operator Dose):**
-  - Baby: $0.07129$ ($7.13\%$), Frobenius operator delta $= 1.9689$.
-  - Sports: $0.06845$ ($6.85\%$), Frobenius operator delta $= 2.4512$.
-  - Electronics: $0.05124$ ($5.12\%$), Frobenius operator delta $= 4.8120$.
-- **Ý nghĩa cơ chế:** Liều lượng hiệu chỉnh chỉ chiếm từ $5.1\%$ đến $7.1\%$ độ chuẩn Frobenius của toán tử ban đầu. Điều này khẳng định cơ chế PEEC đóng vai trò hiệu chuẩn bảo thủ và tinh tế, chỉ khuếch đại các liên kết ngữ nghĩa có hành vi tương tác thực nghiệm vượt kỳ vọng ngẫu nhiên, hoàn toàn không làm biến dạng cấu trúc kề đa phương thức vốn có.
-
----
-
-## 7. Hồ Sơ Tiêu Thụ Bộ Nhớ & Thời Gian Thực Thi (Hardware Resources)
-
-```mermaid
-graph TD
-    subgraph "Full ECLIPSE Tri-Seed Total Compute (500 Epochs / Run)"
-        S1["Seed 1 Fit: 35,524.8 s (~9.79 GPU h)"]
-        S2["Seed 2 Fit: 35,636.9 s (~9.90 GPU h)"]
-        S3["Seed 3 Fit: 37,137.6 s (~10.32 GPU h)"]
-    end
-    S1 --> Aggregate["Tổng Quỹ Thời Gian Huấn Luyện 3 Seeds: ~30.01 GPU Hours"]
-    S2 --> Aggregate
-    S3 --> Aggregate
-```
-
-| Dataset | Seed | Preprocessing (s) | Coach.fit (s) | Fit Hours | Peak Alloc (MiB) | Peak Reserved (MiB) |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Baby** | 1 | ~23.50 | 1,172.50 | 0.326 | 145.17 | 244.00 |
-| **Baby** | 2 | 23.66 | 1,160.48 | 0.322 | 145.17 | 244.00 |
-| **Baby** | 3 | 22.86 | 1,166.38 | 0.324 | 145.17 | 244.00 |
-| **Sports** | 1 | ~47.20 | 2,512.10 | 0.698 | 223.71 | 458.00 |
-| **Sports** | 2 | 46.64 | 2,469.78 | 0.686 | 223.71 | 458.00 |
-| **Sports** | 3 | 46.16 | 2,499.85 | 0.694 | 223.71 | 458.00 |
-| **Electronics** | 1 | ~285.00 | 31,840.20 | 8.845 | 800.67 | 1,578.00 |
-| **Electronics** | 2 | 287.60 | 32,006.65 | 8.891 | 800.67 | 1,578.00 |
-| **Electronics** | 3 | 279.32 | 33,471.41 | 9.298 | 800.67 | 1,578.00 |
-
-### Phân tích tài nguyên:
-- **Tính ổn định thời gian thực thi:** Thời gian chạy trên GPU T4 của cả ba hạt giống đạt độ nhất quán cao: Baby dao động trong khoảng $19.3 - 19.5$ phút; Sports dao động trong khoảng $41.2 - 41.9$ phút; Electronics dao động trong khoảng $8.8 - 9.3$ giờ.
-- **Tính bất biến phân bổ bộ nhớ:** Bộ nhớ đỉnh của allocator PyTorch đạt mức cố định tuyệt đối qua 3 seeds: $145.17$ MiB trên Baby, $223.71$ MiB trên Sports, và $800.67$ MiB trên Electronics. Mô hình vận hành mượt mà trên phần cứng tiêu chuẩn 16 GiB VRAM mà không hề tiệm cận ngưỡng OOM.
-
----
-
-## 8. Tiêu Chuẩn Thống Kê & Giới Hạn Phương Pháp Luận
-
-1. **Quy tắc mẫu:** Đã thu thập đầy đủ $n=3$ hạt giống độc lập cho Full ECLIPSE. Theo nguyên tắc liêm chính học thuật:
-   - Độ bất định của Full ECLIPSE được báo cáo chính xác bằng độ lệch chuẩn mẫu không chệch ($s$, với $\text{ddof}=1$), không nhầm lẫn với khoảng tin cậy $95\%$ hay sai số chuẩn của số trung bình (SEM).
-   - Kiểm định ý nghĩa thống kê so sánh (paired t-test / Wilcoxon) sẽ được thực hiện khi nhánh w/o EC hoàn tất trọn vẹn cả 3 matched pairs.
-2. **Quy tắc chọn Checkpoint:** Toàn bộ metrics được xác định thuần túy tại checkpoint tối ưu theo **Validation NDCG@20**. Kết quả tập TEST hoàn toàn độc lập và không can thiệp vào quá trình chọn lựa này.
-3. **Phân biệt phạm vi VRAM:** Con số $145 - 800$ MiB là mức cấp phát tensor thực tế của quá trình huấn luyện (`allocated memory`), không bao gồm bộ nhớ driver hệ thống và quá trình tính toán ma trận tương tự trong evaluation.
-
----
-
-## 9. Danh Mục Đồ Thị Khoa Học Sinh Ra
-
-Toàn bộ đồ thị chất lượng cao (PDF vector + PNG 300 dpi) và tệp nguồn CSV/JSON của Seed 3 được lưu trữ tại [`logs/ICAART/eclipse_seed3/figures/`](../../logs/ICAART/eclipse_seed3/figures/):
-
-1. **Kiến trúc mô hình tổng thể:** [`eclipse_architecture.pdf`](../../logs/ICAART/eclipse_seed3/figures/eclipse_architecture.pdf)
-2. **Đường cong học tập (Learning Curves):**
-   - Baby: [`eclipse_baby_seed3_learning_curves.pdf`](../../logs/ICAART/eclipse_seed3/figures/eclipse_baby_seed3_learning_curves.pdf)
-   - Sports: [`eclipse_sports_seed3_learning_curves.pdf`](../../logs/ICAART/eclipse_seed3/figures/eclipse_sports_seed3_learning_curves.pdf)
-   - Electronics: [`eclipse_electronics_seed3_learning_curves.pdf`](../../logs/ICAART/eclipse_seed3/figures/eclipse_electronics_seed3_learning_curves.pdf)
-3. **Bộ nhớ & Thời gian từng epoch (Memory & Timing):**
-   - Baby: [`eclipse_baby_seed3_training_memory.pdf`](../../logs/ICAART/eclipse_seed3/figures/eclipse_baby_seed3_training_memory.pdf)
-   - Sports: [`eclipse_sports_seed3_training_memory.pdf`](../../logs/ICAART/eclipse_seed3/figures/eclipse_sports_seed3_training_memory.pdf)
-   - Electronics: [`eclipse_electronics_seed3_training_memory.pdf`](../../logs/ICAART/eclipse_seed3/figures/eclipse_electronics_seed3_training_memory.pdf)
-4. **Chẩn đoán hiệu chuẩn bằng chứng (Calibration Diagnostics):**
-   - Baby: [`eclipse_baby_seed3_calibration_diagnostics.pdf`](../../logs/ICAART/eclipse_seed3/figures/eclipse_baby_seed3_calibration_diagnostics.pdf)
-   - Sports: [`eclipse_sports_seed3_calibration_diagnostics.pdf`](../../logs/ICAART/eclipse_seed3/figures/eclipse_sports_seed3_calibration_diagnostics.pdf)
-   - Electronics: [`eclipse_electronics_seed3_calibration_diagnostics.pdf`](../../logs/ICAART/eclipse_seed3/figures/eclipse_electronics_seed3_calibration_diagnostics.pdf)
-5. **Độ ổn định đa seed (Seed Stability Plots):**
-   - NDCG@20: [`eclipse_seed_stability_ndcg20.pdf`](../../logs/ICAART/eclipse_seed3/figures/eclipse_seed_stability_ndcg20.pdf)
-   - Recall@20: [`eclipse_seed_stability_recall20.pdf`](../../logs/ICAART/eclipse_seed3/figures/eclipse_seed_stability_recall20.pdf)
-6. **Hồ sơ tài nguyên tổng hợp:** [`eclipse_seed3_resource_profile.pdf`](../../logs/ICAART/eclipse_seed3/figures/eclipse_seed3_resource_profile.pdf)
-
----
-
-## 10. Fallacy Scan — 11/11 Tiêu Chuẩn Kiểm Soát Sai Lệch
-
-| Mục Kiểm Soát | Kết Quả Thẩm Định Trên Full ECLIPSE ($n=3$ Seeds) |
-|---|---|
-| **Simpson's paradox** | Báo cáo phân tách độc lập từng dataset; không gộp chung dữ liệu các tập có đặc tính thưa khác nhau. |
-| **Ecological fallacy** | Không suy diễn mức tăng trưởng trung bình tổng thể thành mọi người dùng đều hưởng lợi như nhau. |
-| **Berkson / Selection bias** | Chỉ đánh giá trong phạm vi benchmark 5-core đã khóa, không khái quát hóa cho toàn bộ thị trường thương mại điện tử. |
-| **Collider bias** | Checkpoint được chọn thuần túy bằng Validation NDCG@20, không can thiệp điều chỉnh hậu nghiệm. |
-| **Base-rate neglect** | Đánh giá qua bài toán ranking chuẩn hóa (Recall/NDCG), không đồng nhất điểm phân hạng với xác suất hành vi mua sắm. |
-| **Regression to mean** | Báo cáo đầy đủ cả ba seed độc lập; theo dõi sự biến thiên ngẫu nhiên thay vì chỉ chọn seed có metric cao nhất. |
-| **Survivorship bias** | Toàn bộ 9 run (3 datasets $\times$ 3 seeds) của Full ECLIPSE đều hoàn tất 100% 500 epochs, không có phiên chạy nào bị loại bỏ. |
-| **Look-elsewhere effect** | Giữ vững mục tiêu tối ưu hóa chính là NDCG@20, không hoán đổi tiêu chí sau khi quan sát số liệu tập TEST. |
-| **Garden of forking paths** | Cấu hình siêu tham số và pipeline được khóa cứng tại commit Git trước khi chạy; không tinh chỉnh tham số dựa trên TEST. |
-| **Correlation vs Causation** | Đối chiếu ghép cặp chứng minh đóng góp của thành phần hiệu chuẩn EC; không quy kết thành cơ chế nhân quả khi chưa có phân tích can thiệp. |
-| **Reverse causality** | Đồ thị ngữ nghĩa và bằng chứng hiệu chuẩn chỉ xây dựng trên tập tương tác TRAIN; không sử dụng bất kỳ thông tin nào từ VALID/TEST. |
-
----
-
-## 11. Kế Hoạch Tiếp Theo (Action Items)
-
-1. **Nghiệm thu trọn vẹn nhánh A0 Full ECLIPSE:**
-   - Hoàn thành đầy đủ 3/3 seeds trên cả 3 datasets.
-   - Nhánh A0 chuyển trạng thái thành `VERIFIED_ARTIFACT` trong toàn bộ tài liệu dự án và [Kế hoạch thực nghiệm](ECLIPSE_Experiment_Execution_Plan.md).
-2. **Tiếp tục theo dõi và nghiệm thu các nhánh Ablation:**
-   - **w/o EC Seed 3:** Đang tiến hành chạy ([notebook/P6/eclipse_wo_ec_seed3.ipynb](../../notebook/P6/eclipse_wo_ec_seed3.ipynb)).
-   - **w/o CSE Seed 3:** Đã sửa và hoàn thiện notebook ([notebook/P6/eclipse_wo_cse_electronics_s3.ipynb](../../notebook/P6/eclipse_wo_cse_electronics_s3.ipynb)).
-   - **Các ablation thành phần khác:** w/o LC, Binary, Count, Shuffle theo kế hoạch phân công.
-3. **Kiểm định Thống kê Chính thức ($n=3$ Paired Comparison):**
-   - Ngay khi w/o EC Seed 3 hoàn tất, tính toán giá trị p-value Paired t-test ($\text{df}=2$) và Wilcoxon signed-rank test.
-   - Đưa bảng số liệu chính thức vào bản thảo bài báo ICAART 2027 và Khóa luận tốt nghiệp.
+- [Script tái tính](../../reports/audit_eclipse_full_multiseed.py): chỉ hậu xử lý dữ liệu, không model/test/training.
+- [18 selected runs + resources/provenance](../../reports/eclipse_multiseed_paper_audit_20261020/selected_test_runs.csv).
+- [Mean/SD](../../reports/eclipse_multiseed_paper_audit_20261020/mean_std.csv); [paired differences](../../reports/eclipse_multiseed_paper_audit_20261020/paired_differences.csv); [statistics](../../reports/eclipse_multiseed_paper_audit_20261020/paired_statistics.csv).
+- [Acceptance checks](../../reports/eclipse_multiseed_paper_audit_20261020/artifact_checks.csv). Đạt các đối chiếu không thay thế human cross-read và independent evaluator reproduction.

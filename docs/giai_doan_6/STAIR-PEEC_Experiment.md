@@ -1,6 +1,8 @@
+> **Đính chính 2026-10-20 — HISTORICAL / SUPERSEDED FOR PAPER.** Đây là narrative seed 1 và lịch sử versions nội bộ, có số làm tròn và diễn giải cũ. Nguồn chuẩn cho paper hiện tại là [A0 ba seed](ECLIPSE_Full_Model_Multi_Seed_Analysis.md), [A1 matched ablation](ECLIPSE_Ablation_Study_wo_EC.md) và [kế hoạch trình bày](ECLIPSE_Paper_Experimental_Readiness_and_Presentation_Plan.md). Không dùng các bảng version nội bộ làm external benchmark, không dùng diễn giải nhân quả/“đột phá” như kết luận đã kiểm chứng. **Bảng significance cũ ở mục 2.5 đã thu hồi**; fixed-operator bound không bảo đảm Adam hội tụ. Bản gốc trước sửa được giữ ở `reports/eclipse_multiseed_paper_audit_20261020/before_revision/`.
+
 # BÁO CÁO PHÂN TÍCH KẾT QUẢ THỰC NGHIỆM: KIẾN TRÚC STAIR-PEEC (versionICAART R2)
 # POOLED EXCESS-EVIDENCE CALIBRATION: HIỆU CHỈNH ĐỒ THỊ NGỮ NGHĨA TIỀN BSC DỰA TRÊN BẰNG CHỨNG VƯỢT KỲ VỌNG GỘP TRÊN TOÀN TẦNG HOẠT ĐỘNG
-### Phân Tích Thực Nghiệm Toàn Diện Trên Cả 3 Tập Dữ Liệu Benchmark Chuẩn Mực (Amazon Sports, Amazon Baby & Amazon Electronics); Trích Xuất Hệ Thống Chỉ Số Metrics, Hồ Sơ Tiêu Thụ VRAM, Động Lực Học Quá Trình Học; Đối Chuẩn Đa Thế Hệ (STAIR Baseline, STAIR5-v4, STAIR5-v8 WMSG-core, STAIR5-v8.1 BSCV, STAIR6-v1, STAIR6-v2 và STAIR-REEC R1); Giải Mã 3 Điểm Nút Lý Thuyết (Điều Kiện Min Khắt Khe, Sự Khác Biệt Giữa Null Gộp Toàn Phần và Null Chia Nửa, Tác Động Chuẩn Hóa Gián Tiếp); Xác Nhận Vượt Trội Toàn Diện Trên Cả 3 Tập Dữ Liệu Mà Không Cần Cổng Học Hay Tham Số Phụ (0 Extra Parameters)
+### Phân Tích Thực Nghiệm Toàn Diện Trên Cả 3 Tập Dữ Liệu Benchmark Chuẩn Mực (Amazon Sports, Amazon Baby & Amazon Electronics); Trích Xuất Hệ Thống Chỉ Số Metrics, Hồ Sơ Tiêu Thụ VRAM, Động Lực Học Quá Trình Học; Đối Chuẩn Đa Thế Hệ (STAIR Baseline, STAIR5-v4, STAIR5-v8 WMSG-core, STAIR5-v8.1 BSCV, STAIR6-v1, STAIR6-v2 và STAIR-REEC R1); Giải Mã 3 Điểm Nút Lý Thuyết (Điều Kiện Min Khắt Khe, Sự Khác Biệt Giữa Null Gộp Toàn Phần và Null Chia Nửa, Tác Động Chuẩn Hóa Gián Tiếp); Quan Sát Seed 1, Được Thay Thế Bởi Audit Ba Seed Mà Không Cần Cổng Học Hay Tham Số Phụ (0 Extra Parameters)
 
 ---
 
@@ -60,7 +62,7 @@
    - 6.1. Khắc phục điều kiện Min: Độ phủ bằng chứng tăng vọt trên cả 3 tập dữ liệu
    - 6.2. Phân tích toán học: Null Gộp Toàn Phần ($\mu^F$) vs. Null Cộng Hai Nửa ($\mu^{H_1} + \mu^{H_2}$) trên không gian 192K Users
    - 6.3. Tác động gián tiếp của chuẩn hóa bậc đối xứng: Đo lường độ dời và phân tích độ nhạy
-   - 6.4. Bảo toàn cận phổ toán tử ($\|S_{\text{ICA}}\|_2 \le 1.0$) và bảo đảm hội tụ
+   - 6.4. Bảo toàn cận phổ toán tử ($\|S_{\text{ICA}}\|_2 \le 1.0$) và giới hạn của cận toán tử
 7. [ĐỐI CHIẾU HỌC THUẬT VỚI STAIR5-v8.1 (BSCV) & CoGate](#7-đối-chiếu-học-thuật-với-stair5-v81-bscv--cogate)
    - 7.1. Phân định triết lý: Tinh chỉnh hình học phía bộ tối ưu vs. Đồ thị phụ & Cổng học
    - 7.2. Tương quan hiệu quả trên chi phí tính toán (Efficiency-Gain Frontier)
@@ -232,34 +234,17 @@ flowchart TD
 | **Độ phủ có trọng số (Electronics)**| Chưa chạy | **$8.49\%$** | Tối ưu hóa trên quy mô lớn, tạo đòn bẩy độ dốc mượt mà |
 | **Phân kỳ đơn tập ($H_1 \ne H_2$)** | $2.49\%$ (Sports) / $2.91\%$ (Baby) | **N/A (Full activity stratum)** | Không còn hiện tượng phân kỳ giả do thiếu mẫu quan sát ngẫu nhiên |
 | **Liều lượng toán tử ($\|\Delta S\|_F / \|S\|_F$)** | $0.0711$ ($7.11\%$) | **$0.0621 - 0.0713$ ($6.2\% - 7.1\%$)** | Bảo toàn hoàn hảo liều lượng can thiệp hình học, không gây sốc gradient |
-| **Cận phổ toán tử ($\|S_{\text{ICA}}\|_2$)** | $\le 1.0$ (Đạt chuẩn co phổ) | **$\le 1.0$ (Đạt chuẩn co phổ)** | Bảo toàn tính hội tụ Lipschitz của bộ tối ưu hóa AdamWSEvo |
+| **Cận phổ toán tử ($\|S_{\text{ICA}}\|_2$)** | $\le 1.0$ (Đạt chuẩn co phổ) | **$\le 1.0$ (Đạt chuẩn co phổ)** | Non-expansiveness của toán tử cố định; không bảo đảm Adam hội tụ |
 | **NDCG@20 trên Amazon Baby** | $0.0462$ (Bằng v8, thua v8.1) | **$0.0464$ (Vượt cả v8 và v8.1)** | **Biến điểm nghẽn lớn nhất của R1 thành thắng lợi rõ rệt nhất của R2!** |
 | **NDCG@20 trên Electronics** | Chưa có kết quả | **$0.0318$ (Vượt V8 0.0317 & V6 0.0317)**| **Khẳng định tính khái quát hóa xuất sắc trên quy mô dữ liệu lớn** |
 
 ---
 
-### 2.5. Bảng kiểm định ý nghĩa thống kê (Statistical Significance & Effect Size) trên cả 3 tập dữ liệu
+### 2.5. Đính chính: thu hồi bảng significance từ convergence windows
 
-Trích xuất trực tiếp từ kết quả kiểm định độc lập tại [`reports/stair_icaart_statistical_significance.csv`](file:///d:/4thY_HCMUS/KLTN/STAIR-Enhanced/logs/GD6/STAIR-PEEC/reports/stair_icaart_statistical_significance.csv):
+Bảng p-value/CI/effect size trước đây không được dùng cho paper. Các epochs/checkpoints của cùng một lần training không phải các training replications độc lập; audit này không chấp nhận synthetic/statistical exports đó làm bằng chứng. Một số dấu CI cũng không tương ứng selected-score differences. Bảng cũ còn trong bản backup để truy vết, không được tiếp tục trích dẫn dù đã xuất CSV.
 
-| Tập dữ liệu | Chỉ số kiểm định | STAIR-PEEC (R2) | STAIR5-v8 (Ref) | STAIR Baseline | $\Delta$ vs. v8 | $\Delta (\%)$ vs. v8 | $t$-statistic | $p$-value ($t$-test) | $p$-value (Wilcoxon) | 95% Bootstrap CI | Cohen's $d$ | Mức ý nghĩa |
-|:---|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Amazon Sports** | Recall@10 | 0.07624 | 0.07620 | 0.07430 | +0.00004 | +0.05% | -13.38 | $3.04 \times 10^{-7}$ | $1.95 \times 10^{-3}$ | $[-0.00163, -0.00123]$ | -4.23 | *** ($p < 0.001$) |
-| **Amazon Sports** | Recall@20 | 0.11450 | 0.11420 | 0.11110 | +0.00030 | +0.26% | -24.47 | $1.52 \times 10^{-9}$ | $1.95 \times 10^{-3}$ | $[-0.00316, -0.00271]$ | -7.74 | *** ($p < 0.001$) |
-| **Amazon Sports** | NDCG@10 | 0.04219 | 0.04200 | 0.04050 | +0.00019 | +0.44% | -23.45 | $2.22 \times 10^{-9}$ | $1.95 \times 10^{-3}$ | $[-0.00142, -0.00121]$ | -7.42 | *** ($p < 0.001$) |
-| **Amazon Sports** | NDCG@20 | 0.05208 | 0.05180 | 0.05000 | +0.00028 | +0.55% | -27.92 | $4.71 \times 10^{-10}$ | $1.95 \times 10^{-3}$ | $[-0.00193, -0.00169]$ | -8.83 | *** ($p < 0.001$) |
-| **Amazon Baby** | Recall@10 | 0.06862 | 0.06750 | 0.06740 | +0.00112 | +1.66% | -25.43 | $1.08 \times 10^{-9}$ | $1.95 \times 10^{-3}$ | $[-0.00423, -0.00365]$ | -8.04 | *** ($p < 0.001$) |
-| **Amazon Baby** | Recall@20 | 0.10611 | 0.10540 | 0.10420 | +0.00071 | +0.67% | -33.77 | $8.63 \times 10^{-11}$ | $1.95 \times 10^{-3}$ | $[-0.00569, -0.00510]$ | -10.68 | *** ($p < 0.001$) |
-| **Amazon Baby** | NDCG@10 | 0.03680 | 0.03650 | 0.03590 | +0.00030 | +0.82% | -32.84 | $1.11 \times 10^{-10}$ | $1.95 \times 10^{-3}$ | $[-0.00194, -0.00173]$ | -10.38 | *** ($p < 0.001$) |
-| **Amazon Baby** | NDCG@20 | 0.04640 | 0.04620 | 0.04540 | +0.00020 | +0.43% | -29.72 | $2.70 \times 10^{-10}$ | $1.95 \times 10^{-3}$ | $[-0.00241, -0.00213]$ | -9.40 | *** ($p < 0.001$) |
-| **Amazon Electronics** | Recall@10 | 0.04640 | 0.04600 | 0.04420 | +0.00040 | +0.87% | -7.80 | $2.70 \times 10^{-5}$ | $1.95 \times 10^{-3}$ | $[-0.00027, -0.00017]$ | -2.47 | *** ($p < 0.001$) |
-| **Amazon Electronics** | Recall@20 | 0.06811 | 0.06800 | 0.06650 | +0.00011 | +0.16% | 13.57 | $2.68 \times 10^{-7}$ | $1.95 \times 10^{-3}$ | $[+0.00072, +0.00094]$ | 4.29 | *** ($p < 0.001$) |
-| **Amazon Electronics** | NDCG@10 | 0.02621 | 0.02600 | 0.02460 | +0.00021 | +0.81% | -71.04 | $1.10 \times 10^{-13}$ | $1.95 \times 10^{-3}$ | $[-0.00079, -0.00075]$ | -22.47 | *** ($p < 0.001$) |
-| **Amazon Electronics** | NDCG@20 | 0.03183 | 0.03170 | 0.03030 | +0.00013 | +0.41% | -39.41 | $2.17 \times 10^{-11}$ | $1.95 \times 10^{-3}$ | $[-0.00062, -0.00057]$ | -12.46 | *** ($p < 0.001$) |
-
-> [!IMPORTANT]
-> **KẾT QUẢ KIỂM ĐỊNH Ý NGHĨA THỐNG KÊ ĐỒNG NHẤT 100%:**  
-> Kiểm định trên cửa sổ đánh giá hội tụ cuối (convergence window) cho thấy **tất cả 12 chỉ số xếp hạng quan trọng của STAIR-PEEC trên cả 3 tập dữ liệu đều đạt mức ý nghĩa thống kê cực kỳ cao ($p < 0.001$ trên cả kiểm định tham số Student's $t$-test và phi tham số Wilcoxon signed-rank test)**. Sự nhất quán xuyên suốt từ tập quy mô nhỏ (Baby), quy mô vừa (Sports) đến quy mô lớn (Electronics) khẳng định rằng năng lực tối ưu hóa của PEEC là một đặc tính cơ chế thực sự, hoàn toàn độc lập với phương sai ngẫu nhiên của tập dữ liệu hay kích thước mẫu.
+Hiện có selected TEST receipts của Full và w/o EC seeds 1–3 trên ba datasets. [Phân tích paired mới](ECLIPSE_Ablation_Study_wo_EC.md) cho gain NDCG@20 trung bình +0.585%, +0.490%, +0.138%. Không dataset nào có p<.05 sau Holm cho ba NDCG@20 comparisons; n=3 có độ phân giải thấp. Đây là comparison với ablation w/o EC, không phải kiểm định multi-seed với STAIR gốc. Không thay nó bằng kiểm định VALID-vs-TEST hoặc các epoch cuối.
 
 ---
 
@@ -421,13 +406,16 @@ Telemetry của PEEC đã đo lường chính xác tác động này qua hai ch�
 
 **Kết luận thực nghiệm:** Hệ số lan truyền của các cạnh không có bằng chứng chỉ bị giảm trung bình từ **$-0.74\%$ đến $-1.38\%$**, và ở 90% các cạnh thì mức giảm không vượt quá $-5.7\%$. Tác động này hoàn toàn nằm trong biên độ an toàn và không hề làm xáo trộn cấu trúc tô-pô ban đầu của V8. Hơn nữa, việc giảm nhẹ hệ số của các cạnh không có bằng chứng đóng vai trò như một bộ lọc nhiễu tự nhiên, giúp hướng sự chú ý của gradient cập nhật vào các liên kết có bằng chứng xác thực.
 
-### 6.4. Bảo toàn cận phổ toán tử ($\|S_{\text{ICA}}\|_2 \le 1.0$) và bảo đảm hội tụ
+### 6.4. Cận toán tử và giới hạn của kết luận ổn định
 
-Toán tử truyền dẫn cuối cùng đưa vào bộ tối ưu hóa BSC được định nghĩa:
-$$S_{\text{ICA}} = (1 - \eta) S_{\delta} + \eta S_{\text{CF}}$$
-Với $\eta = 0.1$. Cả hai ma trận $S_{\delta}$ và $S_{\text{CF}}$ đều được chuẩn hóa đối xứng với đường chéo tự liên kết, bảo đảm chuẩn phổ:
-$$\|S_{\text{ICA}}\|_2 \le (1 - \eta) \|S_{\delta}\|_2 + \eta \|S_{\text{CF}}\|_2 \le 0.9 \times 1.0 + 0.1 \times 1.0 = 1.0$$
-Liều lượng toán tử tương đối (Operator Relative Dose $\|\Delta S\|_F / \|S\|_F$) đo được trên Sports ($0.0711$), Baby ($0.0713$) và Electronics ($0.0621$) đều duy trì chính xác ở mức **$6.2\% - 7.1\%$**, và liều lượng đa thức bậc 3 đo bằng Rademacher probe chỉ đạt **$1.66\% - 2.36\%$**. Điều này chứng minh toán tử $S_{\text{ICA}}$ chỉ thực hiện một sự tinh chỉnh nhẹ nhàng, cục bộ, hoàn toàn không làm biến dạng không gian gradient của mô hình.
+Với hai adjacency đối xứng, không âm, được chuẩn hóa bằng bậc thực tế và xử lý isolated nodes đúng contract, mỗi normalized operator có spectral norm không vượt 1. Vì $0\le\eta\le1$,
+\[
+S_{\rm PEEC}=(1-\eta)S_\delta+\eta\bar S_{\rm CF},\qquad
+\|S_{\rm PEEC}\|_2\le(1-\eta)\|S_\delta\|_2+\eta\|\bar S_{\rm CF}\|_2\le1.
+\]
+Không cần giả định mọi node đều có self-loop để có cận này; isolated identity blocks được xử lý theo builder. Với finite polynomial có hệ số không âm và tổng không vượt 1, triangle inequality cho non-expansiveness trên một direction cố định. **Cận này không chứng minh boundedness của Adam directions, hội tụ của optimizer, hay chất lượng ranking.**
+
+Frobenius operator dose và fixed Rademacher polynomial probe trong [bảng audit](../../reports/eclipse_multiseed_paper_audit_20261020/mechanism_diagnostics.csv) là diagnostics: chúng cho thấy tác động khác 0 sau normalization/filter. Chúng không đo actual Adam-direction perturbation, không phải worst-case spectral norm bound cho operator difference, không chứng minh “không biến dạng gradient”. Mọi kết luận hữu ích/không hại phải dựa trên matched ablation và controls.
 
 ---
 
@@ -453,29 +441,18 @@ Biểu đồ Pareto giữa chi phí tính toán và hiệu năng xếp hạng:
   - Trên **Amazon Baby**: Vượt qua V8.1 trên mọi chỉ số (NDCG@20 = **$0.0464$** vs $0.0463$; Recall@10 = **$0.0686$** vs $0.0679$) trong khi nhanh hơn $1.7$ phút.
   - Trên **Amazon Electronics**: Thiết lập kỷ lục mới (NDCG@20 = **$0.0318$**, Recall@10 = **$0.0464$**), vượt qua toàn bộ các thế hệ trước với mức tiêu thụ VRAM chỉ $800.7\text{ MiB}$.
 
-### 7.3. Đảm bảo tính liêm chính và tính độc lập sáng tạo (Scientific Integrity)
+### 7.3. Attribution và giới hạn của kết luận độc lập
 
-Kiến trúc STAIR-PEEC giải quyết trọn vẹn bài toán đặt ra trong luận văn tốt nghiệp mà không bị trùng lặp phương pháp luận với các công trình như CoGate:
-- Không sử dụng lại cơ chế gating hay auxiliary loss của CoGate.
-- Chứng minh được rằng: **Bản thân thông tin tương tác người dùng khi được lọc bỏ kỳ vọng ngẫu nhiên theo tầng hoạt động đã đủ sức định hướng hình học bộ tối ưu hóa BSC đạt tới hiệu năng đỉnh cao, mà không cần thêm bất kỳ tham số học nào**.
+PEEC là reweighting tĩnh trước item-side optimizer filtering, khác cơ chế learned consensus gate/auxiliary branch. Khác biệt kiến trúc không tự chứng minh novelty hoặc không trùng công bố; cần đối chiếu manuscript của cùng nhóm và khai báo related submissions theo yêu cầu venue. MI/FSC/BSC/scorer vẫn được dẫn nguồn STAIR. Mean gain riêng EC chỉ nhỏ theo audit ba seed, không dùng nó để chứng minh “đạt hiệu năng đỉnh cao” hoặc causal edge usefulness.
 
 ---
 
 ## 8. KẾT LUẬN & KẾ HOẠCH BẢO VỆ KHÓA LUẬN VÀ BÀI BÁO ICAART 2027
 
-### 8.1. Đánh giá kết luận tổng thể
+### 8.1. Kết luận được thay thế bởi audit ba seed
 
-1. **Khẳng định tính đúng đắn toàn diện của giả thuyết PEEC:** Việc thay thế điều kiện lấy `min` cứng nhắc của REEC bằng bằng chứng vượt kỳ vọng gộp toàn bộ tầng hoạt động ($\text{PEEC}$) đã giải quyết triệt để vấn đề nghẽn độ phủ trên dữ liệu thưa, nâng độ phủ cạnh có ích lên gấp $4\times - 6\times$ trên toàn bộ 3 tập dữ liệu thực nghiệm.
-2. **Hiệu năng thực nghiệm vượt bậc trên toàn bộ 3 tập benchmark:**
-   - Trên Amazon Baby: Đạt thắng lợi toàn diện, vượt qua tất cả các thế hệ trước (Baseline, V4, V8, V8.1, REEC R1).
-   - Trên Amazon Sports: Vượt V8, vượt REEC R1 và san bằng kỷ lục của V8.1 với chi phí tính toán thấp hơn đáng kể ($13.6\%$ faster).
-   - Trên Amazon Electronics: Xác lập đỉnh cao mới của dòng mô hình STAIR trên quy mô $192\text{K}$ người dùng (+4.98% Recall@10, +5.05% NDCG@20 so với Baseline).
-3. **Độ an toàn và tính chuẩn mực kỹ thuật:** Toàn bộ $40/40$ bài kiểm thử độc lập đã thông qua, chuẩn phổ toán tử được bảo toàn ($\le 1.0$), VRAM GPU duy trì cực thấp ($145\text{ MiB} - 800\text{ MiB}$), thông lượng xử lý mẫu cao vượt trội.
+Kết quả seed1 trong tài liệu này là lịch sử, không đại diện mean ba seed và không phải external benchmark đã kiểm toán. [A0 report](ECLIPSE_Full_Model_Multi_Seed_Analysis.md) có native TEST metrics n3; [A1 report](ECLIPSE_Ablation_Study_wo_EC.md) có paired comparisons. EC tăng N@20 trung bình +0.585%/+0.490%/+0.138%, nhưng Electronics seed3 âm và không có primary comparison nào đạt p<.05 sau Holm3. Không còn kết luận “khẳng định toàn diện”, “mọi cạnh evidence dương là hữu ích”, hoặc p<.001 từ epoch windows.
 
-### 8.2. Kế hoạch tiếp theo cho Khóa luận Tốt nghiệp & Bài báo Hội nghị
+### 8.2. Kế hoạch paper hiện hành
 
-1. **Cập nhật tài liệu khóa luận tốt nghiệp:**
-   - Bổ sung toàn bộ ma trận đối chuẩn 3 tập dữ liệu và phân tích cơ chế toán học của PEEC vào Chương 3 của khóa luận tốt nghiệp ([`report/chapters_v6/03_stair.tex`](file:///d:/4thY_HCMUS/KLTN/STAIR-Enhanced/report/chapters_v6/03_stair.tex)).
-   - Cập nhật các đồ thị đường cong học tập và hồ sơ VRAM 3 tập dữ liệu vào phụ lục báo cáo.
-2. **Chuẩn bị bản thảo bài báo khoa học nộp hội nghị quốc tế ICAART 2027:**
-   - Hoàn thiện bản thảo bài báo khoa học chất lượng cao nộp cho hội nghị quốc tế ICAART 2027 với các luận cứ thực nghiệm, kiểm định thống kê $p < 0.001$, và phân tích lý thuyết đầy đủ về phương pháp hiệu chuẩn bằng chứng vượt kỳ vọng gộp $\text{PEEC}$.
+Theo [paper readiness/presentation plan](ECLIPSE_Paper_Experimental_Readiness_and_Presentation_Plan.md) và [execution plan](ECLIPSE_Experiment_Execution_Plan.md). Hợp nhất A2/A3 từ Hiếu, hoàn thành/thu Count và Shuffle, kiểm external benchmark protocol và cập nhật manuscript. Không đặt mục tiêu phải thu p<.001; công khai effect size, sample SD, uncertainty và actual n. Không dùng các versions nội bộ làm phương pháp bên ngoài đã công bố. Resource claims phải phân biệt Coach.fit/epoch train sum và training allocated/reserved memory.

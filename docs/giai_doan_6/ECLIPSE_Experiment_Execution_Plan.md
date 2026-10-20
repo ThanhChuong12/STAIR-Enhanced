@@ -949,3 +949,23 @@ Chương nhận ít job nhưng nhiều Electronics; Hiếu nhận nhiều job ng
 Notebook Count-only đã sửa lỗi `FileExistsError` do `build_config()` tạo artifact directory trống trong preflight. Chấp nhận directory trống/chưa log; vẫn bảo toàn directory có payload, stdout log, symlink hoặc path bất thường. Không thay Count-only algorithm/seed/epochs, không xóa hoặc tự resume run cũ. Template w/o CSE dùng cùng guard được đồng bộ.
 
 Khi cập nhật notebook đang mở trên Kaggle, chạy lại **cell định nghĩa engine/train_dataset ở mục6**, rồi cell Baby; không chạy setup chỉ để đổi SESSION_ID nếu directory hiện tại chỉ trống do preflight. Nếu có payload/log, audit hoặc tạo session mới đúng quy trình, không xóa để bypass. [Chi tiết sửa và111 kiểm tra hồi quy](ECLIPSE_Count_Only_Seed1_Notebook_Guide.md#6-sửa-lỗi-fileexistserror-trước-training-2026-10-19). Kiểm Popen bị intercept trước OS process; chưa có training mới và không tăng actual n/status COMPLETED.
+
+
+## 19. Actual status sau audit A0/A1 — 2026-10-20
+
+Phần này thay các trạng thái lịch sử của A0/A1 ở trên, không xóa lịch sử thực hiện. [Full analysis](ECLIPSE_Full_Model_Multi_Seed_Analysis.md), [A1 analysis](ECLIPSE_Ablation_Study_wo_EC.md), [paper readiness và figures/tables](ECLIPSE_Paper_Experimental_Readiness_and_Presentation_Plan.md).
+
+| Arm | Baby | Sports | Electronics | Audit scope |
+| --- | --- | --- | --- | --- |
+| A0 Full | s1–3 COMPLETED | s1–3 COMPLETED | s1–3 COMPLETED | Native receipts/telemetry/source; checkpoints Full s1 chưa có local |
+| A1 w/o EC | s1–3 COMPLETED | s1–3 COMPLETED | s1–3 COMPLETED | s1 recovered historical checkpoint, s2–3 native; đủ 9 checkpoint local |
+| A2 w/o LC | Hiếu báo đã xong | Hiếu phân tích riêng | Chưa xác nhận phạm vi | HUMAN_REPORTED_COMPLETE; artifacts còn ở máy Hiếu, không suy đủ mọi ô/seed |
+| A3 w/o CSE | Hiếu báo đã xong | Hiếu phân tích riêng | Chưa xác nhận phạm vi | HUMAN_REPORTED_COMPLETE; artifacts còn ở máy Hiếu, không suy đủ mọi ô/seed |
+| Count/Shuffle/Binary/Global | Giữ actual ledger của người chạy | Chưa nhận receipts mới vào audit này | Không tự tăng n/status | Notebook READY hoặc một thông báo không thay kiểm toán số liệu |
+
+- A0 NDCG@20 n3: Baby0.046340±0.000241, Sports0.051956±0.000156, Electronics0.031759±0.000093.
+- EC relative mean gain so A1: +0.585%/+0.490%/+0.138%; Electronics s3 N@20 âm. Không có N@20 comparison nào còn p<.05 sau Holm3 trong audit hồi cứu. Không dùng epoch p-values cũ.
+- Không yêu cầu chạy lại A0/A1 đã hoàn tất, không tự thêm ba seed STAIR; STAIR n1 phải có nhãn n1, không có paired-seed significance.
+- P0 tiếp theo: Hiếu bàn giao bảng/receipts A2/A3 theo cùng schema; hoàn thành/nhận Count/Shuffle đúng kế hoạch; lập external benchmark source/protocol matrix; cập nhật Example.tex đang còn single-seed/internal-version narrative.
+- Figures ưu tiên: architecture; component/evidence ablation khi đủ receipts; coverage + operator/probe dose. Paired EC effect và learning curves/nguồn lực có thể ở appendix. Export PDF vector + PNG300dpi + source data/captions, ghi actual n/units/errorbar scope.
+- Giữ kiến trúc đã chốt. Nếu controls không ủng hộ specific excess-evidence claim, điều chỉnh claim trung thực; không tune TEST để làm mọi arm thắng.
