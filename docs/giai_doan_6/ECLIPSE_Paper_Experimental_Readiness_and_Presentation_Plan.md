@@ -15,7 +15,8 @@ ECLIPSE là phương pháp cuối của nhóm. MI/FSC/BSC/AdamW/scorer có ngu�
 | A0 Full, ba tập, seeds 1–3 | 9 receipts/telemetry; source/config đã đối chiếu; checkpoint s2/s3 có, s1 thiếu local | Mean ± SD, từng seed, selected epoch, tài nguyên có giới hạn đo |
 | A1 w/o EC, ba tập, seeds 1–3 | 9 receipts/checkpoints; s1 recovered historical run | Paired analysis; công khai provenance khác revision ở s1 |
 | A2 w/o LC / A3 w/o CSE | **HUMAN_REPORTED_COMPLETE**, artifacts ở máy Hiếu; Hiếu phân tích riêng | Chờ bảng/receipts; không tự suy phạm vi hoặc điền metric |
-| Binary / Count / Shuffle / Global-full | Chưa tiếp nhận receipts mới của các arm này trong audit | Notebook READY không phải kết quả; ghi actual n khi nhận |
+| A5 Count-only | Đã tiếp nhận đầy đủ 3 datasets Seed 1 (session `20261019T135237Z_0fda544e`) | [Audit A5](ECLIPSE_Ablation_Study_Count_Only.md); actual n=1, đối chiếu matched seed 1 |
+| Binary / Shuffle / Global-full | Chưa tiếp nhận receipts mới của các arm này trong audit | Notebook READY không phải kết quả; ghi actual n khi nhận |
 | STAIR tái lập | Có nguồn lịch sử, ngoài phạm vi 18-run audit này | Chỉ dùng số/protocol được kiểm tra, ghi n thực tế |
 | Published baselines khác | Chưa lập source/protocol matrix trong lần này | Không nhập số khác splits như cùng một protocol |
 | Per-user statistics | Chưa có arrays trong gói audit | Không tạo từ aggregate metrics |

@@ -230,7 +230,7 @@ r^G_{ij}=\frac{[c_{ij}-\mu^G_{ij}]_+}{c_{ij}+\mu^G_{ij}+4}.
 | w/o LC | seeds 1/2/3 | seeds 1/2/3 | seed 1 tùy thời gian | P1; Electronics là P2 |
 | w/o CSE | seeds 1/2/3 | seeds 1/2/3 | seed 1 tùy thời gian | P1; Electronics là P2 |
 | Binary semantic | seeds 1/2/3 | seeds 1/2/3 | seed 1 tùy thời gian | P1; Electronics là P2 |
-| Count-only | seeds 1/2/3 | seeds 1/2/3 | seed 1 | P1; Electronics sau w/o EC |
+| Count-only | seeds 1/2/3 (Seed 1 VERIFIED_ARTIFACT) | seeds 1/2/3 (Seed 1 VERIFIED_ARTIFACT) | seed 1 (VERIFIED_ARTIFACT) | P1; Seed 1 hoàn tất cả 3 datasets, chờ seeds 2/3 Baby/Sports |
 | Shuffled evidence | seeds 1/2/3 | seeds 1/2/3 | seed 1 | P1; Electronics sau w/o EC |
 | Global-full null | seeds 1/2/3 nếu sẵn sàng | seeds 1/2/3 nếu sẵn sàng | Không yêu cầu | P1 điều kiện code; là control riêng |
 
@@ -961,10 +961,12 @@ Phần này thay các trạng thái lịch sử của A0/A1 ở trên, không x�
 | A1 w/o EC | s1–3 COMPLETED | s1–3 COMPLETED | s1–3 COMPLETED | s1 recovered historical checkpoint, s2–3 native; đủ 9 checkpoint local |
 | A2 w/o LC | Hiếu báo đã xong | Hiếu phân tích riêng | Chưa xác nhận phạm vi | HUMAN_REPORTED_COMPLETE; artifacts còn ở máy Hiếu, không suy đủ mọi ô/seed |
 | A3 w/o CSE | Hiếu báo đã xong | Hiếu phân tích riêng | Chưa xác nhận phạm vi | HUMAN_REPORTED_COMPLETE; artifacts còn ở máy Hiếu, không suy đủ mọi ô/seed |
-| Count/Shuffle/Binary/Global | Giữ actual ledger của người chạy | Chưa nhận receipts mới vào audit này | Không tự tăng n/status | Notebook READY hoặc một thông báo không thay kiểm toán số liệu |
+| A5 Count-only | s1 COMPLETED | s1 COMPLETED | s1 COMPLETED | Native receipts/telemetry/source/checkpoints đủ 3 datasets; xem [A5 analysis](ECLIPSE_Ablation_Study_Count_Only.md) |
+| Shuffle/Binary/Global | Giữ actual ledger của người chạy | Chưa nhận receipts mới vào audit này | Không tự tăng n/status | Notebook READY hoặc một thông báo không thay kiểm toán số liệu |
 
 - A0 NDCG@20 n3: Baby0.046340±0.000241, Sports0.051956±0.000156, Electronics0.031759±0.000093.
 - EC relative mean gain so A1: +0.585%/+0.490%/+0.138%; Electronics s3 N@20 âm. Không có N@20 comparison nào còn p<.05 sau Holm3 trong audit hồi cứu. Không dùng epoch p-values cũ.
+- A5 Count-only Seed 1 hoàn thành cả 3 datasets: Baby N@20=0.045668 (-1.57% vs Full, -1.24% vs w/o EC; peak sớm epoch 225 do popularity distortion); Sports N@20=0.052109 (+0.05% vs Full, +0.57% vs w/o EC); Electronics N@20=0.031852 (+0.07% vs Full, +0.54% vs w/o EC). Xem [báo cáo chi tiết A5](ECLIPSE_Ablation_Study_Count_Only.md).
 - Không yêu cầu chạy lại A0/A1 đã hoàn tất, không tự thêm ba seed STAIR; STAIR n1 phải có nhãn n1, không có paired-seed significance.
 - P0 tiếp theo: Hiếu bàn giao bảng/receipts A2/A3 theo cùng schema; hoàn thành/nhận Count/Shuffle đúng kế hoạch; lập external benchmark source/protocol matrix; cập nhật Example.tex đang còn single-seed/internal-version narrative.
 - Figures ưu tiên: architecture; component/evidence ablation khi đủ receipts; coverage + operator/probe dose. Paired EC effect và learning curves/nguồn lực có thể ở appendix. Export PDF vector + PNG300dpi + source data/captions, ghi actual n/units/errorbar scope.
