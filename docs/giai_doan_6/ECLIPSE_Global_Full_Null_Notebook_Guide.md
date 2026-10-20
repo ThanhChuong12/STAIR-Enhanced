@@ -1,14 +1,14 @@
 # ECL-global_full_null — hướng dẫn sáu run ablation
 
-**Cập nhật 2026-10-20. Trạng thái: READY; chưa training.** Ba notebook, mỗi notebook Baby → Sports, theo cùng format các arm Count/w/o EC.
+**Cập nhật 2026-10-20. Trạng thái: Seeds 1 & 2 COMPLETED ($n=2$ per dataset, đã kiểm toán và phân tích trong [ECLIPSE_Ablation_Study_Global_Full_Null.md](ECLIPSE_Ablation_Study_Global_Full_Null.md)); Seed 3 READY.**
 
 ## 1. Notebook và phạm vi
 
-| Notebook | Seed | Dataset | Budget |
-| --- | --- | --- | --- |
-| [eclipse_global_full_null_seed1.ipynb](../../notebook/P6/eclipse_global_full_null_seed1.ipynb) | 1 | Baby, Sports | 64D, 500epochs/dataset |
-| [eclipse_global_full_null_seed2.ipynb](../../notebook/P6/eclipse_global_full_null_seed2.ipynb) | 2 | Baby, Sports | 64D, 500epochs/dataset |
-| [eclipse_global_full_null_seed3.ipynb](../../notebook/P6/eclipse_global_full_null_seed3.ipynb) | 3 | Baby, Sports | 64D, 500epochs/dataset |
+| Notebook | Seed | Dataset | Budget | Trạng thái |
+| --- | --- | --- | --- | --- |
+| [eclipse_global_full_null_seed1.ipynb](../../notebook/P6/eclipse_global_full_null_seed1.ipynb) | 1 | Baby, Sports | 64D, 500epochs/dataset | **COMPLETED** (`logs/ICAART/eclipse_global_full_null_seed1/`) |
+| [eclipse_global_full_null_seed2.ipynb](../../notebook/P6/eclipse_global_full_null_seed2.ipynb) | 2 | Baby, Sports | 64D, 500epochs/dataset | **COMPLETED** (`logs/ICAART/eclipse_global_full_null_seed2/`) |
+| [eclipse_global_full_null_seed3.ipynb](../../notebook/P6/eclipse_global_full_null_seed3.ipynb) | 3 | Baby, Sports | 64D, 500epochs/dataset | **READY** (Chờ slot thực thi) |
 
 Tổng **6 run** do Chương thực hiện. Không có Electronics trong phạm vi arm này. Mỗi notebook có35cells, chạy hai dataset tuần tự; có thể chia Baby/Sports sang session riêng bằng `SELECTED_DATASETS` trước setup. Không đổi seed/hyperparameters giữa run.
 
